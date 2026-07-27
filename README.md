@@ -58,19 +58,17 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 
 ## Docker 构建与部署
 
-### GitHub Actions 自动构建（推送到 Docker Hub）
+### GitHub Actions 自动构建（推送到 GHCR）
 
-`.github/workflows/docker.yml` 在 push 到 `main` 或打 `v*` 标签时构建并推送两个镜像：
+`.github/workflows/docker.yml` 在 push 到 `master`/`main` 或打 `v*` 标签时构建并推送两个镜像到
+GitHub Container Registry，**无需配置任何 Secret**（使用自动注入的 `GITHUB_TOKEN`）：
 
-- `zuoa/agrihot-backend:latest`（+ `sha-xxxxxxx` / 版本标签）
-- `zuoa/agrihot-frontend:latest`
+- `ghcr.io/zuoa/agrihot-backend:latest`（+ `sha-xxxxxxx` / 版本标签）
+- `ghcr.io/zuoa/agrihot-frontend:latest`
 
-需要在仓库 **Settings → Secrets and variables → Actions** 配置：
-
-| Secret | 说明 |
-| --- | --- |
-| `DOCKERHUB_USERNAME` | Docker Hub 用户名（zuoa） |
-| `DOCKERHUB_TOKEN` | Docker Hub Access Token（hub.docker.com → Account Settings → Security） |
+首次构建后包默认为私有，可在 https://github.com/zuoa?tab=packages 将两个包的
+**Package settings → Change visibility** 设为 Public；私有包则需先在服务器执行
+`docker login ghcr.io`（用一个有 `read:packages` 权限的 PAT）。
 
 ### 远程服务器部署（docker compose 拉取镜像）
 

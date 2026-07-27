@@ -22,7 +22,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: zuoa/agrihot-backend:latest
+    image: ghcr.io/zuoa/agrihot-backend:latest
     environment:
       DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
       CORS_ORIGINS: "*"
@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: zuoa/agrihot-frontend:latest
+    image: ghcr.io/zuoa/agrihot-frontend:latest
     ports:
       - "80:80"
     depends_on:
