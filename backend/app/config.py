@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     # ingest rate limit per API key (slowapi format)
     ingest_rate_limit: str = "60/minute"
+    # DeepSeek scoring for auto 精选; empty key disables scoring entirely
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+    # total score (0-100) at or above which an item becomes 精选
+    selection_threshold: int = 70
+    # admin console password; empty disables the admin endpoints entirely
+    admin_password: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

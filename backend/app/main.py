@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
 from .api.v1.public import router as public_router
 from .config import settings
@@ -66,6 +67,7 @@ async def unhandled_handler(request: Request, exc: Exception):
 
 
 app.include_router(ingest_router)
+app.include_router(admin_router)
 app.include_router(public_router)
 
 

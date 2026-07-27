@@ -31,17 +31,48 @@
         #{{ t }}
       </router-link>
     </div>
+
+    <!-- 管理操作 -->
+    <div v-if="adminSession.loggedIn" class="mt-3 pt-3 border-t border-dashed border-stone-200 flex gap-2 justify-end">
+      <button @click="showEdit = true"
+        class="px-3 py-1 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50">编辑</button>
+      <button @click="remove" :disabled="deleting"
+        class="px-3 py-1 text-xs rounded-full border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+        {{ deleting ? '删除中…' : '删除' }}
+      </button>
+    </div>
+
+    <ItemEditModal v-if="showEdit" :item="item"
+      @close="showEdit = false" @saved="(it) => $emit('updated', it)" />
   </article>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { fmtTime, fmtDay } from '../api'
+import { computed, ref } from 'vue'
+import { adminSession, api, fmtTime, fmtDay } from '../api'
+import ItemEditModal from './ItemEditModal.vue'
 
 const props = defineProps({
   item: { type: Object, required: true },
   clamp: { type: Boolean, default: true },
 })
+const emit = defineEmits(['updated', 'deleted'])
+
+const showEdit = ref(false)
+const deleting = ref(false)
+
+async function remove() {
+  if (!confirm(`确定删除「${props.item.title.slice(0, 30)}」？此操作不可恢复。`)) return
+  deleting.value = true
+  try {
+    await api.adminDeleteItem(props.item.id)
+    emit('deleted', props.item.id)
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    deleting.value = false
+  }
+}
 
 const timeText = computed(() => {
   const iso = props.item.published_at || props.item.created_at

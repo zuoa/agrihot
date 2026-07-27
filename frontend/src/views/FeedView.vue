@@ -25,7 +25,8 @@
           <div class="flex-1 border-t border-leaf-100"></div>
         </div>
         <div class="space-y-3">
-          <ItemCard v-for="it in g.items" :key="it.id" :item="it" />
+          <ItemCard v-for="it in g.items" :key="it.id" :item="it"
+            @updated="load(page)" @deleted="load(page)" />
         </div>
       </section>
       <div v-if="!groups.length" class="text-center text-stone-400 py-16">暂无内容</div>

@@ -145,3 +145,18 @@ async def ingest_batch(
                 IngestResultOut(status="invalid", message=f"入库失败: {exc.__class__.__name__}")
             )
     return results
+
+
+async def delete_item(session: AsyncSession, item_id: int) -> bool:
+    """Delete an item and scrub it from Daily.item_ids. False if not found. Caller commits."""
+    from ..models import Daily
+
+    item = await session.get(Item, item_id)
+    if item is None:
+        return False
+    dailies = (await session.execute(select(Daily))).scalars().all()
+    for d in dailies:
+        if item_id in (d.item_ids or []):
+            d.item_ids = [i for i in d.item_ids if i != item_id]
+    await session.delete(item)
+    return True

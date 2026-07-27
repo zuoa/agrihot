@@ -42,17 +42,34 @@
         </li>
       </ul>
     </div>
+
+    <!-- 管理操作 -->
+    <div v-if="adminSession.loggedIn" class="mt-6 pt-5 border-t border-dashed border-stone-200 flex gap-2 justify-end">
+      <button @click="showEdit = true"
+        class="px-4 py-1.5 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50">编辑</button>
+      <button @click="remove" :disabled="deleting"
+        class="px-4 py-1.5 text-xs rounded-full border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
+        {{ deleting ? '删除中…' : '删除' }}
+      </button>
+    </div>
+
+    <ItemEditModal v-if="showEdit" :item="item"
+      @close="showEdit = false" @saved="(it) => (item = it)" />
   </article>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { api, fmtDay } from '../api'
+import { useRoute, useRouter } from 'vue-router'
+import { adminSession, api, fmtDay } from '../api'
+import ItemEditModal from '../components/ItemEditModal.vue'
 
 const route = useRoute()
+const router = useRouter()
 const item = ref(null)
 const loading = ref(true)
+const showEdit = ref(false)
+const deleting = ref(false)
 
 watch(() => route.params.id, load, { immediate: true })
 
@@ -65,6 +82,19 @@ async function load() {
     item.value = null
   } finally {
     loading.value = false
+  }
+}
+
+async function remove() {
+  if (!confirm(`确定删除「${item.value.title.slice(0, 30)}」？此操作不可恢复。`)) return
+  deleting.value = true
+  try {
+    await api.adminDeleteItem(item.value.id)
+    router.back()
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    deleting.value = false
   }
 }
 

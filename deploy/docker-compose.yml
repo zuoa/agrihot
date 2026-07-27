@@ -27,6 +27,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
       CORS_ORIGINS: "*"
       INGEST_RATE_LIMIT: 60/minute
+      # 自动精选评分（DeepSeek）；不设置 DEEPSEEK_API_KEY 则新条目一律不进精选
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SELECTION_THRESHOLD: ${SELECTION_THRESHOLD:-70}
+      # 管理控制台密码；不设置则管理接口关闭（页面「管理」按钮无法登录）
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       db:
         condition: service_healthy

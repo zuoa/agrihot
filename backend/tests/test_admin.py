@@ -1,0 +1,174 @@
+import os
+import sys
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# shared with the other test modules — see test_scoring.py NOTE
+TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
+
+os.environ["DATABASE_URL"] = TEST_DB
+
+from app.config import settings  # noqa: E402
+from app.database import get_session  # noqa: E402
+from app.main import app  # noqa: E402
+from app.models import ApiKey, Base, hash_api_key  # noqa: E402
+
+TEST_KEY = "agri_test_key_admin"
+ADMIN_PW = "test-admin-password"
+
+engine = create_async_engine(TEST_DB)
+TestSession = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def override_session():
+    async with TestSession() as s:
+        yield s
+
+
+app.dependency_overrides[get_session] = override_session
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def fresh_db(monkeypatch):
+    monkeypatch.setattr(settings, "admin_password", ADMIN_PW)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    async with TestSession() as s:
+        s.add(ApiKey(key_hash=hash_api_key(TEST_KEY), name="test-bot"))
+        await s.commit()
+    yield
+
+
+@pytest_asyncio.fixture
+async def client():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+
+def sample_item(**over):
+    base = {
+        "title": "农业农村部发布智慧农业发展指导意见",
+        "url": "https://example.com/news/1001",
+        "summary": "农业农村部今日发布智慧农业发展指导意见，提出到2030年重点任务。",
+        "source_name": "示例新闻网",
+        "category": "政策",
+        "tags": ["智慧农业", "政策"],
+    }
+    base.update(over)
+    return base
+
+
+async def login(client) -> dict:
+    r = await client.post("/api/v1/admin/login", json={"password": ADMIN_PW})
+    assert r.status_code == 200, r.text
+    return {"X-Admin-Token": r.json()["token"]}
+
+
+# ---------- login ----------
+
+@pytest.mark.asyncio
+async def test_login_wrong_password(client):
+    r = await client.post("/api/v1/admin/login", json={"password": "nope"})
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_disabled_without_config(client, monkeypatch):
+    monkeypatch.setattr(settings, "admin_password", "")
+    r = await client.post("/api/v1/admin/login", json={"password": "anything"})
+    assert r.status_code == 401
+
+
+# ---------- auth on write endpoints ----------
+
+@pytest.mark.asyncio
+async def test_patch_requires_token(client):
+    r = await client.patch("/api/v1/admin/items/1", json={"title": "新标题来啦"})
+    assert r.status_code in (401, 403)
+    r = await client.patch(
+        "/api/v1/admin/items/1", json={"title": "新标题来啦"},
+        headers={"X-Admin-Token": "bad-token"},
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_requires_token(client):
+    r = await client.delete("/api/v1/admin/items/1")
+    assert r.status_code in (401, 403)
+
+
+# ---------- patch ----------
+
+@pytest.mark.asyncio
+async def test_patch_item_fields(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    auth = await login(client)
+    r = await client.patch(
+        f"/api/v1/admin/items/{item_id}",
+        json={
+            "title": "修改后的标题：智慧农业指导意见发布",
+            "is_selected": True,
+            "hotness": 88,
+            "category": "行业",
+            "tags": ["数字乡村", "新标签"],
+        },
+        headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["title"] == "修改后的标题：智慧农业指导意见发布"
+    assert body["is_selected"] is True
+    assert body["hotness"] == 88
+    assert body["category"] == "行业"
+    assert set(body["tags"]) == {"数字乡村", "新标签"}
+
+    # 未提供的字段保持不变
+    assert body["summary"] == sample_item()["summary"]
+
+
+@pytest.mark.asyncio
+async def test_patch_unknown_category_falls_back(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    auth = await login(client)
+    r = await client.patch(
+        f"/api/v1/admin/items/{item_id}", json={"category": "不存在的分类"},
+        headers=auth,
+    )
+    assert r.json()["category"] == "报道"
+
+
+@pytest.mark.asyncio
+async def test_patch_not_found(client):
+    auth = await login(client)
+    r = await client.patch(
+        "/api/v1/admin/items/999", json={"hotness": 1}, headers=auth,
+    )
+    assert r.status_code == 404
+
+
+# ---------- delete ----------
+
+@pytest.mark.asyncio
+async def test_admin_delete_item(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    auth = await login(client)
+    r = await client.delete(f"/api/v1/admin/items/{item_id}", headers=auth)
+    assert r.status_code == 200
+    assert (await client.get(f"/api/v1/items/{item_id}")).status_code == 404

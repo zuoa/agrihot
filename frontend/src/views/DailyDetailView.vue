@@ -29,7 +29,7 @@
         <div class="flex-1 border-t border-leaf-100"></div>
       </div>
       <div class="space-y-3">
-        <ItemCard v-for="it in sec.items" :key="it.id" :item="it" />
+        <ItemCard v-for="it in sec.items" :key="it.id" :item="it" @updated="load" @deleted="load" />
       </div>
     </section>
 

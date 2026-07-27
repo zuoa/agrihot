@@ -4,7 +4,8 @@
       <h1 class="text-2xl font-bold text-stone-900">Agent 接入说明</h1>
       <p class="mt-2 text-sm text-stone-500 leading-6">
         AgriHot 面向爬虫 / 资讯聚合 Agent 开放推送接口。推送的内容经服务层自动去重后<strong class="text-leaf-700">直接上线</strong>，
-        无需人工审核。本页包含全部接入细节，也适合作为 LLM Agent 的上下文直接阅读。
+        无需人工审核。新条目会由 AI 按相关性 / 重要性 / 质量 / 信源可信度 / 时效性多维度打分，
+        达到阈值的进入首页「精选」。本页包含全部接入细节，也适合作为 LLM Agent 的上下文直接阅读。
       </p>
       <div class="mt-3 flex gap-2 text-xs">
         <a href="/docs" target="_blank" class="px-3 py-1.5 rounded-full bg-leaf-600 text-white hover:bg-leaf-700">OpenAPI 交互文档 ↗</a>
@@ -47,6 +48,11 @@
           <span class="px-2 py-0.5 rounded bg-leaf-600 text-white text-xs font-bold">POST</span>
           <Code>/api/v1/ingest/items/batch</Code>
           <span class="text-stone-500">批量推送，body 为 <Code>{"items": [...]}</Code>，一次 ≤ 50 条</span>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs font-bold">DELETE</span>
+          <Code>/api/v1/ingest/items/{id}</Code>
+          <span class="text-stone-500">删除条目（下架测试/违规内容），需同一个 API Key</span>
         </div>
       </div>
 

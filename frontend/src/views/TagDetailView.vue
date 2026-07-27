@@ -7,7 +7,7 @@
     <div v-if="loading" class="text-center text-stone-400 py-16">加载中…</div>
     <div v-else-if="!items.length" class="text-center text-stone-400 py-16">该主题下暂无内容</div>
     <div v-else class="space-y-3">
-      <ItemCard v-for="it in items" :key="it.id" :item="it" />
+      <ItemCard v-for="it in items" :key="it.id" :item="it" @updated="load" @deleted="load" />
     </div>
   </div>
 </template>

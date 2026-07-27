@@ -34,6 +34,32 @@ class IngestResultOut(BaseModel):
     message: str = ""
 
 
+# ---------- admin console ----------
+
+class AdminLoginIn(BaseModel):
+    password: str = Field(..., min_length=1, max_length=200)
+
+
+class AdminLoginOut(BaseModel):
+    token: str
+
+
+class AdminItemUpdate(BaseModel):
+    """Partial update; only provided fields are applied."""
+    title: str | None = Field(default=None, min_length=4, max_length=500)
+    url: str | None = Field(default=None, max_length=2000)
+    summary: str | None = Field(default=None, min_length=10)
+    content: str | None = None
+    source_name: str | None = Field(default=None, max_length=200)
+    source_url: str | None = None
+    published_at: datetime | None = None
+    category: str | None = Field(default=None, max_length=50)
+    tags: list[str] | None = Field(default=None, max_length=20)
+    cover_url: str | None = None
+    hotness: int | None = Field(default=None, ge=0)
+    is_selected: bool | None = None
+
+
 # ---------- public read ----------
 
 class TagOut(BaseModel):

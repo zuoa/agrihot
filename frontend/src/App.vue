@@ -17,9 +17,18 @@
               {{ l.label }}
             </router-link>
           </nav>
+          <button @click="onAdminClick"
+            class="ml-auto shrink-0 px-3 py-1.5 text-xs rounded-full border transition-colors"
+            :class="adminSession.loggedIn
+              ? 'border-leaf-600 text-leaf-700 bg-leaf-50 hover:bg-leaf-100'
+              : 'border-stone-200 text-stone-400 hover:border-leaf-300 hover:text-leaf-600'">
+            {{ adminSession.loggedIn ? '退出管理' : '管理' }}
+          </button>
         </div>
       </div>
     </header>
+
+    <AdminLoginModal v-if="showLogin" @close="showLogin = false" />
 
     <main class="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
       <router-view />
@@ -39,9 +48,22 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { adminSession } from './api'
+import AdminLoginModal from './components/AdminLoginModal.vue'
 
 const route = useRoute()
+const showLogin = ref(false)
+
+function onAdminClick() {
+  if (adminSession.loggedIn) {
+    if (confirm('确定退出管理模式？')) adminSession.clear()
+  } else {
+    showLogin.value = true
+  }
+}
+
 const links = [
   { to: '/', label: '精选', name: 'home' },
   { to: '/feed', label: '全部动态', name: 'feed' },
