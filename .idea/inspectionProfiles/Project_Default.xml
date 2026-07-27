@@ -1,0 +1,25 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="Eslint" enabled="true" level="WARNING" enabled_by_default="true" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="requests" />
+          <option value="feedparser" />
+          <option value="beautifulsoup4" />
+          <option value="lxml" />
+          <option value="pyyaml" />
+          <option value="python-dateutil" />
+          <option value="aiohttp" />
+          <option value="tenacity" />
+          <option value="rich" />
+          <option value="jsonschema" />
+          <option value="pytest" />
+          <option value="pytest-asyncio" />
+          <option value="responses" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
