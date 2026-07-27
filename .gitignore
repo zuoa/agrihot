@@ -12,3 +12,5 @@ dist/
 # env / os
 .env
 .DS_Store
+
+.idea
