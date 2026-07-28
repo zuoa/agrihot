@@ -20,11 +20,14 @@
 
     <ScoreBreakdown v-if="item.score != null" class="mt-5" :score="item.score" :detail="item.score_detail" />
 
-    <div v-if="item.content" class="mt-5">
-      <div class="text-xs font-bold text-stone-500 mb-2">全文</div>
+    <section v-if="item.content" class="mt-5 rounded-xl border border-stone-200 bg-stone-50/70">
+      <div class="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-stone-200/80">
+        <span class="w-5 h-5 rounded bg-stone-700 text-white grid place-items-center text-[10px] font-bold">文</span>
+        <span class="text-xs font-bold text-stone-600">全文</span>
+      </div>
       <!-- eslint-disable-next-line vue/no-v-html -- sanitized by DOMPurify in renderMarkdown -->
-      <div class="prose-body text-sm text-stone-700" v-html="contentHtml"></div>
-    </div>
+      <div class="prose-body text-sm text-stone-700 px-5 py-4" v-html="contentHtml"></div>
+    </section>
 
     <div class="mt-5 flex flex-wrap gap-1.5" v-if="item.tags?.length">
       <router-link v-for="t in item.tags" :key="t" :to="`/tags/${encodeURIComponent(t)}`"

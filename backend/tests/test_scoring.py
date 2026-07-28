@@ -270,6 +270,23 @@ async def test_daily_top_n_caps_selection(client, monkeypatch):
 
 # ---------- full-text backfill (content_service) ----------
 
+def test_strip_jina_preamble():
+    raw = (
+        "Title: 我国种业知产保护大保护格局基本形成_中国经济网\n\n"
+        "URL Source: https://www.ce.cn/xwzx/gnsz/gdxw/202607/t20260728_3112127.shtml\n\n"
+        "Markdown Content:\n\n正文第一段。\n\n正文第二段。"
+    )
+    assert content_service._strip_jina_preamble(raw) == "正文第一段。\n\n正文第二段。"
+
+
+def test_strip_jina_preamble_passthrough():
+    # no Title: header -> untouched
+    assert content_service._strip_jina_preamble("直接就是正文") == "直接就是正文"
+    # header-like but no body marker -> untouched (don't eat real content)
+    raw = "Title: 标题\n\n但没有标记的正文"
+    assert content_service._strip_jina_preamble(raw) == raw
+
+
 FAKE_FULLTEXT = "# 指导意见全文\n\n" + "正文段落。" * 100  # > MIN_CONTENT_CHARS
 
 

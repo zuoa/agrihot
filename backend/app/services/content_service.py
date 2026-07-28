@@ -27,6 +27,23 @@ MAX_CONTENT_CHARS = 20000
 # shorter than this is nav boilerplate / an error page, not an article
 MIN_CONTENT_CHARS = 200
 
+_JINA_TITLE_PREFIX = "Title:"
+_JINA_BODY_MARKER = "Markdown Content:"
+
+
+def _strip_jina_preamble(text: str) -> str:
+    """Drop Jina Reader's metadata header (Title: / URL Source: / Markdown Content:).
+
+    Only touches responses that actually start with the Title: line; anything
+    else (e.g. a custom reader endpoint) is returned unchanged.
+    """
+    if not text.startswith(_JINA_TITLE_PREFIX):
+        return text
+    idx = text.find(_JINA_BODY_MARKER)
+    if idx == -1:
+        return text
+    return text[idx + len(_JINA_BODY_MARKER):].strip()
+
 
 async def fetch_fulltext(url: str) -> str | None:
     """Fetch url via Jina Reader -> clean markdown. None on any failure."""
@@ -41,7 +58,7 @@ async def fetch_fulltext(url: str) -> str | None:
                 f"{settings.jina_reader_base_url.rstrip('/')}/{url}", headers=headers
             )
             resp.raise_for_status()
-            text = resp.text.strip()
+            text = _strip_jina_preamble(resp.text.strip())
     except Exception as exc:  # network / 4xx / 5xx — all best-effort
         log.warning("Jina reader fetch failed for %s: %s", url, exc)
         return None
