@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4" @click.self="$emit('close')">
-      <div class="w-full max-w-lg mx-auto my-10 bg-white rounded-2xl shadow-xl p-6">
+      <div class="w-full max-w-2xl mx-auto my-10 bg-white rounded-2xl shadow-xl p-6">
         <h2 class="text-lg font-bold text-stone-900 mb-4">编辑条目 #{{ item.id }}</h2>
 
         <form @submit.prevent="save" class="space-y-3 text-sm">
@@ -15,6 +15,12 @@
             <span class="text-xs text-stone-500">摘要</span>
             <textarea v-model="form.summary" rows="3" required
               class="mt-1 w-full px-3 py-2 rounded-lg border border-leaf-200 focus:outline-none focus:border-leaf-500" />
+          </label>
+
+          <label class="block">
+            <span class="text-xs text-stone-500">全文（Markdown，留空则不展示）</span>
+            <textarea v-model="form.content" rows="10"
+              class="mt-1 w-full px-3 py-2 rounded-lg border border-leaf-200 font-mono text-xs focus:outline-none focus:border-leaf-500" />
           </label>
 
           <div class="grid grid-cols-2 gap-3">
@@ -77,6 +83,7 @@ const emit = defineEmits(['close', 'saved'])
 const form = reactive({
   title: props.item.title,
   summary: props.item.summary,
+  content: props.item.content || '',
   category: props.item.category,
   hotness: props.item.hotness,
   url: props.item.url,
@@ -91,6 +98,8 @@ async function save() {
   error.value = ''
   try {
     const patch = { ...form }
+    // 空字符串 -> null：清空全文而不是存一个空串（后端 exclude_unset，null 是显式赋值）
+    patch.content = form.content.trim() || null
     patch.tags = tagsText.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
     const updated = await api.adminUpdateItem(props.item.id, patch)
     emit('saved', updated)

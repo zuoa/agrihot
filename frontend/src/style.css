@@ -9,3 +9,57 @@ body {
 .prose-body p {
   @apply mb-3 leading-7;
 }
+
+.prose-body h1,
+.prose-body h2,
+.prose-body h3,
+.prose-body h4 {
+  @apply font-bold text-stone-900 mt-5 mb-2;
+}
+.prose-body h1 { @apply text-lg; }
+.prose-body h2 { @apply text-base; }
+.prose-body h3 { @apply text-sm; }
+
+.prose-body ul {
+  @apply list-disc pl-5 mb-3 space-y-1;
+}
+.prose-body ol {
+  @apply list-decimal pl-5 mb-3 space-y-1;
+}
+
+.prose-body a {
+  @apply text-leaf-700 underline underline-offset-2 hover:text-leaf-800 break-all;
+}
+
+.prose-body blockquote {
+  @apply border-l-4 border-leaf-200 pl-3 my-3 text-stone-500;
+}
+
+.prose-body code {
+  @apply bg-stone-100 rounded px-1 py-0.5 text-[0.85em] font-mono;
+}
+.prose-body pre {
+  @apply bg-stone-100 rounded-lg p-3 my-3 overflow-x-auto;
+}
+.prose-body pre code {
+  @apply bg-transparent p-0;
+}
+
+.prose-body img {
+  @apply max-w-full rounded-lg my-3;
+}
+
+.prose-body table {
+  @apply w-full my-3 text-sm border-collapse;
+}
+.prose-body th,
+.prose-body td {
+  @apply border border-stone-200 px-2 py-1 text-left;
+}
+.prose-body th {
+  @apply bg-stone-50 font-bold;
+}
+
+.prose-body hr {
+  @apply my-4 border-leaf-100;
+}

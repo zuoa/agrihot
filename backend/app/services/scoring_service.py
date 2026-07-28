@@ -36,6 +36,9 @@ from ..models import Item
 
 log = logging.getLogger(__name__)
 
+# 评分送入正文的最大字符数：控制 token 成本，4000 字已覆盖绝大多数资讯主体
+FULLTEXT_MAX_CHARS = 4000
+
 DIMENSION_MAX = {
     "impact": 30,
     "substance": 25,
@@ -52,13 +55,20 @@ _SYSTEM_PROMPT = (
 
 def _build_user_prompt(item: Item) -> str:
     published = item.published_at.date().isoformat() if item.published_at else "未知"
+    # substance/depth 维度依赖正文证据：优先用全文（截断），无正文时回退摘要
+    if item.content and item.content.strip():
+        body_label = "正文"
+        body = item.content.strip()[:FULLTEXT_MAX_CHARS]
+    else:
+        body_label = "摘要"
+        body = item.summary
     return f"""请评估以下资讯能否进入「每日精选」。
 
 标题：{item.title}
 来源：{item.source_name or "未知"}
 分类：{item.category}
 发布日期：{published}（今天是 {date.today().isoformat()}）
-摘要：{item.summary}
+{body_label}：{body}
 
 第一步——相关性门槛：
 relevant：主题是否属于三农、农业信息化、智慧农业、数字乡村、农业科技？false 则后续维度全部给 0。

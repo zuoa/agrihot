@@ -66,6 +66,37 @@ def sample_item(**over):
     return base
 
 
+# ---------- prompt builder ----------
+
+def _prompt_item(**over):
+    from app.models import Item
+
+    base = {
+        "title": "t", "url": "https://x", "url_hash": "h", "title_simhash": 0,
+        "summary": "摘要内容", "content": None,
+    }
+    base.update(over)
+    return Item(**base)
+
+
+def test_prompt_prefers_fulltext_and_truncates():
+    body = "正" * (scoring_service.FULLTEXT_MAX_CHARS + 500)
+    prompt = scoring_service._build_user_prompt(_prompt_item(content=body))
+    assert "正文：" in prompt
+    assert "摘要：" not in prompt
+    assert "正" * scoring_service.FULLTEXT_MAX_CHARS in prompt
+    assert "正" * (scoring_service.FULLTEXT_MAX_CHARS + 1) not in prompt
+
+
+def test_prompt_falls_back_to_summary():
+    prompt = scoring_service._build_user_prompt(_prompt_item())
+    assert "摘要：摘要内容" in prompt
+    assert "正文：" not in prompt
+    # whitespace-only content also falls back
+    prompt = scoring_service._build_user_prompt(_prompt_item(content="  \n "))
+    assert "摘要：摘要内容" in prompt
+
+
 # ---------- parse_scores ----------
 
 def test_parse_scores_ok_and_clamp():

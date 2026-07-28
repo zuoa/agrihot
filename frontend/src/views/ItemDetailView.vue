@@ -20,8 +20,10 @@
 
     <ScoreBreakdown v-if="item.score != null" class="mt-5" :score="item.score" :detail="item.score_detail" />
 
-    <div v-if="item.content" class="mt-5 prose-body text-sm text-stone-700">
-      <p v-for="(p, i) in item.content.split('\n').filter(Boolean)" :key="i">{{ p }}</p>
+    <div v-if="item.content" class="mt-5">
+      <div class="text-xs font-bold text-stone-500 mb-2">全文</div>
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitized by DOMPurify in renderMarkdown -->
+      <div class="prose-body text-sm text-stone-700" v-html="contentHtml"></div>
     </div>
 
     <div class="mt-5 flex flex-wrap gap-1.5" v-if="item.tags?.length">
@@ -64,6 +66,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminSession, api, fmtDay } from '../api'
+import { renderMarkdown } from '../markdown'
 import ItemEditModal from '../components/ItemEditModal.vue'
 import ScoreBreakdown from '../components/ScoreBreakdown.vue'
 
@@ -102,4 +105,5 @@ async function remove() {
 }
 
 const dateLabel = computed(() => (item.value ? fmtDay(item.value.published_at || item.value.created_at) : ''))
+const contentHtml = computed(() => renderMarkdown(item.value?.content))
 </script>
