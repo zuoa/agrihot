@@ -175,7 +175,7 @@ const fields = [
   { name: 'category', type: 'string', req: false, desc: '政策 / 报道 / 论文 / 行业，缺省归「报道」' },
   { name: 'tags', type: 'string[]', req: false, desc: '标签数组，≤20 个，如 ["智慧农业","遥感"]' },
   { name: 'cover_url', type: 'string', req: false, desc: '封面图 URL' },
-  { name: 'content', type: 'string', req: false, desc: '正文（可选，详情页展示）' },
+  { name: 'content', type: 'string', req: false, desc: '正文（可选，Markdown，详情页展示；缺省时服务端自动抓取补充）' },
   { name: 'lang', type: 'string', req: false, desc: '语种标记，如 zh / en' },
 ]
 

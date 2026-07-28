@@ -32,6 +32,9 @@ services:
       SELECTION_THRESHOLD: ${SELECTION_THRESHOLD:-70}
       # 管理控制台密码；不设置则管理接口关闭（页面「管理」按钮无法登录）
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # 全文兜底抓取（Jina Reader）；JINA_API_KEY 可选，匿名额度有限
+      CONTENT_FETCH_ENABLED: ${CONTENT_FETCH_ENABLED:-true}
+      JINA_API_KEY: ${JINA_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

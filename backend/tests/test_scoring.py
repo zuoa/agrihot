@@ -14,12 +14,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
 
 os.environ["DATABASE_URL"] = TEST_DB
+# never hit the network in tests; enrichment tests monkeypatch fetch_fulltext
+os.environ["CONTENT_FETCH_ENABLED"] = "false"
 
 from app.config import settings  # noqa: E402
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import ApiKey, Base, hash_api_key  # noqa: E402
-from app.services import scoring_service  # noqa: E402
+from app.services import content_service, scoring_service  # noqa: E402
 
 TEST_KEY = "agri_test_key_scoring"
 
@@ -264,6 +266,80 @@ async def test_daily_top_n_caps_selection(client, monkeypatch):
 
     selected = await client.get("/api/v1/items?mode=selected&page_size=100")
     assert selected.json()["total"] == 5
+
+
+# ---------- full-text backfill (content_service) ----------
+
+FAKE_FULLTEXT = "# 指导意见全文\n\n" + "正文段落。" * 100  # > MIN_CONTENT_CHARS
+
+
+@pytest.mark.asyncio
+async def test_enrich_backfills_fulltext_before_scoring(client, monkeypatch):
+    """No content pushed -> Jina fetch fills it in, and scoring sees the body."""
+    async def fake_fetch(url):
+        return FAKE_FULLTEXT
+
+    seen_prompts = []
+
+    async def fake_deepseek(item):
+        seen_prompts.append(scoring_service._build_user_prompt(item))
+        return '{"relevant": true, "impact": 26, "substance": 22, "depth": 16, "authority": 12, "freshness": 9}'
+
+    monkeypatch.setattr(content_service, "fetch_fulltext", fake_fetch)
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_deepseek)
+
+    r = await client.post(
+        "/api/v1/ingest/items", json=sample_item(),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert detail["content"] == FAKE_FULLTEXT
+    assert detail["is_selected"] is True
+    assert seen_prompts and "正文：" in seen_prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_enrich_skipped_when_content_present(client, monkeypatch):
+    """Content pushed by the crawler is never overwritten by the backfill."""
+    async def fail_fetch(url):
+        raise AssertionError("fetch_fulltext must not be called")
+
+    monkeypatch.setattr(content_service, "fetch_fulltext", fail_fetch)
+    monkeypatch.setattr(settings, "deepseek_api_key", "")  # isolate: no scoring
+
+    r = await client.post(
+        "/api/v1/ingest/items", json=sample_item(content="爬虫给的正文"),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert detail["content"] == "爬虫给的正文"
+
+
+@pytest.mark.asyncio
+async def test_enrich_failure_still_scores_with_summary(client, monkeypatch):
+    """Fetch failure is best-effort: content stays empty, scoring uses summary."""
+    async def fake_fetch(url):
+        return None
+
+    seen_prompts = []
+
+    async def fake_deepseek(item):
+        seen_prompts.append(scoring_service._build_user_prompt(item))
+        return '{"relevant": true, "impact": 26, "substance": 22, "depth": 16, "authority": 12, "freshness": 9}'
+
+    monkeypatch.setattr(content_service, "fetch_fulltext", fake_fetch)
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_deepseek)
+
+    r = await client.post(
+        "/api/v1/ingest/items", json=sample_item(),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert detail["content"] is None
+    assert detail["is_selected"] is True
+    assert seen_prompts and "摘要：" in seen_prompts[0]
 
 
 # ---------- delete endpoint ----------

@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
+    # full-text backfill via Jina Reader for items pushed without content;
+    # api key optional (anonymous tier is rate-limited but works)
+    content_fetch_enabled: bool = True
+    jina_api_key: str = ""
+    jina_reader_base_url: str = "https://r.jina.ai"
     # total score (0-100) at or above which an item becomes 精选
     selection_threshold: int = 75
     # 精选每日名额：当天达阈值条目中按评分取前 N 篇

@@ -9,7 +9,7 @@ from ...database import get_session
 from ...models import ApiKey
 from ...schemas import IngestBatchIn, IngestItemIn, IngestResultOut
 from ...security import problem, require_api_key
-from ...services import ingest_service, scoring_service
+from ...services import content_service, ingest_service
 
 
 def _key_func(request: Request) -> str:
@@ -34,7 +34,7 @@ async def push_item(
     result = await ingest_service.ingest_item(session, payload, pushed_by=api_key.name)
     await session.commit()
     if result.status == "created" and result.item_id is not None:
-        background_tasks.add_task(scoring_service.score_and_mark, result.item_id)
+        background_tasks.add_task(content_service.enrich_and_score, result.item_id)
     return result
 
 
@@ -52,7 +52,7 @@ async def push_items_batch(
     await session.commit()
     for r in results:
         if r.status == "created" and r.item_id is not None:
-            background_tasks.add_task(scoring_service.score_and_mark, r.item_id)
+            background_tasks.add_task(content_service.enrich_and_score, r.item_id)
     created = sum(1 for r in results if r.status == "created")
     dup = sum(1 for r in results if r.status == "duplicate")
     invalid = sum(1 for r in results if r.status == "invalid")

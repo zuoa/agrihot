@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
 
 os.environ["DATABASE_URL"] = TEST_DB
+os.environ["CONTENT_FETCH_ENABLED"] = "false"  # no network in tests
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
