@@ -90,14 +90,14 @@ export function fmtTime(iso) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-/** group items by calendar day, newest first */
+/** group items by calendar day, newest first (by ingest time, not original publish date) */
 export function groupByDay(items) {
   const groups = []
   const map = new Map()
   for (const it of items) {
-    const key = fmtDateKey(it.published_at || it.created_at)
+    const key = fmtDateKey(it.created_at || it.published_at)
     if (!map.has(key)) {
-      const g = { key, label: fmtDay(it.published_at || it.created_at), items: [] }
+      const g = { key, label: fmtDay(it.created_at || it.published_at), items: [] }
       map.set(key, g)
       groups.push(g)
     }

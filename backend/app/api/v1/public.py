@@ -74,7 +74,7 @@ async def list_items(
     total = (await session.execute(count_stmt)).scalar_one()
     rows = (
         await session.execute(
-            stmt.order_by(Item.published_at.desc().nulls_last(), Item.id.desc())
+            stmt.order_by(Item.created_at.desc(), Item.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
