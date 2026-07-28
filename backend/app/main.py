@@ -19,6 +19,16 @@ from .models import Base
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # create_all won't add columns to existing tables; patch them in place
+        # (works on both SQLite and Postgres by checking first)
+        from sqlalchemy import inspect, text
+
+        existing = await conn.run_sync(
+            lambda c: {col["name"] for col in inspect(c).get_columns("items")}
+        )
+        for col, ddl in (("score", "INTEGER"), ("score_detail", "JSON")):
+            if col not in existing:
+                await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
     yield
 
 

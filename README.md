@@ -54,12 +54,16 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 
 ## 自动精选评分
 
-新条目入库后，后台调用 DeepSeek 按 5 个维度打分（满分 100）：主题相关性 30、
-重要性 25、内容质量 20、信源可信度 15、时效性 10。总分 ≥ `SELECTION_THRESHOLD`
-（默认 70）自动进入首页「精选」；评分请求失败时不进精选（fail-closed）。
+新条目入库后，后台调用 DeepSeek 评估：先做**相关性门槛**判断（与三农/农业信息化
+无关直接出局），再按 5 个维度打分（满分 100）：影响力 30、信息增量 25、专业深度 20、
+信源权威 15、时效性 10。每天（按入库日）总分 ≥ `SELECTION_THRESHOLD`（默认 75）的
+条目中，评分最高的前 `DAILY_TOP_N`（默认 5）篇进入首页「精选」，每次评分后重算当天
+名单；评分请求失败时不进精选（fail-closed）。总分与各维度明细会存库并在详情页展示。
 
 环境变量：`DEEPSEEK_API_KEY`（留空则关闭评分）、`DEEPSEEK_BASE_URL`、
-`DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`SELECTION_THRESHOLD`。
+`DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`SELECTION_THRESHOLD`、`DAILY_TOP_N`。
+
+旧数据补评分：`python -m scripts.rescore`（仅未评分条目；`--all` 全部重评）。
 
 ## 管理控制台
 

@@ -85,6 +85,8 @@ class ItemOut(BaseModel):
     cover_url: str | None
     hotness: int
     is_selected: bool
+    score: int | None = None
+    score_detail: dict | None = None
     sources: list[SourceOut]
     tags: list[str]
     created_at: datetime

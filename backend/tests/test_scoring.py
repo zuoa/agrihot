@@ -69,23 +69,36 @@ def sample_item(**over):
 # ---------- parse_scores ----------
 
 def test_parse_scores_ok_and_clamp():
-    raw = '{"relevance": 99, "importance": 20, "quality": 15, "credibility": 10, "timeliness": 8}'
+    raw = '{"relevant": true, "impact": 99, "substance": 20, "depth": 15, "authority": 10, "freshness": 8}'
     scores = scoring_service.parse_scores(raw)
     assert scores == {
-        "relevance": 30,  # clamped to cap
-        "importance": 20,
-        "quality": 15,
-        "credibility": 10,
-        "timeliness": 8,
+        "impact": 30,  # clamped to cap
+        "substance": 20,
+        "depth": 15,
+        "authority": 10,
+        "freshness": 8,
+        "relevant": 1,
+    }
+
+
+def test_parse_scores_gate_zeroes_dimensions():
+    raw = '{"relevant": false, "impact": 28, "substance": 20, "depth": 15, "authority": 10, "freshness": 8}'
+    scores = scoring_service.parse_scores(raw)
+    assert scores == {
+        "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0,
+        "relevant": 0,
     }
 
 
 def test_parse_scores_rejects_bad_input():
     assert scoring_service.parse_scores("not json") is None
-    assert scoring_service.parse_scores('{"relevance": 10}') is None  # missing dims
-    assert scoring_service.parse_scores('["relevance"]') is None
+    assert scoring_service.parse_scores('{"relevant": true, "impact": 10}') is None  # missing dims
+    assert scoring_service.parse_scores('["relevant"]') is None
+    assert scoring_service.parse_scores(  # gate must be a real bool
+        '{"relevant": 1, "impact": 1, "substance": 1, "depth": 1, "authority": 1, "freshness": 1}'
+    ) is None
     assert scoring_service.parse_scores(
-        '{"relevance": "x", "importance": 1, "quality": 1, "credibility": 1, "timeliness": 1}'
+        '{"relevant": true, "impact": "x", "substance": 1, "depth": 1, "authority": 1, "freshness": 1}'
     ) is None
 
 
@@ -104,8 +117,8 @@ def mock_deepseek(monkeypatch, scores: dict):
 @pytest.mark.asyncio
 async def test_high_score_marks_selected(client, monkeypatch):
     mock_deepseek(monkeypatch, {
-        "relevance": 28, "importance": 22, "quality": 16, "credibility": 12, "timeliness": 9,
-    })  # total 87 >= 70
+        "relevant": True, "impact": 26, "substance": 22, "depth": 16, "authority": 12, "freshness": 9,
+    })  # total 85 >= 75
     r = await client.post(
         "/api/v1/ingest/items", json=sample_item(),
         headers={"X-API-Key": TEST_KEY},
@@ -118,8 +131,23 @@ async def test_high_score_marks_selected(client, monkeypatch):
 @pytest.mark.asyncio
 async def test_low_score_stays_unselected(client, monkeypatch):
     mock_deepseek(monkeypatch, {
-        "relevance": 10, "importance": 5, "quality": 8, "credibility": 3, "timeliness": 5,
-    })  # total 31 < 70
+        "relevant": True, "impact": 10, "substance": 5, "depth": 8, "authority": 3, "freshness": 5,
+    })  # total 31 < 75
+    r = await client.post(
+        "/api/v1/ingest/items", json=sample_item(),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    item_id = r.json()["item_id"]
+    detail = await client.get(f"/api/v1/items/{item_id}")
+    assert detail.json()["is_selected"] is False
+
+
+@pytest.mark.asyncio
+async def test_irrelevant_gate_blocks_selection(client, monkeypatch):
+    # high-quality but off-topic: gate zeroes all dimensions -> not selected
+    mock_deepseek(monkeypatch, {
+        "relevant": False, "impact": 28, "substance": 24, "depth": 18, "authority": 14, "freshness": 10,
+    })
     r = await client.post(
         "/api/v1/ingest/items", json=sample_item(),
         headers={"X-API-Key": TEST_KEY},
@@ -154,6 +182,57 @@ async def test_scoring_failure_is_fail_closed(client, monkeypatch):
     )
     detail = await client.get(f"/api/v1/items/{r.json()['item_id']}")
     assert detail.json()["is_selected"] is False
+
+
+@pytest.mark.asyncio
+async def test_daily_top_n_caps_selection(client, monkeypatch):
+    """7 items all above threshold -> only the top 5 (DAILY_TOP_N) are selected."""
+    import json as _json
+
+    def mk(total_dims):
+        return {"relevant": True, **total_dims}
+
+    # totals: 100, 95, 90, 85, 80, 78, 76 — all >= 75
+    queue = [
+        mk({"impact": 30, "substance": 25, "depth": 20, "authority": 15, "freshness": 10}),
+        mk({"impact": 29, "substance": 24, "depth": 19, "authority": 14, "freshness": 9}),
+        mk({"impact": 27, "substance": 23, "depth": 18, "authority": 13, "freshness": 9}),
+        mk({"impact": 26, "substance": 21, "depth": 17, "authority": 12, "freshness": 9}),
+        mk({"impact": 24, "substance": 20, "depth": 16, "authority": 11, "freshness": 9}),
+        mk({"impact": 23, "substance": 20, "depth": 15, "authority": 11, "freshness": 9}),
+        mk({"impact": 22, "substance": 20, "depth": 15, "authority": 10, "freshness": 9}),
+    ]
+
+    async def fake_call(item):
+        return _json.dumps(queue.pop(0))
+
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_call)
+    monkeypatch.setattr(settings, "daily_top_n", 5)
+
+    ids = []
+    titles = [
+        "农业农村部发布智慧农业发展指导意见",
+        "河南夏粮总产量再创新高 科技赋能成效显著",
+        "农业人工智能行业标准集中立项 覆盖大模型多领域",
+        "数字乡村建设试点经验在全国范围推广落地",
+        "高标准农田建设突出问题整治推进会召开",
+        "遥感技术助力农业灾害预警能力持续提升",
+        "种业振兴行动方案明确下一阶段重点任务",
+    ]
+    for n in range(7):
+        r = await client.post(
+            "/api/v1/ingest/items",
+            json=sample_item(title=titles[n], url=f"https://example.com/news/top{n}"),
+            headers={"X-API-Key": TEST_KEY},
+        )
+        ids.append(r.json()["item_id"])
+
+    flags = [(await client.get(f"/api/v1/items/{i}")).json()["is_selected"] for i in ids]
+    assert flags == [True, True, True, True, True, False, False]
+
+    selected = await client.get("/api/v1/items?mode=selected&page_size=100")
+    assert selected.json()["total"] == 5
 
 
 # ---------- delete endpoint ----------

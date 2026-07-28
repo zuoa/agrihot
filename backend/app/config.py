@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
     # total score (0-100) at or above which an item becomes 精选
-    selection_threshold: int = 70
+    selection_threshold: int = 75
+    # 精选每日名额：当天达阈值条目中按评分取前 N 篇
+    daily_top_n: int = 5
     # admin console password; empty disables the admin endpoints entirely
     admin_password: str = ""
 

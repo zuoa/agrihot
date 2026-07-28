@@ -18,6 +18,8 @@
       <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ item.summary }}</p>
     </div>
 
+    <ScoreBreakdown v-if="item.score != null" class="mt-5" :score="item.score" :detail="item.score_detail" />
+
     <div v-if="item.content" class="mt-5 prose-body text-sm text-stone-700">
       <p v-for="(p, i) in item.content.split('\n').filter(Boolean)" :key="i">{{ p }}</p>
     </div>
@@ -63,6 +65,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminSession, api, fmtDay } from '../api'
 import ItemEditModal from '../components/ItemEditModal.vue'
+import ScoreBreakdown from '../components/ScoreBreakdown.vue'
 
 const route = useRoute()
 const router = useRouter()

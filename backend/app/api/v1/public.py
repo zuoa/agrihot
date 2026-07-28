@@ -30,6 +30,8 @@ def _to_item_out(item: Item) -> ItemOut:
         cover_url=item.cover_url,
         hotness=item.hotness,
         is_selected=item.is_selected,
+        score=item.score,
+        score_detail=item.score_detail,
         sources=[SourceOut(**s) for s in (item.sources or [])],
         tags=[t.name for t in item.tags],
         created_at=item.created_at,

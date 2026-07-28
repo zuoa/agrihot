@@ -9,6 +9,11 @@
       </span>
       <span v-if="item.is_selected"
         class="px-1.5 py-0.5 rounded bg-leaf-100 text-leaf-700 font-medium">精选</span>
+      <router-link v-if="item.score != null" :to="`/items/${item.id}`"
+        class="px-1.5 py-0.5 rounded font-medium tabular-nums"
+        :class="item.score >= 85 ? 'bg-green-100 text-green-800' : item.score >= 75 ? 'bg-lime-100 text-lime-700' : 'bg-stone-100 text-stone-500'">
+        {{ item.score }} 分
+      </router-link>
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
       <span v-if="item.sources && item.sources.length > 1" class="text-leaf-600">
         {{ item.sources.length }} 个信源同时报道

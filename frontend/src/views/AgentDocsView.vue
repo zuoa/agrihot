@@ -4,8 +4,8 @@
       <h1 class="text-2xl font-bold text-stone-900">Agent 接入说明</h1>
       <p class="mt-2 text-sm text-stone-500 leading-6">
         AgriHot 面向爬虫 / 资讯聚合 Agent 开放推送接口。推送的内容经服务层自动去重后<strong class="text-leaf-700">直接上线</strong>，
-        无需人工审核。新条目会由 AI 按相关性 / 重要性 / 质量 / 信源可信度 / 时效性多维度打分，
-        达到阈值的进入首页「精选」。本页包含全部接入细节，也适合作为 LLM Agent 的上下文直接阅读。
+        无需人工审核。新条目会由 AI 先做相关性门槛判断，再按影响力 / 信息增量 / 专业深度 / 信源权威 / 时效性多维度打分，
+        每天达阈值且评分最高的前 5 篇进入首页「精选」。本页包含全部接入细节，也适合作为 LLM Agent 的上下文直接阅读。
       </p>
       <div class="mt-3 flex gap-2 text-xs">
         <a href="/docs" target="_blank" class="px-3 py-1.5 rounded-full bg-leaf-600 text-white hover:bg-leaf-700">OpenAPI 交互文档 ↗</a>
@@ -134,7 +134,7 @@
         <li><strong>直接推原始 URL 即可</strong>，无需自行去追踪参数，服务端会规范化。</li>
         <li><strong>失败/超时请原样重试</strong>，接口幂等，重复推送只会合并信源。</li>
         <li>批量优于单条：一轮抓取打包成 ≤50 条一次推送，减少请求数。</li>
-        <li><Code>published_at</Code> 用 ISO 8601 带时区（如 <Code>2026-07-15T08:00:00+08:00</Code>），缺省时按收录时间排序。</li>
+        <li><Code>published_at</Code> 用 ISO 8601 带时区（如 <Code>2026-07-15T08:00:00+08:00</Code>）；站点按收录时间分组排序，此字段仅用于展示原文日期。</li>
         <li><Code>category</Code> 建议用 <Code>政策 / 报道 / 论文 / 行业</Code>，其他值会归为「报道」。</li>
         <li>摘要 ≥ 10 字、标题 ≥ 4 字，否则会被 422 拒绝。</li>
         <li>遵守 60 次/分钟限制；收到 429 时指数退避（1s → 2s → 4s…）。</li>
