@@ -26,7 +26,11 @@ async def lifespan(app: FastAPI):
         existing = await conn.run_sync(
             lambda c: {col["name"] for col in inspect(c).get_columns("items")}
         )
-        for col, ddl in (("score", "INTEGER"), ("score_detail", "JSON")):
+        for col, ddl in (
+            ("score", "INTEGER"),
+            ("score_detail", "JSON"),
+            ("view_count", "INTEGER NOT NULL DEFAULT 0"),
+        ):
             if col not in existing:
                 await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
     yield

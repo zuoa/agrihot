@@ -9,6 +9,7 @@
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
       <span v-if="item.is_selected" class="px-1.5 py-0.5 rounded bg-leaf-100 text-leaf-700 font-medium">精选</span>
       <span class="text-amber-600" v-if="item.hotness >= 60">🔥 {{ item.hotness }}</span>
+      <span>阅读 {{ item.view_count ?? 0 }}</span>
     </div>
 
     <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-snug">{{ item.title }}</h1>

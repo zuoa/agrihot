@@ -18,6 +18,7 @@
       <span v-if="item.sources && item.sources.length > 1" class="text-leaf-600">
         {{ item.sources.length }} 个信源同时报道
       </span>
+      <span>阅读 {{ item.view_count ?? 0 }}</span>
     </div>
 
     <router-link :to="`/items/${item.id}`" class="block mt-2">

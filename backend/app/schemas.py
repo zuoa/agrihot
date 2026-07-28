@@ -89,6 +89,7 @@ class ItemOut(BaseModel):
     score_detail: dict | None = None
     sources: list[SourceOut]
     tags: list[str]
+    view_count: int = 0
     created_at: datetime
 
 

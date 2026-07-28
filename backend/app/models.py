@@ -49,6 +49,8 @@ class Item(Base):
     score_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # merged multi-source reports: [{"name": ..., "url": ...}, ...]
     sources: Mapped[list] = mapped_column(JSON, default=list)
+    # 阅读次数：详情页每打开一次 +1
+    view_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )

@@ -3,7 +3,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
@@ -34,6 +34,7 @@ def _to_item_out(item: Item) -> ItemOut:
         score_detail=item.score_detail,
         sources=[SourceOut(**s) for s in (item.sources or [])],
         tags=[t.name for t in item.tags],
+        view_count=item.view_count,
         created_at=item.created_at,
     )
 
@@ -95,6 +96,12 @@ async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -
             status_code=404,
             detail={"title": "Not Found", "status": 404, "detail": "条目不存在"},
         )
+    # 打开详情页计一次阅读；原子自增避免并发丢失
+    await session.execute(
+        update(Item).where(Item.id == item_id).values(view_count=Item.view_count + 1)
+    )
+    await session.commit()
+    await session.refresh(item)
     return _to_item_out(item)
 
 
