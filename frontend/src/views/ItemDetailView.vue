@@ -49,6 +49,10 @@
 
     <!-- 管理操作 -->
     <div v-if="adminSession.loggedIn" class="mt-6 pt-5 border-t border-dashed border-stone-200 flex gap-2 justify-end">
+      <button @click="fetchContent" :disabled="fetching"
+        class="px-4 py-1.5 text-xs rounded-full border border-sky-200 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
+        {{ fetching ? '抓取中…' : (item.content ? '重新获取全文' : '获取全文') }}
+      </button>
       <button @click="showEdit = true"
         class="px-4 py-1.5 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50">编辑</button>
       <button @click="remove" :disabled="deleting"
@@ -76,6 +80,7 @@ const item = ref(null)
 const loading = ref(true)
 const showEdit = ref(false)
 const deleting = ref(false)
+const fetching = ref(false)
 
 watch(() => route.params.id, load, { immediate: true })
 
@@ -88,6 +93,19 @@ async function load() {
     item.value = null
   } finally {
     loading.value = false
+  }
+}
+
+async function fetchContent() {
+  if (item.value.content && !confirm('已有全文，重新抓取将覆盖现有内容，确定继续？')) return
+  fetching.value = true
+  try {
+    // 返回的是更新后的完整条目（含新评分），直接替换本地状态
+    item.value = await api.adminFetchContent(item.value.id)
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    fetching.value = false
   }
 }
 

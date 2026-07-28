@@ -2,12 +2,13 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...config import settings
 from ...database import get_session
 from ...models import Item
 from ...schemas import AdminItemUpdate, AdminLoginIn, AdminLoginOut, ItemOut
 from ...security import (check_admin_password, issue_admin_token, problem,
                          require_admin)
-from ...services import ingest_service
+from ...services import content_service, ingest_service, scoring_service
 from .ingest import limiter  # shared app limiter; login keys on remote IP
 from .public import _to_item_out
 
@@ -40,6 +41,33 @@ async def update_item(
         setattr(item, field, value)
     if tags is not None:
         item.tags = await ingest_service._get_or_create_tags(session, tags)
+    await session.commit()
+    await session.refresh(item)
+    return _to_item_out(item)
+
+
+@router.post("/items/{item_id}/fetch-content", response_model=ItemOut)
+async def fetch_item_content(
+    item_id: int,
+    _: None = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> ItemOut:
+    """手动触发全文抓取（Jina Reader）：成功后保存并重新评分。
+
+    已有全文时调用会覆盖重抓（前端负责确认）；抓取失败不改库、不重评分。
+    """
+    item = await session.get(Item, item_id)
+    if item is None:
+        raise problem(404, "Not Found", "条目不存在")
+    if not settings.content_fetch_enabled:
+        raise problem(503, "Service Unavailable", "全文抓取功能未启用")
+    text = await content_service.fetch_fulltext(item.url)
+    if text is None:
+        raise problem(502, "Bad Gateway", "全文抓取失败，请检查原文链接或稍后重试")
+    item.content = text
+    if settings.deepseek_api_key:
+        if await scoring_service.score_item(session, item) is not None:
+            await scoring_service.refresh_day_selection(session, item.created_at)
     await session.commit()
     await session.refresh(item)
     return _to_item_out(item)

@@ -161,6 +161,80 @@ async def test_patch_not_found(client):
     assert r.status_code == 404
 
 
+# ---------- manual full-text fetch ----------
+
+FAKE_FULLTEXT = "# 全文\n\n" + "正文段落。" * 100  # > MIN_CONTENT_CHARS
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_requires_token(client):
+    r = await client.post("/api/v1/admin/items/1/fetch-content")
+    assert r.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_saves_and_rescores(client, monkeypatch):
+    from app.services import content_service, scoring_service
+
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    async def fake_fetch(url):
+        return FAKE_FULLTEXT
+
+    async def fake_deepseek(item):
+        assert item.content == FAKE_FULLTEXT  # scoring sees the fresh body
+        return '{"relevant": true, "impact": 26, "substance": 22, "depth": 16, "authority": 12, "freshness": 9}'
+
+    monkeypatch.setattr(settings, "content_fetch_enabled", True)
+    monkeypatch.setattr(content_service, "fetch_fulltext", fake_fetch)
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_deepseek)
+
+    auth = await login(client)
+    r = await client.post(f"/api/v1/admin/items/{item_id}/fetch-content", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["content"] == FAKE_FULLTEXT
+    assert body["score"] == 85
+    assert body["is_selected"] is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_failure_keeps_item_untouched(client, monkeypatch):
+    from app.services import content_service
+
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    async def fake_fetch(url):
+        return None
+
+    monkeypatch.setattr(settings, "content_fetch_enabled", True)
+    monkeypatch.setattr(content_service, "fetch_fulltext", fake_fetch)
+
+    auth = await login(client)
+    r = await client.post(f"/api/v1/admin/items/{item_id}/fetch-content", headers=auth)
+    assert r.status_code == 502
+    body = (await client.get(f"/api/v1/items/{item_id}")).json()
+    assert body["content"] is None
+    assert body["score"] is None  # no rescoring on failure
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_disabled_returns_503(client, monkeypatch):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    monkeypatch.setattr(settings, "content_fetch_enabled", False)
+    auth = await login(client)
+    r = await client.post(f"/api/v1/admin/items/{item_id}/fetch-content", headers=auth)
+    assert r.status_code == 503
+
+
 # ---------- delete ----------
 
 @pytest.mark.asyncio

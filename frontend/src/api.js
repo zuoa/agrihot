@@ -70,6 +70,7 @@ export const api = {
   },
   adminUpdateItem: (id, patch) => adminFetch(`/admin/items/${id}`, { method: 'PATCH', body: patch }),
   adminDeleteItem: (id) => adminFetch(`/admin/items/${id}`, { method: 'DELETE' }),
+  adminFetchContent: (id) => adminFetch(`/admin/items/${id}/fetch-content`, { method: 'POST' }),
 }
 
 export function fmtDay(iso) {
