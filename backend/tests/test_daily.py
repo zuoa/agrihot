@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date
 
 import pytest
 import pytest_asyncio
@@ -27,7 +27,8 @@ ADMIN_PW = "test-admin-password"
 engine = create_async_engine(TEST_DB)
 TestSession = async_sessionmaker(engine, expire_on_commit=False)
 
-TODAY = datetime.now(timezone.utc).date().isoformat()
+# 日报按收录日期的本地日历日归集（与 daily_service._day_items 口径一致）
+TODAY = date.today().isoformat()
 
 
 async def override_session():
@@ -186,6 +187,26 @@ async def test_generate_with_deepseek_compose(client, monkeypatch):
     assert daily["title"] == "农业农村日报 · 智慧农业集中发力"
     assert daily["highlights"] == ["要点甲", "要点乙"]
     assert "本期覆盖政策与报道。" in daily["content"]
+
+
+@pytest.mark.asyncio
+async def test_daily_groups_by_ingest_date_not_publish_date(client, monkeypatch):
+    """归集看收录日期而非发布日期：今天收录的旧资讯进今天的日报。"""
+    monkeypatch.setattr(settings, "deepseek_api_key", "")
+    r = await client.post(
+        "/api/v1/ingest/items",
+        json=sample_item(200, published_at="2020-01-01T00:00:00+00:00"),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    assert r.status_code == 200, r.text
+    item_id = r.json()["item_id"]
+
+    auth = await login(client)
+    r = await client.post(f"/api/v1/admin/dailies/{TODAY}/generate", headers=auth)
+    assert r.status_code == 200, r.text
+
+    daily = (await client.get(f"/api/v1/dailies/{TODAY}")).json()
+    assert [it["id"] for it in daily["items"]] == [item_id]
 
 
 @pytest.mark.asyncio

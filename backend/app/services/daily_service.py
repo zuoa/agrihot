@@ -1,6 +1,9 @@
-"""日报生成：汇总当天入库的高分资讯，DeepSeek 生成今日要点，upsert Daily。
+"""日报生成：汇总当天收录的高分资讯，DeepSeek 生成今日要点，upsert Daily。
 
-条目口径与 refresh_day_selection 一致（按 created_at 的入库日）；
+日报按「收录日期」归集（Item.created_at 入库时刻），与资讯原始发布日期无关；
+日界按服务器本地时区计算，与定时任务（date.today()）和管理端按钮
+（浏览器本地日期）的口径一致。
+
 取当天评分最高的前 DAILY_ITEM_COUNT 条进入日报。
 
 DeepSeek 不可用（无 key / 请求失败 / 输出不可解析）时降级：
@@ -10,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import httpx
 from sqlalchemy import select
@@ -42,13 +45,19 @@ _SYSTEM_PROMPT = (
 
 
 async def _day_items(session: AsyncSession, day: date) -> list[Item]:
-    """当天入库的条目，按评分降序（未评分排后），取前 DAILY_ITEM_COUNT 条。"""
-    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
-    end = datetime.combine(day, time.max, tzinfo=timezone.utc)
+    """收录日期（created_at）落在 `day` 的条目，按评分降序（未评分排后）。
+
+    日界按服务器本地时区取 `[day 00:00, day+1 00:00)`，再换算成 UTC 与
+    created_at（timestamptz）比较——保证「某日的日报」就是本地日历日
+    当天收录的资讯。
+    """
+    local_start = datetime.combine(day, time.min).astimezone()  # naive 按本地时区解释
+    start = local_start.astimezone(timezone.utc)
+    end = start + timedelta(days=1)
     rows = (
         await session.execute(
             select(Item)
-            .where(Item.created_at >= start, Item.created_at <= end)
+            .where(Item.created_at >= start, Item.created_at < end)
             .order_by(Item.score.desc().nulls_last(), Item.id.desc())
             .limit(DAILY_ITEM_COUNT)
         )
