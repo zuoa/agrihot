@@ -1,8 +1,9 @@
 """日报生成：汇总当天收录的高分资讯，DeepSeek 生成今日要点，upsert Daily。
 
 日报按「收录日期」归集（Item.created_at 入库时刻），与资讯原始发布日期无关；
-日界按服务器本地时区计算，与定时任务（date.today()）和管理端按钮
-（浏览器本地日期）的口径一致。
+日界按 settings.daily_timezone（业务时区，默认 Asia/Shanghai）的日历日切分，
+与容器系统时区解耦——生产容器默认 UTC，若按 UTC 切，国内早上收录的资讯
+会被算进前一天的日报。
 
 取当天评分最高的前 DAILY_ITEM_COUNT 条进入日报。
 
@@ -14,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import select
@@ -44,16 +46,29 @@ _SYSTEM_PROMPT = (
 )
 
 
+def business_tz() -> timezone | ZoneInfo:
+    """日报业务时区；配置非法时回退 UTC 并告警（不阻断生成）。"""
+    try:
+        return ZoneInfo(settings.daily_timezone)
+    except Exception:
+        log.warning("invalid daily_timezone %r, falling back to UTC", settings.daily_timezone)
+        return timezone.utc
+
+
+def day_bounds_utc(day: date) -> tuple[datetime, datetime]:
+    """`day`（业务时区日历日）对应的 UTC 区间 [start, end)。"""
+    start = datetime.combine(day, time.min, tzinfo=business_tz()).astimezone(timezone.utc)
+    return start, start + timedelta(days=1)
+
+
 async def _day_items(session: AsyncSession, day: date) -> list[Item]:
     """收录日期（created_at）落在 `day` 的条目，按评分降序（未评分排后）。
 
-    日界按服务器本地时区取 `[day 00:00, day+1 00:00)`，再换算成 UTC 与
-    created_at（timestamptz）比较——保证「某日的日报」就是本地日历日
-    当天收录的资讯。
+    日界按业务时区（daily_timezone）取 `[day 00:00, day+1 00:00)`，换算成
+    UTC 与 created_at（timestamptz）比较——「某日的日报」就是该日历日当天
+    收录的资讯。
     """
-    local_start = datetime.combine(day, time.min).astimezone()  # naive 按本地时区解释
-    start = local_start.astimezone(timezone.utc)
-    end = start + timedelta(days=1)
+    start, end = day_bounds_utc(day)
     rows = (
         await session.execute(
             select(Item)

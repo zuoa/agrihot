@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     selection_threshold: int = 75
     # 精选每日名额：当天达阈值条目中按评分取前 N 篇
     daily_top_n: int = 5
-    # 每日日报定时生成：每天按 local 时间 daily_generate_time 生成当天日报
+    # 每日日报定时生成：每天按 daily_timezone 时区的 daily_generate_time 生成当天日报
     daily_generate_enabled: bool = True
     daily_generate_time: str = "20:00"
+    # 日报归集使用的业务时区：「收录日期」按此时区的日历日切分，
+    # 与容器/服务器系统时区解耦（生产容器默认 UTC，不能用它切日界）
+    daily_timezone: str = "Asia/Shanghai"
     # admin console password; empty disables the admin endpoints entirely
     admin_password: str = ""
 

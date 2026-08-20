@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 import pytest_asyncio
@@ -18,7 +18,7 @@ os.environ["CONTENT_FETCH_ENABLED"] = "false"  # no network in tests
 from app.config import settings  # noqa: E402
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ApiKey, Base, hash_api_key  # noqa: E402
+from app.models import ApiKey, Base, Item, hash_api_key  # noqa: E402
 from app.services import daily_scheduler, daily_service  # noqa: E402
 
 TEST_KEY = "agri_test_key_daily"
@@ -27,8 +27,8 @@ ADMIN_PW = "test-admin-password"
 engine = create_async_engine(TEST_DB)
 TestSession = async_sessionmaker(engine, expire_on_commit=False)
 
-# 日报按收录日期的本地日历日归集（与 daily_service._day_items 口径一致）
-TODAY = date.today().isoformat()
+# 日报按「收录日期」归集，日界按业务时区（默认 Asia/Shanghai）的日历日
+TODAY = datetime.now(daily_service.business_tz()).date().isoformat()
 
 
 async def override_session():
@@ -128,6 +128,38 @@ def test_parse_generate_time(monkeypatch):
     assert daily_scheduler._parse_generate_time() == (20, 0)
     monkeypatch.setattr(settings, "daily_generate_time", "25:00")
     assert daily_scheduler._parse_generate_time() == (20, 0)
+
+
+# ---------- 业务时区日界 ----------
+
+def test_day_bounds_utc_shanghai(monkeypatch):
+    monkeypatch.setattr(settings, "daily_timezone", "Asia/Shanghai")
+    start, end = daily_service.day_bounds_utc(date(2026, 8, 20))
+    assert start == datetime(2026, 8, 19, 16, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 8, 20, 16, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_day_items_use_business_timezone(monkeypatch):
+    """生产事故回归：UTC 23:57 收录 = 北京时间次日 07:57，应进次日的日报。
+
+    （UTC 容器按 UTC 切日界时，国内早上收录的资讯会被判给前一天，
+    导致「今天有资讯却生成不了日报」。）
+    """
+    monkeypatch.setattr(settings, "daily_timezone", "Asia/Shanghai")
+    async with TestSession() as s:
+        s.add(Item(
+            title="高光谱小麦氮肥运筹研究进展综述",
+            url="https://example.com/news/tz-1",
+            url_hash="tz-boundary-1",
+            title_simhash=1,
+            summary="这是一条用于时区日界回归测试的资讯摘要内容。",
+            created_at=datetime(2026, 8, 19, 23, 57, tzinfo=timezone.utc),
+        ))
+        await s.commit()
+    async with TestSession() as s:
+        assert await daily_service._day_items(s, date(2026, 8, 20))
+        assert not await daily_service._day_items(s, date(2026, 8, 19))
 
 
 # ---------- admin generate endpoint ----------

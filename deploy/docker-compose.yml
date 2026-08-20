@@ -35,9 +35,12 @@ services:
       # 全文兜底抓取（Jina Reader）；JINA_API_KEY 可选，匿名额度有限
       CONTENT_FETCH_ENABLED: ${CONTENT_FETCH_ENABLED:-true}
       JINA_API_KEY: ${JINA_API_KEY:-}
-      # 每日日报定时生成（容器内 local 时间，可用 TZ 环境变量调时区）
+      # 每日日报定时生成（时刻与「收录日期」日界都按 DAILY_TIMEZONE 业务时区，
+      # 与容器系统时区无关；TZ 仅影响日志时间戳）
+      TZ: Asia/Shanghai
       DAILY_GENERATE_ENABLED: ${DAILY_GENERATE_ENABLED:-true}
       DAILY_GENERATE_TIME: ${DAILY_GENERATE_TIME:-20:00}
+      DAILY_TIMEZONE: ${DAILY_TIMEZONE:-Asia/Shanghai}
     depends_on:
       db:
         condition: service_healthy
