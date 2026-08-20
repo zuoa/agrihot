@@ -88,6 +88,11 @@ const fetching = ref(false)
 
 watch(() => route.params.id, load, { immediate: true })
 
+// 路由 meta 只是占位标题，加载到条目后用实际标题覆盖浏览器标签页标题
+watch(() => item.value?.title, (title) => {
+  if (title) document.title = `${title} · AgriHot`
+})
+
 async function load() {
   loading.value = true
   item.value = null
