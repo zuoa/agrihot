@@ -118,3 +118,10 @@ class DailyListItem(BaseModel):
 class DailyListOut(BaseModel):
     total: int
     dailies: list[DailyListItem]
+
+
+class DailyGenerateOut(BaseModel):
+    date: date
+    title: str
+    highlight_count: int
+    item_count: int

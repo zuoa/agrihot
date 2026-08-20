@@ -1,6 +1,15 @@
 <template>
   <div>
-    <h1 class="text-xl font-bold text-leaf-800 mb-5">农业日报</h1>
+    <div class="flex items-center justify-between mb-5">
+      <h1 class="text-xl font-bold text-leaf-800">农业日报</h1>
+      <div v-if="adminSession.loggedIn" class="flex items-center gap-2">
+        <button @click="generateToday" :disabled="generating"
+          class="text-xs px-2.5 py-1 rounded-md border border-dashed border-leaf-300 text-leaf-600 hover:bg-leaf-50 disabled:opacity-50">
+          {{ generating ? '生成中…' : '生成今日日报' }}
+        </button>
+        <span v-if="generateMsg" class="text-xs text-stone-400">{{ generateMsg }}</span>
+      </div>
+    </div>
     <div v-if="loading" class="text-center text-stone-400 py-16">加载中…</div>
     <div v-else-if="!dailies.length" class="text-center text-stone-400 py-16">暂无日报</div>
     <div v-else class="space-y-3">
@@ -24,10 +33,12 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { api } from '../api'
+import { adminSession, api, fmtDateKey } from '../api'
 
 const dailies = ref([])
 const loading = ref(true)
+const generating = ref(false)
+const generateMsg = ref('')
 
 onMounted(async () => {
   try {
@@ -36,6 +47,21 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function generateToday() {
+  const today = fmtDateKey(new Date())
+  generating.value = true
+  generateMsg.value = ''
+  try {
+    const res = await api.adminGenerateDaily(today)
+    generateMsg.value = `已生成：${res.highlight_count} 条要点 · ${res.item_count} 条资讯`
+    dailies.value = (await api.dailies({ page_size: 60 })).dailies
+  } catch (e) {
+    generateMsg.value = e.message
+  } finally {
+    generating.value = false
+  }
+}
 
 const day = (iso) => new Date(iso).getDate()
 const month = (iso) => `${new Date(iso).getMonth() + 1}月`

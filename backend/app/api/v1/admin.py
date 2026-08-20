@@ -1,14 +1,18 @@
 """Admin console endpoints (password login -> HMAC token)."""
+from datetime import date as date_type
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import settings
 from ...database import get_session
 from ...models import Item
-from ...schemas import AdminItemUpdate, AdminLoginIn, AdminLoginOut, ItemOut
+from ...schemas import (AdminItemUpdate, AdminLoginIn, AdminLoginOut,
+                        DailyGenerateOut, ItemOut)
 from ...security import (check_admin_password, issue_admin_token, problem,
                          require_admin)
-from ...services import content_service, ingest_service, scoring_service
+from ...services import (content_service, daily_service, ingest_service,
+                         scoring_service)
 from .ingest import limiter  # shared app limiter; login keys on remote IP
 from .public import _to_item_out
 
@@ -83,3 +87,21 @@ async def admin_delete_item(
         raise problem(404, "Not Found", "条目不存在")
     await session.commit()
     return {"status": "deleted", "item_id": item_id}
+
+
+@router.post("/dailies/{day}/generate", response_model=DailyGenerateOut)
+async def generate_daily(
+    day: date_type,
+    _: None = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+) -> DailyGenerateOut:
+    """手动生成/重新生成指定日期的日报（已有日报会被覆盖）。"""
+    daily = await daily_service.generate_daily(session, day)
+    if daily is None:
+        raise problem(404, "Not Found", "该日期没有收录资讯，无法生成日报")
+    await session.commit()
+    return DailyGenerateOut(
+        date=daily.date, title=daily.title,
+        highlight_count=len(daily.highlights or []),
+        item_count=len(daily.item_ids or []),
+    )

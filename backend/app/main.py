@@ -33,7 +33,14 @@ async def lifespan(app: FastAPI):
         ):
             if col not in existing:
                 await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
+    scheduler = None
+    if settings.daily_generate_enabled:
+        from .services.daily_scheduler import start_daily_scheduler
+
+        scheduler = start_daily_scheduler()
     yield
+    if scheduler is not None:
+        scheduler.cancel()
 
 
 app = FastAPI(
