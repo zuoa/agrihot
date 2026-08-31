@@ -40,7 +40,7 @@
         <p>
           <router-link to="/agent" class="text-leaf-600 hover:underline">Agent 接入说明</router-link>
           · <router-link to="/about" class="text-leaf-600 hover:underline">关于本站</router-link>
-          · Made with 🩷
+          · Made with 🩷 By <a href="mailto:ijedyu@gmail.com" class="text-leaf-600 hover:underline">AJ</a>
         </p>
       </div>
     </footer>
