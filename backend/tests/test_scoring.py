@@ -99,6 +99,12 @@ def test_prompt_falls_back_to_summary():
     assert "摘要：摘要内容" in prompt
 
 
+def test_prompt_asks_for_topic_tags():
+    prompt = scoring_service._build_user_prompt(_prompt_item())
+    assert "tags" in prompt
+    assert "已有标签" in prompt
+
+
 # ---------- parse_scores ----------
 
 def test_parse_scores_ok_and_clamp():
@@ -121,6 +127,17 @@ def test_parse_scores_gate_zeroes_dimensions():
         "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0,
         "relevant": 0,
     }
+
+
+def test_parse_topic_tags():
+    assert scoring_service.parse_topic_tags(
+        {"tags": ["智慧农业", " 遥感 ", 12, ""]}
+    ) == ["智慧农业", "遥感"]
+    assert scoring_service.parse_topic_tags({"tags": "智慧农业 数字乡村"}) == [
+        "智慧农业 数字乡村"
+    ]
+    assert scoring_service.parse_topic_tags({}) == []
+    assert scoring_service.parse_topic_tags({"tags": None}) == []
 
 
 def test_parse_scores_rejects_bad_input():
@@ -188,6 +205,37 @@ async def test_irrelevant_gate_blocks_selection(client, monkeypatch):
     item_id = r.json()["item_id"]
     detail = await client.get(f"/api/v1/items/{item_id}")
     assert detail.json()["is_selected"] is False
+
+
+@pytest.mark.asyncio
+async def test_scoring_replaces_tags_from_model(client, monkeypatch):
+    mock_deepseek(monkeypatch, {
+        "relevant": True, "impact": 26, "substance": 22, "depth": 16,
+        "authority": 12, "freshness": 9,
+        "tags": ["智慧农业", "农业人工智能", "行业标准"],
+        "comment": "标准落地",
+    })
+    r = await client.post(
+        "/api/v1/ingest/items",
+        json=sample_item(tags=["黑龙江农科院 寒地龙果 金秋博览会"]),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert set(detail["tags"]) == {"智慧农业", "农业人工智能", "行业标准"}
+
+
+@pytest.mark.asyncio
+async def test_scoring_keeps_tags_when_model_omits_them(client, monkeypatch):
+    mock_deepseek(monkeypatch, {
+        "relevant": True, "impact": 26, "substance": 22, "depth": 16,
+        "authority": 12, "freshness": 9,
+    })
+    r = await client.post(
+        "/api/v1/ingest/items", json=sample_item(),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert set(detail["tags"]) == {"智慧农业", "政策"}
 
 
 @pytest.mark.asyncio

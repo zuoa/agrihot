@@ -1,6 +1,6 @@
-"""Backfill AI scores for items that have none (score IS NULL).
+"""Backfill AI scores (and topic tags) for items that have none (score IS NULL).
 Usage: python -m scripts.rescore          # all unscored items
-       python -m scripts.rescore --all    # re-score everything
+       python -m scripts.rescore --all    # re-score everything and re-extract tags
 Requires DEEPSEEK_API_KEY.
 """
 import asyncio

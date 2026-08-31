@@ -110,8 +110,9 @@ async def list_tags(session: AsyncSession = Depends(get_session)) -> list[TagOut
     rows = (
         await session.execute(
             select(Tag.name, func.count(Item.id))
-            .join(Tag.items, isouter=True)
+            .join(Tag.items)
             .group_by(Tag.name)
+            .having(func.count(Item.id) > 0)
             .order_by(func.count(Item.id).desc())
         )
     ).all()

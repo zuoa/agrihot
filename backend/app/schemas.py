@@ -3,7 +3,20 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
+
+
+def _coerce_tag_list(v):
+    """Accept a single string (LLM agents often send one blob) as a 1-item list.
+
+    Splitting / filtering happens later in ingest_service.normalize_tags.
+    Missing field is untouched; explicit null becomes an empty list.
+    """
+    if v is None or v == "":
+        return []
+    if isinstance(v, str):
+        return [v]
+    return v
 
 
 # ---------- ingest (agent push) ----------
@@ -20,6 +33,11 @@ class IngestItemIn(BaseModel):
     cover_url: str | None = None
     content: str | None = None
     lang: str | None = Field(default=None, max_length=10)
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, v):
+        return _coerce_tag_list(v)
 
 
 class IngestBatchIn(BaseModel):
@@ -58,6 +76,13 @@ class AdminItemUpdate(BaseModel):
     cover_url: str | None = None
     hotness: int | None = Field(default=None, ge=0)
     is_selected: bool | None = None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def coerce_tags(cls, v):
+        if v is None:
+            return None
+        return _coerce_tag_list(v)
 
 
 # ---------- public read ----------

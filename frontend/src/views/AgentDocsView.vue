@@ -136,6 +136,7 @@
         <li>批量优于单条：一轮抓取打包成 ≤50 条一次推送，减少请求数。</li>
         <li><Code>published_at</Code> 用 ISO 8601 带时区（如 <Code>2026-07-15T08:00:00+08:00</Code>）；站点按收录时间分组排序，此字段仅用于展示原文日期。</li>
         <li><Code>category</Code> 建议用 <Code>政策 / 报道 / 论文 / 行业</Code>，其他值会归为「报道」。</li>
+        <li><Code>tags</Code> 必须是独立短词数组（<Code>["智慧农业","遥感"]</Code>），不要写成整句。服务端会先切开，入库后的 AI 评分会根据正文重写主题；给的 tags 只是评分完成前的兜底。</li>
         <li>摘要 ≥ 10 字、标题 ≥ 4 字，否则会被 422 拒绝。</li>
         <li>遵守 60 次/分钟限制；收到 429 时指数退避（1s → 2s → 4s…）。</li>
       </ul>
@@ -173,7 +174,7 @@ const fields = [
   { name: 'source_url', type: 'string', req: false, desc: '信源首页/出处链接' },
   { name: 'published_at', type: 'datetime', req: false, desc: '原文发布时间（ISO 8601 带时区）' },
   { name: 'category', type: 'string', req: false, desc: '政策 / 报道 / 论文 / 行业，缺省归「报道」' },
-  { name: 'tags', type: 'string[]', req: false, desc: '标签数组，≤20 个，如 ["智慧农业","遥感"]' },
+  { name: 'tags', type: 'string[]', req: false, desc: '标签数组，每项一个短主题，如 ["智慧农业","遥感"]。不要把标题拼成一条。服务端会先按空格/顿号切开，评分时再用正文提炼 3–6 个可聚合主题并覆盖；模型失败则保留切开后的原标签' },
   { name: 'cover_url', type: 'string', req: false, desc: '封面图 URL' },
   { name: 'content', type: 'string', req: false, desc: '正文（可选，Markdown，详情页展示；缺省时服务端自动抓取补充）' },
   { name: 'lang', type: 'string', req: false, desc: '语种标记，如 zh / en' },

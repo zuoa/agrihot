@@ -122,7 +122,7 @@ async def test_patch_item_fields(client):
             "is_selected": True,
             "hotness": 88,
             "category": "行业",
-            "tags": ["数字乡村", "新标签"],
+            "tags": ["数字乡村 新标签", "智慧农业"],
         },
         headers=auth,
     )
@@ -132,7 +132,7 @@ async def test_patch_item_fields(client):
     assert body["is_selected"] is True
     assert body["hotness"] == 88
     assert body["category"] == "行业"
-    assert set(body["tags"]) == {"数字乡村", "新标签"}
+    assert set(body["tags"]) == {"数字乡村", "新标签", "智慧农业"}
 
     # 未提供的字段保持不变
     assert body["summary"] == sample_item()["summary"]

@@ -47,6 +47,7 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 ```
 
 - 批量：`POST /api/v1/ingest/items/batch`（≤50 条）
+- 标签：`tags` 应为独立短词（如 `["智慧农业","遥感"]`）。若 Agent 把关键词用空格/顿号拼成一条，服务端会自动切开并丢弃日期、过长项；历史数据可用 `python -m scripts.retag` 重切（`--dry-run` 只打印）
 - 去重：`exact_url`（URL 规范化 + SHA-256）、`similar_title`（SimHash 海明距离 ≤6 或标题互相包含）；重复不报错，信源合并进已有条目（幂等，可安全重试）
 - 限流：60 次/分钟/Key
 - 删除：`DELETE /api/v1/ingest/items/{id}`（下架测试/违规内容，同时清理日报引用）
@@ -56,9 +57,11 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 
 新条目入库后，后台调用 DeepSeek 评估：先做**相关性门槛**判断（与三农/农业信息化
 无关直接出局），再按 5 个维度打分（满分 100）：影响力 30、信息增量 25、专业深度 20、
-信源权威 15、时效性 10。每天（按入库日）总分 ≥ `SELECTION_THRESHOLD`（默认 75）的
-条目中，评分最高的前 `DAILY_TOP_N`（默认 5）篇进入首页「精选」，每次评分后重算当天
-名单；评分请求失败时不进精选（fail-closed）。总分与各维度明细会存库并在详情页展示。
+信源权威 15、时效性 10；同一次调用会**重写主题标签**（3–6 个可聚合短词），Agent
+给的 tags 只作评分前的兜底，失败则保留切开后的原标签。每天（按入库日）总分 ≥
+`SELECTION_THRESHOLD`（默认 75）的条目中，评分最高的前 `DAILY_TOP_N`（默认 5）篇
+进入首页「精选」，每次评分后重算当天名单；评分请求失败时不进精选（fail-closed）。
+总分与各维度明细会存库并在详情页展示。
 
 环境变量：`DEEPSEEK_API_KEY`（留空则关闭评分）、`DEEPSEEK_BASE_URL`、
 `DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`SELECTION_THRESHOLD`、`DAILY_TOP_N`。

@@ -11,7 +11,7 @@ from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
 from .api.v1.public import router as public_router
 from .config import settings
-from .database import engine
+from .database import SessionLocal, engine
 from .models import Base
 
 
@@ -33,6 +33,12 @@ async def lifespan(app: FastAPI):
         ):
             if col not in existing:
                 await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
+    # one-shot: split concatenated tag blobs left by earlier agents
+    async with SessionLocal() as session:
+        from .services.ingest_service import maybe_retag_existing
+
+        await maybe_retag_existing(session)
+        await session.commit()
     scheduler = None
     if settings.daily_generate_enabled:
         from .services.daily_scheduler import start_daily_scheduler

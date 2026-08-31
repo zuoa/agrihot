@@ -4,6 +4,7 @@ import sys
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -15,7 +16,12 @@ os.environ["CONTENT_FETCH_ENABLED"] = "false"  # no network in tests
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ApiKey, Base, hash_api_key  # noqa: E402
+from app.models import ApiKey, Base, Item, Tag, hash_api_key  # noqa: E402
+from app.services import dedup  # noqa: E402
+from app.services.ingest_service import (  # noqa: E402
+    normalize_tags,
+    retag_all_items,
+)
 
 TEST_KEY = "agri_test_key_123"
 
@@ -172,3 +178,121 @@ async def test_public_endpoints(client):
 
     r = await client.get("/api/v1/tags")
     assert {t["name"] for t in r.json()} >= {"智慧农业", "政策"}
+
+
+# ---------- tag normalization ----------
+
+def test_normalize_tags_splits_space_separated_keywords():
+    assert normalize_tags(["黑龙江农科院 寒地龙果 金秋博览会 成果转化"]) == [
+        "黑龙江农科院", "寒地龙果", "金秋博览会", "成果转化",
+    ]
+
+
+def test_normalize_tags_splits_middle_dot_and_backticks():
+    assert normalize_tags(["`政策` · `种业振兴` · `知识产权` · `制度创新`"]) == [
+        "政策", "种业振兴", "知识产权", "制度创新",
+    ]
+
+
+def test_normalize_tags_keeps_english_phrase_and_mixed_tokens():
+    result = normalize_tags(
+        ["棉蚜 DNA甲基化 表观遗传 Journal of Advanced Research"]
+    )
+    assert result == [
+        "棉蚜", "DNA甲基化", "表观遗传", "Journal of Advanced Research",
+    ]
+
+
+def test_normalize_tags_drops_dates_numbers_and_dedupes():
+    assert normalize_tags(
+        ["#智慧农业", "智慧农业", "中国农科院 茶叶所 2026年8月", "2024"]
+    ) == ["智慧农业", "中国农科院", "茶叶所"]
+
+
+def test_normalize_tags_does_not_merge_separate_ascii_tags():
+    assert normalize_tags(["IoT", "AI", "NDVI"]) == ["IoT", "AI", "NDVI"]
+
+
+def test_normalize_tags_splits_chinese_punctuation():
+    assert normalize_tags(["智慧农业、数字乡村，遥感"]) == [
+        "智慧农业", "数字乡村", "遥感",
+    ]
+
+
+def test_normalize_tags_keeps_already_split():
+    assert normalize_tags(["政策", "高标准农田", "粮食安全"]) == [
+        "政策", "高标准农田", "粮食安全",
+    ]
+
+
+def test_normalize_tags_drops_overlong_unspaced_blob():
+    blob = "黑龙江农科院寒地龙果金秋博览会成果转化专题报道"
+    assert normalize_tags([blob]) == []
+
+
+@pytest.mark.asyncio
+async def test_ingest_splits_concatenated_tags(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post(
+        "/api/v1/ingest/items",
+        json=sample_item(tags=["黑龙江农科院 寒地龙果 成果转化", "智慧农业"]),
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
+    item_id = r.json()["item_id"]
+
+    detail = await client.get(f"/api/v1/items/{item_id}")
+    assert set(detail.json()["tags"]) == {
+        "黑龙江农科院", "寒地龙果", "成果转化", "智慧农业",
+    }
+
+    listed = await client.get("/api/v1/tags")
+    names = {t["name"] for t in listed.json()}
+    assert "黑龙江农科院 寒地龙果 成果转化" not in names
+    assert {"黑龙江农科院", "寒地龙果", "成果转化", "智慧农业"} <= names
+
+
+@pytest.mark.asyncio
+async def test_ingest_accepts_tags_as_single_string(client):
+    headers = {"X-API-Key": TEST_KEY}
+    payload = sample_item()
+    payload["tags"] = "智慧农业 数字乡村 政策"
+    r = await client.post("/api/v1/ingest/items", json=payload, headers=headers)
+    assert r.status_code == 200, r.text
+    item_id = r.json()["item_id"]
+    detail = await client.get(f"/api/v1/items/{item_id}")
+    assert set(detail.json()["tags"]) == {"智慧农业", "数字乡村", "政策"}
+
+
+@pytest.mark.asyncio
+async def test_retag_all_items_splits_existing_blobs_and_drops_orphans():
+    url = "https://example.com/retag-blob"
+    async with TestSession() as s:
+        blob = Tag(name="黑龙江农科院 寒地龙果 成果转化")
+        item = Item(
+            title="寒地龙果成果转化",
+            url=url,
+            url_hash=dedup.url_hash(url),
+            title_simhash=dedup.to_signed64(dedup.title_simhash("寒地龙果成果转化")),
+            summary="这是用于测试标签重切分的摘要文字。",
+            source_name="测试",
+            category="报道",
+        )
+        item.tags = [blob]
+        s.add(item)
+        await s.commit()
+        item_id = item.id
+
+    async with TestSession() as s:
+        stats = await retag_all_items(s)
+        await s.commit()
+        assert stats["changed"] == 1
+        assert stats["orphans"] >= 1
+        item = await s.get(Item, item_id)
+        assert {t.name for t in item.tags} == {"黑龙江农科院", "寒地龙果", "成果转化"}
+        leftover = (
+            await s.execute(
+                select(Tag).where(Tag.name == "黑龙江农科院 寒地龙果 成果转化")
+            )
+        ).scalar_one_or_none()
+        assert leftover is None
