@@ -82,7 +82,7 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 ## 公开只读 API
 
 `GET /api/v1/items`（mode=selected|all、window=24h|7d、category、tag、q、page）
-`GET /api/v1/items/{id}`、`GET /api/v1/dailies[/latest|/{date}]`、`GET /api/v1/tags`
+`GET /api/v1/items/{id}`、`GET /api/v1/dailies[/latest|/{date}]`、`GET /api/v1/tags`、`GET /api/v1/stats`
 
 ## Docker 构建与部署
 

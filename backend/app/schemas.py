@@ -150,3 +150,15 @@ class DailyGenerateOut(BaseModel):
     title: str
     highlight_count: int
     item_count: int
+
+
+class StatsOut(BaseModel):
+    """Site-wide aggregation counts for the About page."""
+    items: int
+    by_category: dict[str, int]
+    selected: int
+    dailies: int
+    tags: int
+    sources: int
+    views: int
+    since: datetime | None

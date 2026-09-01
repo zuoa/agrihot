@@ -49,6 +49,7 @@ export const api = {
   items: (params) => get('/items', params),
   item: (id) => get(`/items/${id}`),
   tags: () => get('/tags'),
+  stats: () => get('/stats'),
   dailies: (params) => get('/dailies', params),
   latestDaily: () => get('/dailies/latest'),
   daily: (date) => get(`/dailies/${date}`),

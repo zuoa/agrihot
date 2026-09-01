@@ -7,7 +7,7 @@
     </div>
 
     <div class="flex gap-2 mb-5 overflow-x-auto pb-1">
-      <button v-for="c in categories" :key="c" @click="category = c === '全部' ? '' : c; load(1)"
+      <button v-for="c in categories" :key="c" @click="pickCategory(c)"
         class="px-3.5 py-1.5 text-sm rounded-full border whitespace-nowrap transition-colors"
         :class="(category || '全部') === c
           ? 'bg-leaf-600 text-white border-leaf-600'
@@ -43,11 +43,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api, groupByDay } from '../api'
 import ItemCard from '../components/ItemCard.vue'
 
-const categories = ['全部', '政策', '报道', '论文', '行业']
+const CATEGORIES = ['政策', '报道', '论文', '行业']
+const categories = ['全部', ...CATEGORIES]
+const route = useRoute()
+const router = useRouter()
 const category = ref('')
 const q = ref('')
 const page = ref(1)
@@ -56,7 +60,21 @@ const pageSize = 20
 const items = ref([])
 const loading = ref(true)
 
-onMounted(() => load(1))
+watch(
+  () => route.query.category,
+  (c) => {
+    category.value = CATEGORIES.includes(c) ? c : ''
+    load(1)
+  },
+  { immediate: true },
+)
+
+function pickCategory(c) {
+  const query = { ...route.query }
+  if (c === '全部') delete query.category
+  else query.category = c
+  router.replace({ query })
+}
 
 function search() { load(1) }
 

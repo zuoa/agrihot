@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...database import get_session
 from ...models import Daily, Item, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, ItemListOut,
-                        ItemOut, SourceOut, TagOut)
+                        ItemOut, SourceOut, StatsOut, TagOut)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -103,6 +103,48 @@ async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -
     await session.commit()
     await session.refresh(item)
     return _to_item_out(item)
+
+
+@router.get("/stats", response_model=StatsOut)
+async def site_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
+    items, views, since = (
+        await session.execute(
+            select(
+                func.count(Item.id),
+                func.coalesce(func.sum(Item.view_count), 0),
+                func.min(Item.created_at),
+            )
+        )
+    ).one()
+    selected = (
+        await session.execute(
+            select(func.count(Item.id)).where(Item.is_selected.is_(True))
+        )
+    ).scalar_one()
+    cat_rows = (
+        await session.execute(
+            select(Item.category, func.count(Item.id)).group_by(Item.category)
+        )
+    ).all()
+    dailies = (await session.execute(select(func.count(Daily.id)))).scalar_one()
+    tags = (await session.execute(select(func.count(Tag.id)))).scalar_one()
+    sources = (
+        await session.execute(
+            select(func.count(func.distinct(Item.source_name))).where(
+                Item.source_name != ""
+            )
+        )
+    ).scalar_one()
+    return StatsOut(
+        items=items,
+        by_category={name: count for name, count in cat_rows},
+        selected=selected,
+        dailies=dailies,
+        tags=tags,
+        sources=sources,
+        views=int(views or 0),
+        since=since,
+    )
 
 
 @router.get("/tags", response_model=list[TagOut])
