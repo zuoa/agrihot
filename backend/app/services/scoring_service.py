@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item
+from . import runtime_settings
 from .ingest_service import _get_or_create_tags
 
 log = logging.getLogger(__name__)
@@ -213,7 +214,8 @@ async def refresh_day_selection(session: AsyncSession, created_at) -> None:
     ranked = sorted(items, key=lambda i: (-i.score, i.id))
     for rank, it in enumerate(ranked):
         it.is_selected = (
-            rank < settings.daily_top_n and it.score >= settings.selection_threshold
+            rank < runtime_settings.get("daily_top_n")
+            and it.score >= runtime_settings.get("selection_threshold")
         )
 
 

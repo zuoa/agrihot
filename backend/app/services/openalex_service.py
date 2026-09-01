@@ -8,17 +8,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
-from functools import lru_cache
-from pathlib import Path
 from typing import Any, AsyncIterator
 
 import httpx
-import yaml
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..models import PipelineState
 from ..schemas import IngestItemIn
+from . import runtime_settings, watchlist_service
 from .doi import normalize_doi
 from .ingest_service import PaperDraft, ingest_item
 
@@ -54,24 +52,9 @@ def reconstruct_abstract(inverted_index: dict | None) -> str | None:
     return " ".join(word for _, word in placed)
 
 
-def _default_watchlist_path() -> Path:
-    return Path(__file__).resolve().parent.parent / "watchlist.yaml"
-
-
-@lru_cache(maxsize=1)
 def load_watchlist() -> dict:
-    path = Path(settings.watchlist_path) if settings.watchlist_path else _default_watchlist_path()
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except FileNotFoundError:
-        log.warning("watchlist not found at %s", path)
-        return {}
-    except Exception:
-        log.exception("failed to load watchlist %s", path)
-        return {}
-    if not isinstance(data, dict):
-        return {}
-    return data
+    """Current watchlist (DB overlay if loaded, otherwise packaged yaml)."""
+    return watchlist_service.get_watchlist()
 
 
 def direction_names() -> list[str]:
@@ -245,12 +228,12 @@ def _date_filter(from_date: date) -> str:
 async def _from_date(session: AsyncSession, today: date) -> date:
     row = await session.get(PipelineState, STATE_KEY)
     if row is None or not row.value:
-        return today - timedelta(days=settings.literature_bootstrap_days)
+        return today - timedelta(days=int(runtime_settings.get("literature_bootstrap_days")))
     try:
         last = date.fromisoformat(row.value)
     except ValueError:
         last = today
-    return last - timedelta(days=settings.literature_lookback_days)
+    return last - timedelta(days=int(runtime_settings.get("literature_lookback_days")))
 
 
 async def _save_from_date(session: AsyncSession, today: date) -> None:
@@ -354,7 +337,7 @@ async def _ingest_stream(
         if prescreen and not passes_prescreen(payload.title, payload.summary):
             stats["screened_out"] += 1
             continue
-        if stats["created"] >= settings.literature_max_new_per_run:
+        if stats["created"] >= int(runtime_settings.get("literature_max_new_per_run")):
             stats["truncated"] = True
             return
         try:

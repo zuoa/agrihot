@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item
-from . import paper_card_service, scoring_service
+from . import paper_card_service, runtime_settings, scoring_service
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def _strip_jina_preamble(text: str) -> str:
 
 async def fetch_fulltext(url: str) -> str | None:
     """Fetch url via Jina Reader -> clean markdown. None on any failure."""
-    if not settings.content_fetch_enabled:
+    if not runtime_settings.get("content_fetch_enabled"):
         return None
     headers = {}
     if settings.jina_api_key:

@@ -1,6 +1,6 @@
 <template>
-  <div class="min-h-screen flex flex-col">
-    <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-leaf-100">
+  <div class="min-h-screen flex flex-col" :class="isAdminRoute ? 'bg-stone-100' : ''">
+    <header v-if="!isAdminRoute" class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-leaf-100">
       <div class="max-w-3xl mx-auto px-4">
         <div class="flex items-center gap-2 py-3">
           <router-link to="/" class="flex items-center gap-2 mr-4">
@@ -22,19 +22,17 @@
             :class="adminSession.loggedIn
               ? 'border-leaf-600 text-leaf-700 bg-leaf-50 hover:bg-leaf-100'
               : 'border-stone-200 text-stone-400 hover:border-leaf-300 hover:text-leaf-600'">
-            {{ adminSession.loggedIn ? '退出管理' : '管理' }}
+            {{ adminSession.loggedIn ? '后台' : '管理' }}
           </button>
         </div>
       </div>
     </header>
 
-    <AdminLoginModal v-if="showLogin" @close="showLogin = false" />
-
-    <main class="flex-1 max-w-3xl mx-auto w-full px-4 py-6">
+    <main :class="isAdminRoute ? 'flex-1 min-h-0' : 'flex-1 max-w-3xl mx-auto w-full px-4 py-6'">
       <router-view />
     </main>
 
-    <footer class="border-t border-leaf-100 bg-white">
+    <footer v-if="!isAdminRoute" class="border-t border-leaf-100 bg-white">
       <div class="max-w-3xl mx-auto px-4 py-6 text-center text-xs text-stone-400 space-y-1">
         <p>AgriHot · 农业信息化动态聚合 — 内容整理自公开来源，摘要由 AI 生成，引用请以官方原文为准</p>
         <p>
@@ -48,20 +46,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { adminSession } from './api'
-import AdminLoginModal from './components/AdminLoginModal.vue'
 
 const route = useRoute()
-const showLogin = ref(false)
+const router = useRouter()
+const isAdminRoute = computed(() => route.path.startsWith('/admin'))
 
 function onAdminClick() {
-  if (adminSession.loggedIn) {
-    if (confirm('确定退出管理模式？')) adminSession.clear()
-  } else {
-    showLogin.value = true
-  }
+  router.push(adminSession.loggedIn ? '/admin' : '/admin/login')
 }
 
 const links = [

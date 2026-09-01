@@ -12,8 +12,7 @@ import logging
 from datetime import datetime, timedelta
 
 from ..config import settings
-from ..database import SessionLocal
-from . import daily_service
+from . import daily_service, job_runner, runtime_settings
 
 log = logging.getLogger(__name__)
 
@@ -21,19 +20,12 @@ _DEFAULT_TIME = (20, 0)
 
 
 def _parse_generate_time() -> tuple[int, int]:
-    """Parse settings.daily_generate_time ("HH:MM"); fall back to 20:00."""
-    try:
-        hour_s, minute_s = settings.daily_generate_time.split(":", 1)
-        hour, minute = int(hour_s), int(minute_s)
-        if 0 <= hour <= 23 and 0 <= minute <= 59:
-            return hour, minute
-    except (ValueError, AttributeError):
-        pass
-    log.warning(
-        "invalid daily_generate_time %r, falling back to %02d:%02d",
-        settings.daily_generate_time, *_DEFAULT_TIME,
-    )
-    return _DEFAULT_TIME
+    """Parse effective daily_generate_time ("HH:MM"); fall back to 20:00."""
+    value = str(runtime_settings.get("daily_generate_time"))
+    parsed = runtime_settings.parse_hhmm(value, _DEFAULT_TIME)
+    if parsed == _DEFAULT_TIME and runtime_settings.parse_hhmm(value, (99, 99)) == (99, 99):
+        log.warning("invalid daily_generate_time %r, falling back to %02d:%02d", value, *_DEFAULT_TIME)
+    return parsed
 
 
 def _seconds_until_next_run(now: datetime) -> float:
@@ -45,22 +37,20 @@ def _seconds_until_next_run(now: datetime) -> float:
     return (target - now).total_seconds()
 
 
-async def _run_once() -> None:
-    today = datetime.now(daily_service.business_tz()).date()
-    try:
-        async with SessionLocal() as session:
-            daily = await daily_service.generate_daily(session, today)
-            await session.commit()
-        if daily is None:
-            log.info("daily %s skipped: no items ingested today", today)
-    except Exception:
-        log.exception("daily generation failed for %s", today)
-
-
 async def _loop() -> None:
     while True:
-        await asyncio.sleep(_seconds_until_next_run(datetime.now(daily_service.business_tz())))
-        await _run_once()
+        delay = _seconds_until_next_run(datetime.now(daily_service.business_tz()))
+        await asyncio.sleep(min(delay, 60))
+        if delay > 60:
+            continue
+        if not runtime_settings.get("daily_generate_enabled"):
+            continue
+        try:
+            await job_runner.run("daily_generate")
+        except job_runner.JobBusy:
+            log.info("daily generate already running, skip this tick")
+        except Exception:
+            log.exception("daily generation failed")
 
 
 def start_daily_scheduler() -> asyncio.Task:
@@ -68,6 +58,6 @@ def start_daily_scheduler() -> asyncio.Task:
     task = asyncio.create_task(_loop(), name="daily-scheduler")
     log.info(
         "daily scheduler started (generate at %s %s)",
-        settings.daily_generate_time, settings.daily_timezone,
+        runtime_settings.get("daily_generate_time"), settings.daily_timezone,
     )
     return task

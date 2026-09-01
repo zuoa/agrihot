@@ -1,7 +1,8 @@
 """Pydantic request/response schemas."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date as date_type
+from datetime import datetime
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -61,6 +62,155 @@ class AdminLoginIn(BaseModel):
 
 class AdminLoginOut(BaseModel):
     token: str
+
+
+class AdminMeOut(BaseModel):
+    ok: bool = True
+
+
+class SettingValueOut(BaseModel):
+    value: bool | int | str
+    source: str  # env | override
+
+
+class AdminSettingsReadonly(BaseModel):
+    deepseek_configured: bool
+    jina_configured: bool
+    openalex_configured: bool
+    deepseek_model: str
+    openalex_mailto: str
+    daily_timezone: str
+    ingest_rate_limit: str
+
+
+class AdminSettingsOut(BaseModel):
+    writable: dict[str, SettingValueOut]
+    readonly: AdminSettingsReadonly
+
+
+class AdminSettingsPatch(BaseModel):
+    model_config = {"extra": "forbid"}
+    selection_threshold: int | None = Field(default=None, ge=0, le=100)
+    daily_top_n: int | None = Field(default=None, ge=1, le=50)
+    daily_generate_enabled: bool | None = None
+    daily_generate_time: str | None = None
+    literature_fetch_enabled: bool | None = None
+    literature_fetch_time: str | None = None
+    literature_lookback_days: int | None = Field(default=None, ge=0, le=30)
+    literature_bootstrap_days: int | None = Field(default=None, ge=1, le=90)
+    literature_max_new_per_run: int | None = Field(default=None, ge=1, le=500)
+    content_fetch_enabled: bool | None = None
+
+    @field_validator("daily_generate_time", "literature_fetch_time")
+    @classmethod
+    def hhmm(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        parts = v.split(":")
+        if len(parts) not in (2, 3):
+            raise ValueError("应为 HH:MM")
+        try:
+            hour, minute = int(parts[0]), int(parts[1])
+        except ValueError as exc:
+            raise ValueError("应为 HH:MM") from exc
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError("应为 HH:MM")
+        return f"{hour:02d}:{minute:02d}"
+
+
+class JobStatusOut(BaseModel):
+    name: str
+    label: str
+    status: str  # idle | running | ok | error
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    stats: dict | None = None
+    error: str | None = None
+    progress: dict | None = None
+
+
+class JobListOut(BaseModel):
+    jobs: list[JobStatusOut]
+
+
+class JobRunIn(BaseModel):
+    date: date_type | None = None
+    item_ids: list[int] | None = Field(default=None, max_length=20)
+    force: bool = False
+
+
+class BatchIdsIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=50)
+
+
+class BatchFetchIn(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=20)
+    force: bool = False
+
+
+class BatchDeleteOut(BaseModel):
+    deleted: list[int]
+    missing: list[int]
+
+
+class SchedulerInfoOut(BaseModel):
+    enabled: bool
+    time: str
+    timezone: str
+    next_run_at: datetime
+
+
+class OverviewOut(BaseModel):
+    items: int
+    selected: int
+    dailies: int
+    tags: int
+    missing_content: int
+    unscored: int
+    schedulers: dict[str, SchedulerInfoOut]
+    jobs: list[JobStatusOut]
+
+
+class WatchlistDirection(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    queries: list[str] = Field(default_factory=list)
+
+
+class WatchlistJournal(BaseModel):
+    name: str = ""
+    issn: str = Field(..., min_length=1, max_length=32)
+
+
+class WatchlistAuthor(BaseModel):
+    name: str = ""
+    openalex_id: str = ""
+
+
+class WatchlistOut(BaseModel):
+    directions: list[WatchlistDirection] = []
+    journals: list[WatchlistJournal] = []
+    authors: list[WatchlistAuthor] = []
+    prescreen: list[str] = []
+
+
+class ApiKeyOut(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    last_used_at: datetime | None
+    created_at: datetime
+
+
+class ApiKeyCreateIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class ApiKeyCreatedOut(ApiKeyOut):
+    key: str
+
+
+class ApiKeyPatchIn(BaseModel):
+    is_active: bool
 
 
 class AdminItemUpdate(BaseModel):
@@ -154,7 +304,7 @@ class ItemListOut(BaseModel):
 
 
 class DailyOut(BaseModel):
-    date: date
+    date: date_type
     title: str
     highlights: list[str]
     content: str
@@ -162,7 +312,7 @@ class DailyOut(BaseModel):
 
 
 class DailyListItem(BaseModel):
-    date: date
+    date: date_type
     title: str
     highlight_count: int
     item_count: int
@@ -174,7 +324,7 @@ class DailyListOut(BaseModel):
 
 
 class DailyGenerateOut(BaseModel):
-    date: date
+    date: date_type
     title: str
     highlight_count: int
     item_count: int

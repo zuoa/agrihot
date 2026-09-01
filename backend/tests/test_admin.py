@@ -87,6 +87,33 @@ async def test_login_disabled_without_config(client, monkeypatch):
     assert r.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_me_requires_valid_token(client):
+    r = await client.get("/api/v1/admin/me")
+    assert r.status_code in (401, 403)
+    auth = await login(client)
+    r = await client.get("/api/v1/admin/me", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_expired_token_rejected(client):
+    from datetime import datetime, timedelta, timezone
+
+    from app.security import issue_admin_token
+
+    expired = issue_admin_token(datetime.now(timezone.utc) - timedelta(days=8))
+    r = await client.get("/api/v1/admin/me", headers={"X-Admin-Token": expired})
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_legacy_hmac_token_rejected(client):
+    r = await client.get("/api/v1/admin/me", headers={"X-Admin-Token": "a" * 64})
+    assert r.status_code == 401
+
+
 # ---------- auth on write endpoints ----------
 
 @pytest.mark.asyncio
@@ -221,6 +248,26 @@ async def test_fetch_content_failure_keeps_item_untouched(client, monkeypatch):
     body = (await client.get(f"/api/v1/items/{item_id}")).json()
     assert body["content"] is None
     assert body["score"] is None  # no rescoring on failure
+
+
+@pytest.mark.asyncio
+async def test_rescore_item(client, monkeypatch):
+    from app.services import scoring_service
+
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    async def fake_deepseek(item):
+        return '{"relevant": true, "impact": 20, "substance": 18, "depth": 14, "authority": 10, "freshness": 8}'
+
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_deepseek)
+
+    auth = await login(client)
+    r = await client.post(f"/api/v1/admin/items/{item_id}/rescore", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["score"] == 70
 
 
 @pytest.mark.asyncio

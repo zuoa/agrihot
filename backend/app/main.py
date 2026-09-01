@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,25 +21,24 @@ async def lifespan(app: FastAPI):
     # one-shot: split concatenated tag blobs left by earlier agents
     async with SessionLocal() as session:
         from .services.ingest_service import maybe_backfill_doi, maybe_retag_existing
+        from .services import runtime_settings, watchlist_service
 
         await maybe_retag_existing(session)
         await maybe_backfill_doi(session)
+        await runtime_settings.load(session)
+        await watchlist_service.load_from_db(session)
         await session.commit()
-    scheduler = None
-    literature = None
-    if settings.daily_generate_enabled:
-        from .services.daily_scheduler import start_daily_scheduler
 
-        scheduler = start_daily_scheduler()
-    if settings.literature_fetch_enabled:
-        from .services.literature_scheduler import start_literature_scheduler
+    from .services.daily_scheduler import start_daily_scheduler
+    from .services.literature_scheduler import start_literature_scheduler
 
-        literature = start_literature_scheduler()
+    # Always start loops; each tick reads the effective enabled flag so the
+    # admin console can toggle schedulers without a process restart.
+    scheduler = start_daily_scheduler()
+    literature = start_literature_scheduler()
     yield
-    if scheduler is not None:
-        scheduler.cancel()
-    if literature is not None:
-        literature.cancel()
+    scheduler.cancel()
+    literature.cancel()
 
 
 app = FastAPI(
@@ -73,7 +73,11 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.exception_handler(RequestValidationError)
 async def validation_handler(request: Request, exc: RequestValidationError):
-    return _problem(422, "Unprocessable Entity", exc.errors())
+    return _problem(
+        422,
+        "Unprocessable Entity",
+        jsonable_encoder(exc.errors(), custom_encoder={Exception: str}),
+    )
 
 
 @app.exception_handler(Exception)

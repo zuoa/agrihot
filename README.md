@@ -83,14 +83,29 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 
 ## 管理控制台
 
-页面右上角「管理」按钮输入密码登录后，每张卡片 / 详情页出现「编辑 / 删除」操作：
-标题、摘要、分类、标签、热度、链接、是否精选均可修改；删除会同时清理日报引用。
-密码通过环境变量 `ADMIN_PASSWORD` 预置（留空则管理接口整体关闭）。
+公开站右上角「管理」进入 `/admin`（独立宽布局，不混在阅读栏里）。密码来自环境变量
+`ADMIN_PASSWORD`（留空则管理接口整体关闭）。令牌为带 7 天过期的 HMAC，请求头
+`X-Admin-Token`；公开页登录后仍可在卡片上快捷编辑 / 删除。
 
-- 登录：`POST /api/v1/admin/login`（限流 10 次/分钟防爆破），返回 HMAC 无状态令牌
-- 编辑：`PATCH /api/v1/admin/items/{id}`（部分更新，仅提交要改的字段）
-- 删除：`DELETE /api/v1/admin/items/{id}`
-- 前端令牌存于 localStorage，请求头 `X-Admin-Token` 携带
+后台页面：
+
+- **总览**：条目 / 精选 / 日报计数，无全文与未评分积压，调度下次时间
+- **内容**：筛选、编辑、删除、重抓全文、单条重评；支持批量删除与批量抓全文
+- **任务**：手动跑一轮文献拉取、生成日报、补评未评分、重切标签（后台执行，防重叠）
+- **配置**：精选阈值、名额、调度时刻等运营旋钮（热改写入数据库；密钥仍走环境变量，界面只显示是否已配置）
+- **关注面**：编辑 OpenAlex 订阅（方向 / 期刊 / 学者 / 预筛词），保存进数据库
+- **API Key**：签发（明文只显示一次）、停用 / 启用爬虫推送 Key
+
+主要接口（均需管理令牌，登录除外）：
+
+- `POST /api/v1/admin/login`（限流 10 次/分钟）
+- `GET /api/v1/admin/me` · `GET /api/v1/admin/overview`
+- `GET /api/v1/admin/items`（审核筛选）· `PATCH|DELETE /api/v1/admin/items/{id}`
+- `POST /api/v1/admin/items/{id}/fetch-content` · `POST /api/v1/admin/items/{id}/rescore`
+- `POST /api/v1/admin/items/batch-delete` · `POST /api/v1/admin/items/batch-fetch-content`
+- `GET /api/v1/admin/jobs` · `POST /api/v1/admin/jobs/{name}/run`
+- `GET|PATCH /api/v1/admin/settings` · `GET|PUT /api/v1/admin/watchlist`
+- `GET|POST /api/v1/admin/api-keys` · `PATCH /api/v1/admin/api-keys/{id}`
 
 ## 公开只读 API
 
