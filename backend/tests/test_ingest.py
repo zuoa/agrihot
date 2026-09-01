@@ -13,6 +13,7 @@ TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
 
 os.environ["DATABASE_URL"] = TEST_DB
 os.environ["CONTENT_FETCH_ENABLED"] = "false"  # no network in tests
+os.environ["LITERATURE_FETCH_ENABLED"] = "false"
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
@@ -127,6 +128,57 @@ async def test_similar_title_dedup_merges_source(client):
     sources = detail.json()["sources"]
     assert len(sources) == 2
     assert any(s["name"] == "另一来源" for s in sources)
+
+
+@pytest.mark.asyncio
+async def test_doi_dedup_across_different_urls(client):
+    headers = {"X-API-Key": TEST_KEY}
+    paper = sample_item(
+        title="A deep learning approach to smart irrigation scheduling",
+        url="https://doi.org/10.1016/j.compag.2026.00001",
+        summary="本研究提出一种用于智慧灌溉调度的深度学习方法，在玉米田验证节水效果。",
+        source_name="Computers and Electronics in Agriculture",
+        category="论文",
+        tags=["智慧农业", "灌溉"],
+        doi="10.1016/j.compag.2026.00001",
+    )
+    r1 = await client.post("/api/v1/ingest/items", json=paper, headers=headers)
+    assert r1.json()["status"] == "created"
+    item_id = r1.json()["item_id"]
+
+    dup = dict(paper)
+    dup["url"] = "https://www.sciencedirect.com/science/article/pii/S016816992600001"
+    dup["doi"] = "https://doi.org/10.1016/j.compag.2026.00001"
+    dup["source_name"] = "ScienceDirect"
+    r2 = await client.post("/api/v1/ingest/items", json=dup, headers=headers)
+    body = r2.json()
+    assert body["status"] == "duplicate"
+    assert body["dup_reason"] == "exact_doi"
+    assert body["duplicate_of"] == item_id
+
+    detail = await client.get(f"/api/v1/items/{item_id}")
+    assert detail.json()["doi"] == "10.1016/j.compag.2026.00001"
+    assert len(detail.json()["sources"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_doi_extracted_from_url_when_field_omitted(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post(
+        "/api/v1/ingest/items",
+        json=sample_item(
+            title="Remote sensing of crop phenotyping at field scale",
+            url="https://doi.org/10.1007/s11119-026-00001-x",
+            summary="田间尺度作物表型遥感监测方法综述，覆盖无人机与卫星数据融合。",
+            category="论文",
+            source_name="Precision Agriculture",
+        ),
+        headers=headers,
+    )
+    assert r.json()["status"] == "created"
+    detail = await client.get(f"/api/v1/items/{r.json()['item_id']}")
+    assert detail.json()["doi"] == "10.1007/s11119-026-00001-x"
+    assert detail.json()["paper"] is not None
 
 
 @pytest.mark.asyncio

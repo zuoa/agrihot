@@ -7,6 +7,10 @@
       <span>·</span>
       <span>{{ dateLabel }}</span>
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
+      <span v-if="item.paper?.direction"
+        class="px-1.5 py-0.5 rounded bg-leaf-50 text-leaf-700 border border-leaf-100">
+        {{ item.paper.direction }}
+      </span>
       <span v-if="item.is_selected" class="px-1.5 py-0.5 rounded bg-leaf-100 text-leaf-700 font-medium">精选</span>
       <span class="text-amber-600" v-if="item.hotness >= 60">🔥 {{ item.hotness }}</span>
       <span>阅读 {{ item.view_count ?? 0 }}</span>
@@ -14,8 +18,20 @@
 
     <h1 class="text-xl sm:text-2xl font-bold text-stone-900 leading-snug">{{ item.title }}</h1>
 
+    <p v-if="authorLine" class="mt-3 text-sm text-stone-500 leading-6">{{ authorLine }}</p>
+    <div v-if="item.paper || item.doi" class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+      <span v-if="item.paper?.venue">{{ item.paper.venue }}</span>
+      <span v-if="item.paper?.cited_by_count">被引 {{ item.paper.cited_by_count }}</span>
+      <a v-if="item.doi" :href="`https://doi.org/${item.doi}`" target="_blank" rel="noopener"
+        class="text-leaf-700 hover:underline break-all">DOI {{ item.doi }}</a>
+      <a v-if="item.paper?.oa_url" :href="item.paper.oa_url" target="_blank" rel="noopener"
+        class="text-leaf-700 hover:underline">开放获取 PDF ↗</a>
+    </div>
+
+    <PaperCard v-if="item.paper?.card" class="mt-5" :card="item.paper.card" />
+
     <div class="mt-5 rounded-xl bg-leaf-50 border border-leaf-100 p-4">
-      <div class="text-xs font-bold text-leaf-700 mb-2">摘要</div>
+      <div class="text-xs font-bold text-leaf-700 mb-2">{{ item.paper?.card ? '原文摘要' : '摘要' }}</div>
       <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ item.summary }}</p>
     </div>
 
@@ -76,6 +92,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { adminSession, api, fmtDay } from '../api'
 import { renderMarkdown } from '../markdown'
 import ItemEditModal from '../components/ItemEditModal.vue'
+import PaperCard from '../components/PaperCard.vue'
 import ScoreBreakdown from '../components/ScoreBreakdown.vue'
 
 const route = useRoute()
@@ -133,4 +150,11 @@ async function remove() {
 
 const dateLabel = computed(() => (item.value ? fmtDay(item.value.published_at || item.value.created_at) : ''))
 const contentHtml = computed(() => renderMarkdown(item.value?.content))
+const authorLine = computed(() => {
+  const authors = item.value?.paper?.authors
+  if (!authors?.length) return ''
+  const names = authors.map((a) => a.name).filter(Boolean)
+  if (names.length <= 3) return names.join(' · ')
+  return `${names.slice(0, 3).join(' · ')} 等 ${names.length} 人`
+})
 </script>

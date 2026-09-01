@@ -33,6 +33,7 @@ class IngestItemIn(BaseModel):
     cover_url: str | None = None
     content: str | None = None
     lang: str | None = Field(default=None, max_length=10)
+    doi: str | None = Field(default=None, max_length=200)
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -97,6 +98,31 @@ class SourceOut(BaseModel):
     url: str | None = None
 
 
+class PaperAuthorOut(BaseModel):
+    name: str
+    orcid: str | None = None
+
+
+class PaperCardOut(BaseModel):
+    tldr: str = ""
+    method: str = ""
+    finding: str = ""
+    direction: str = ""
+    opportunity: str = ""
+
+
+class PaperMetaOut(BaseModel):
+    doi: str | None = None
+    openalex_id: str | None = None
+    authors: list[PaperAuthorOut] = []
+    venue: str | None = None
+    cited_by_count: int = 0
+    oa_url: str | None = None
+    card: PaperCardOut | None = None
+    direction: str | None = None
+    ingested_from: str = "agent"
+
+
 class ItemOut(BaseModel):
     id: int
     title: str
@@ -115,6 +141,8 @@ class ItemOut(BaseModel):
     sources: list[SourceOut]
     tags: list[str]
     view_count: int = 0
+    doi: str | None = None
+    paper: PaperMetaOut | None = None
     created_at: datetime
 
 
@@ -162,3 +190,18 @@ class StatsOut(BaseModel):
     sources: int
     views: int
     since: datetime | None
+
+
+class DirectionOut(BaseModel):
+    name: str
+    count: int = 0
+
+
+class LiteratureFetchOut(BaseModel):
+    fetched: int = 0
+    screened_out: int = 0
+    created: int = 0
+    duplicate: int = 0
+    errors: int = 0
+    from_date: str | None = None
+    truncated: bool = False

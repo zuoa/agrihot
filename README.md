@@ -66,6 +66,19 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 环境变量：`DEEPSEEK_API_KEY`（留空则关闭评分）、`DEEPSEEK_BASE_URL`、
 `DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`SELECTION_THRESHOLD`、`DAILY_TOP_N`。
 
+## 文献雷达（OpenAlex）
+
+每天 `07:30`（`DAILY_TIMEZONE`）按 `backend/app/watchlist.yaml` 订阅的方向 / 期刊 / 学者，
+从 [OpenAlex](https://openalex.org/) 增量拉取论文元数据。抓取不调用 AI；入库后走现有评分，
+并对论文生成中文结构化卡片（速览 / 方法 / 发现 / 方向 / 机会点）。去重优先 DOI，
+再 OpenAlex ID、URL、标题相似。论文不经 Jina 抓全文。
+
+- 关注面：改 `watchlist.yaml`（ISSN、检索式、学者 OpenAlex ID）
+- 手动跑一轮：`python -m scripts.fetch_literature`
+- 环境变量：`OPENALEX_API_KEY`（可选）、`OPENALEX_MAILTO`、`LITERATURE_FETCH_ENABLED`、
+  `LITERATURE_FETCH_TIME`（默认 `07:30`）
+- 中文 OA 刊（如《智慧农业》）OpenAlex 覆盖差，后续用 DOAJ 补，不爬知网 / WoS / 期刊官网
+
 旧数据补评分：`python -m scripts.rescore`（仅未评分条目；`--all` 全部重评）。
 
 ## 管理控制台
@@ -102,7 +115,7 @@ GitHub Container Registry，**无需配置任何 Secret**（使用自动注入�
 
 ```bash
 cd deploy
-cp .env.example .env          # 设置 DB_PASSWORD（自动精选需另填 DEEPSEEK_API_KEY）
+cp .env.example .env          # 设置 DB_PASSWORD（自动精选填 DEEPSEEK_API_KEY；文献雷达可选 OPENALEX_API_KEY）
 docker compose up -d          # 启动 db + backend + frontend（前端 :80）
 
 # 首次初始化：

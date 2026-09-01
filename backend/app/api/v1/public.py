@@ -7,13 +7,46 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
-from ...models import Daily, Item, Tag
-from ...schemas import (DailyListItem, DailyListOut, DailyOut, ItemListOut,
-                        ItemOut, SourceOut, StatsOut, TagOut)
+from ...models import Daily, Item, PaperMeta, Tag
+from ...schemas import (DailyListItem, DailyListOut, DailyOut, DirectionOut,
+                        ItemListOut, ItemOut, PaperAuthorOut, PaperCardOut,
+                        PaperMetaOut, SourceOut, StatsOut, TagOut)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
 PAGE_SIZE_MAX = 100
+
+
+def _to_paper_out(item: Item) -> PaperMetaOut | None:
+    meta = item.paper
+    if meta is None:
+        return None
+    card = None
+    if isinstance(meta.card, dict) and meta.card.get("tldr"):
+        card = PaperCardOut(
+            tldr=str(meta.card.get("tldr") or ""),
+            method=str(meta.card.get("method") or ""),
+            finding=str(meta.card.get("finding") or ""),
+            direction=str(meta.card.get("direction") or ""),
+            opportunity=str(meta.card.get("opportunity") or ""),
+        )
+    authors: list[PaperAuthorOut] = []
+    for raw in meta.authors or []:
+        if isinstance(raw, dict) and raw.get("name"):
+            authors.append(
+                PaperAuthorOut(name=str(raw["name"]), orcid=raw.get("orcid"))
+            )
+    return PaperMetaOut(
+        doi=item.doi,
+        openalex_id=meta.openalex_id,
+        authors=authors,
+        venue=meta.venue,
+        cited_by_count=meta.cited_by_count or 0,
+        oa_url=meta.oa_url,
+        card=card,
+        direction=meta.direction,
+        ingested_from=meta.ingested_from or "agent",
+    )
 
 
 def _to_item_out(item: Item) -> ItemOut:
@@ -35,6 +68,8 @@ def _to_item_out(item: Item) -> ItemOut:
         sources=[SourceOut(**s) for s in (item.sources or [])],
         tags=[t.name for t in item.tags],
         view_count=item.view_count,
+        doi=item.doi,
+        paper=_to_paper_out(item),
         created_at=item.created_at,
     )
 
@@ -45,6 +80,7 @@ async def list_items(
     window: str | None = Query(default=None, pattern="^(24h|7d)$"),
     category: str | None = None,
     tag: str | None = None,
+    direction: str | None = None,
     q: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
@@ -68,6 +104,9 @@ async def list_items(
     if tag:
         stmt = stmt.where(Item.tags.any(Tag.name == tag))
         count_stmt = count_stmt.where(Item.tags.any(Tag.name == tag))
+    if direction:
+        stmt = stmt.join(Item.paper).where(PaperMeta.direction == direction)
+        count_stmt = count_stmt.join(Item.paper).where(PaperMeta.direction == direction)
     if q:
         like = f"%{q}%"
         cond = or_(Item.title.ilike(like), Item.summary.ilike(like))
@@ -145,6 +184,21 @@ async def site_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
         views=int(views or 0),
         since=since,
     )
+
+
+@router.get("/paper-directions", response_model=list[DirectionOut])
+async def list_paper_directions(
+    session: AsyncSession = Depends(get_session),
+) -> list[DirectionOut]:
+    rows = (
+        await session.execute(
+            select(PaperMeta.direction, func.count(PaperMeta.item_id))
+            .where(PaperMeta.direction.is_not(None), PaperMeta.direction != "")
+            .group_by(PaperMeta.direction)
+            .order_by(func.count(PaperMeta.item_id).desc())
+        )
+    ).all()
+    return [DirectionOut(name=name, count=count) for name, count in rows]
 
 
 @router.get("/tags", response_model=list[TagOut])

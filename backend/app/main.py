@@ -11,42 +11,34 @@ from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
 from .api.v1.public import router as public_router
 from .config import settings
-from .database import SessionLocal, engine
-from .models import Base
+from .database import SessionLocal, ensure_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # create_all won't add columns to existing tables; patch them in place
-        # (works on both SQLite and Postgres by checking first)
-        from sqlalchemy import inspect, text
-
-        existing = await conn.run_sync(
-            lambda c: {col["name"] for col in inspect(c).get_columns("items")}
-        )
-        for col, ddl in (
-            ("score", "INTEGER"),
-            ("score_detail", "JSON"),
-            ("view_count", "INTEGER NOT NULL DEFAULT 0"),
-        ):
-            if col not in existing:
-                await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
+    await ensure_schema()
     # one-shot: split concatenated tag blobs left by earlier agents
     async with SessionLocal() as session:
-        from .services.ingest_service import maybe_retag_existing
+        from .services.ingest_service import maybe_backfill_doi, maybe_retag_existing
 
         await maybe_retag_existing(session)
+        await maybe_backfill_doi(session)
         await session.commit()
     scheduler = None
+    literature = None
     if settings.daily_generate_enabled:
         from .services.daily_scheduler import start_daily_scheduler
 
         scheduler = start_daily_scheduler()
+    if settings.literature_fetch_enabled:
+        from .services.literature_scheduler import start_literature_scheduler
+
+        literature = start_literature_scheduler()
     yield
     if scheduler is not None:
         scheduler.cancel()
+    if literature is not None:
+        literature.cancel()
 
 
 app = FastAPI(

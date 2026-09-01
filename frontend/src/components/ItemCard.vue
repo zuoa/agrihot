@@ -15,6 +15,10 @@
         {{ item.score }} 分
       </router-link>
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
+      <span v-if="item.paper?.direction"
+        class="px-1.5 py-0.5 rounded bg-leaf-50 text-leaf-700 border border-leaf-100">
+        {{ item.paper.direction }}
+      </span>
       <span v-if="item.sources && item.sources.length > 1" class="text-leaf-600">
         {{ item.sources.length }} 个信源同时报道
       </span>
@@ -28,7 +32,7 @@
     </router-link>
 
     <p class="mt-2 text-sm text-stone-600 leading-6" :class="{ 'line-clamp-3': clamp }">
-      {{ item.summary }}
+      {{ blurb }}
     </p>
 
     <div class="mt-3 flex flex-wrap gap-1.5" v-if="item.tags?.length">
@@ -66,6 +70,7 @@ const emit = defineEmits(['updated', 'deleted'])
 
 const showEdit = ref(false)
 const deleting = ref(false)
+const blurb = computed(() => props.item.paper?.card?.tldr || props.item.summary)
 
 async function remove() {
   if (!confirm(`确定删除「${props.item.title.slice(0, 30)}」？此操作不可恢复。`)) return

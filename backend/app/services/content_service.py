@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item
-from . import scoring_service
+from . import paper_card_service, scoring_service
 
 log = logging.getLogger(__name__)
 
@@ -90,8 +90,13 @@ async def enrich_and_score(item_id: int) -> None:
         item = await session.get(Item, item_id)
         if item is None or item.is_selected:
             return
-        await enrich_item(session, item)
+        # 论文已有摘要 / DOI 落地页，不跑 Jina（易 403 且无必要）
+        is_paper = item.category == "论文" or item.paper is not None
+        if not is_paper:
+            await enrich_item(session, item)
         if settings.deepseek_api_key:
             if await scoring_service.score_item(session, item) is not None:
                 await scoring_service.refresh_day_selection(session, item.created_at)
+            if is_paper:
+                await paper_card_service.fill_card(session, item)
         await session.commit()

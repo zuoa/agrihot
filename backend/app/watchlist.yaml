@@ -1,0 +1,95 @@
+# AgriHot 文献关注面：改订阅只改这份文件。
+# OpenAlex 按 journals / authors / directions 拉取；directions 检索须过 prescreen。
+
+directions:
+  - name: 智慧农业 / 农业物联网
+    queries:
+      - smart agriculture
+      - agricultural IoT
+      - agricultural internet of things
+      - 智慧农业
+      - 农业物联网
+  - name: 农业遥感与作物表型
+    queries:
+      - crop phenotyping
+      - plant phenotyping
+      - agricultural remote sensing
+      - 作物表型
+      - 农业遥感
+  - name: 数字乡村与农业信息化
+    queries:
+      - digital agriculture
+      - digital village
+      - rural informatization
+      - 数字农业
+      - 数字乡村
+      - 农业信息化
+  - name: 农业人工智能与决策模型
+    queries:
+      - agricultural artificial intelligence
+      - agricultural machine learning
+      - agricultural decision support
+      - 农业人工智能
+      - 农业决策
+  - name: 农业绿色发展与碳
+    queries:
+      - agricultural carbon emission
+      - digital agriculture carbon
+      - 农业碳排放
+      - 农业绿色全要素生产率
+
+journals:
+  - name: Computers and Electronics in Agriculture
+    issn: "0168-1699"
+  - name: Precision Agriculture
+    issn: "1385-2256"
+  - name: Smart Agricultural Technology
+    issn: "2772-3755"
+  - name: Agricultural Systems
+    issn: "0308-521X"
+  - name: Biosystems Engineering
+    issn: "1537-5110"
+  - name: Frontiers in Sustainable Food Systems
+    issn: "2571-581X"
+
+# OpenAlex Author ID（A…）。第一期留空，有明确跟踪对象再填。
+authors: []
+
+# 方向检索 / 学者订阅的廉价预筛：标题或摘要命中任一即可。核心订阅刊不过这道闸。
+prescreen:
+  - smart agriculture
+  - digital agriculture
+  - precision agriculture
+  - agricultural iot
+  - agricultural internet of things
+  - digital village
+  - rural informatization
+  - crop phenotyping
+  - plant phenotyping
+  - agricultural remote sensing
+  - remote sensing
+  - agricultural robot
+  - agricultural drone
+  - agricultural uav
+  - farm management
+  - decision support
+  - agricultural ai
+  - agricultural artificial intelligence
+  - agricultural machine learning
+  - computer vision
+  - smart irrigation
+  - agricultural sensor
+  - ndvi
+  - 智慧农业
+  - 数字农业
+  - 数字乡村
+  - 农业信息化
+  - 精准农业
+  - 农业物联网
+  - 作物表型
+  - 农业遥感
+  - 农业人工智能
+  - 农业机器人
+  - 智慧灌溉
+  - 农业碳排放
+  - 遥感

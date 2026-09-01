@@ -13,6 +13,7 @@ TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
 
 os.environ["DATABASE_URL"] = TEST_DB
 os.environ["CONTENT_FETCH_ENABLED"] = "false"  # no network in tests
+os.environ["LITERATURE_FETCH_ENABLED"] = "false"
 
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402

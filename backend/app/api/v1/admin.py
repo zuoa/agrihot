@@ -8,11 +8,11 @@ from ...config import settings
 from ...database import get_session
 from ...models import Item
 from ...schemas import (AdminItemUpdate, AdminLoginIn, AdminLoginOut,
-                        DailyGenerateOut, ItemOut)
+                        DailyGenerateOut, ItemOut, LiteratureFetchOut)
 from ...security import (check_admin_password, issue_admin_token, problem,
                          require_admin)
 from ...services import (content_service, daily_service, ingest_service,
-                         scoring_service)
+                         literature_scheduler, scoring_service)
 from .ingest import limiter  # shared app limiter; login keys on remote IP
 from .public import _to_item_out
 
@@ -87,6 +87,23 @@ async def admin_delete_item(
         raise problem(404, "Not Found", "条目不存在")
     await session.commit()
     return {"status": "deleted", "item_id": item_id}
+
+
+@router.post("/literature/fetch", response_model=LiteratureFetchOut)
+async def fetch_literature(
+    _: None = Depends(require_admin),
+) -> LiteratureFetchOut:
+    """手动触发一轮 OpenAlex 拉取（与定时任务同一入口）。"""
+    stats = await literature_scheduler.run_once()
+    return LiteratureFetchOut(
+        fetched=stats.get("fetched", 0),
+        screened_out=stats.get("screened_out", 0),
+        created=stats.get("created", 0),
+        duplicate=stats.get("duplicate", 0),
+        errors=stats.get("errors", 0),
+        from_date=stats.get("from_date"),
+        truncated=bool(stats.get("truncated")),
+    )
 
 
 @router.post("/dailies/{day}/generate", response_model=DailyGenerateOut)

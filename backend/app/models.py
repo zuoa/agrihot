@@ -51,6 +51,8 @@ class Item(Base):
     sources: Mapped[list] = mapped_column(JSON, default=list)
     # 阅读次数：详情页每打开一次 +1
     view_count: Mapped[int] = mapped_column(Integer, default=0)
+    # 规范化 DOI（小写、无 doi.org 前缀）；新闻条目多为 NULL
+    doi: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )
@@ -58,6 +60,41 @@ class Item(Base):
     tags: Mapped[list["Tag"]] = relationship(
         secondary=item_tags, back_populates="items", lazy="selectin"
     )
+    paper: Mapped["PaperMeta | None"] = relationship(
+        back_populates="item", uselist=False,
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+
+
+class PaperMeta(Base):
+    """1:1 论文扩展：OpenAlex / DOAJ / Agent 推送的学术条目。"""
+    __tablename__ = "paper_meta"
+
+    item_id: Mapped[int] = mapped_column(
+        ForeignKey("items.id", ondelete="CASCADE"), primary_key=True
+    )
+    openalex_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    authors: Mapped[list] = mapped_column(JSON, default=list)
+    venue: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cited_by_count: Mapped[int] = mapped_column(Integer, default=0)
+    oa_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # {tldr, method, finding, direction, opportunity}
+    card: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    ingested_from: Mapped[str] = mapped_column(String(20), default="agent")
+
+    item: Mapped[Item] = relationship(back_populates="paper")
+
+
+class PipelineState(Base):
+    """Key/value 游标：文献拉取的上次覆盖日期等。"""
+    __tablename__ = "pipeline_state"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Tag(Base):

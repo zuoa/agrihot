@@ -6,13 +6,24 @@
         class="px-3 py-1.5 text-sm rounded-full border border-leaf-200 bg-white focus:outline-none focus:border-leaf-500 w-56" />
     </div>
 
-    <div class="flex gap-2 mb-5 overflow-x-auto pb-1">
+    <div class="flex gap-2 overflow-x-auto pb-1"
+      :class="category === '论文' && directions.length ? 'mb-3' : 'mb-5'">
       <button v-for="c in categories" :key="c" @click="pickCategory(c)"
         class="px-3.5 py-1.5 text-sm rounded-full border whitespace-nowrap transition-colors"
         :class="(category || '全部') === c
           ? 'bg-leaf-600 text-white border-leaf-600'
           : 'bg-white text-stone-600 border-leaf-200 hover:border-leaf-400'">
         {{ c }}
+      </button>
+    </div>
+    <div v-if="category === '论文' && directions.length" class="flex gap-2 mb-5 overflow-x-auto pb-1">
+      <button v-for="d in [{ name: '全部方向', count: 0 }, ...directions]" :key="d.name"
+        @click="pickDirection(d.name === '全部方向' ? '' : d.name)"
+        class="px-3 py-1 text-xs rounded-full border whitespace-nowrap transition-colors"
+        :class="(direction || '全部方向') === d.name || (!direction && d.name === '全部方向')
+          ? 'bg-leaf-700 text-white border-leaf-700'
+          : 'bg-white text-stone-500 border-leaf-200 hover:border-leaf-400'">
+        {{ d.name }}<span v-if="d.count" class="ml-1 tabular-nums opacity-70">{{ d.count }}</span>
       </button>
     </div>
 
@@ -53,6 +64,8 @@ const categories = ['全部', ...CATEGORIES]
 const route = useRoute()
 const router = useRouter()
 const category = ref('')
+const direction = ref('')
+const directions = ref([])
 const q = ref('')
 const page = ref(1)
 const total = ref(0)
@@ -61,9 +74,15 @@ const items = ref([])
 const loading = ref(true)
 
 watch(
-  () => route.query.category,
-  (c) => {
+  () => [route.query.category, route.query.direction],
+  async ([c, d]) => {
     category.value = CATEGORIES.includes(c) ? c : ''
+    direction.value = category.value === '论文' && d ? String(d) : ''
+    if (category.value === '论文') {
+      try { directions.value = await api.paperDirections() } catch { directions.value = [] }
+    } else {
+      directions.value = []
+    }
     load(1)
   },
   { immediate: true },
@@ -73,6 +92,14 @@ function pickCategory(c) {
   const query = { ...route.query }
   if (c === '全部') delete query.category
   else query.category = c
+  delete query.direction
+  router.replace({ query })
+}
+
+function pickDirection(name) {
+  const query = { ...route.query, category: '论文' }
+  if (!name) delete query.direction
+  else query.direction = name
   router.replace({ query })
 }
 
@@ -82,7 +109,14 @@ async function load(p) {
   loading.value = true
   page.value = p
   try {
-    const data = await api.items({ mode: 'all', category: category.value, q: q.value, page: p, page_size: pageSize })
+    const data = await api.items({
+      mode: 'all',
+      category: category.value,
+      direction: direction.value,
+      q: q.value,
+      page: p,
+      page_size: pageSize,
+    })
     items.value = data.items
     total.value = data.total
   } finally {

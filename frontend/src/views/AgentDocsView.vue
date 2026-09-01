@@ -89,6 +89,11 @@
     <Section title="④ 去重规则（服务层自动执行）" id="dedup">
       <div class="space-y-4 text-sm text-stone-700 leading-6">
         <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
+          <div class="font-bold text-leaf-800 mb-1">第 0 级 · DOI / OpenAlex ID <Code>exact_doi</Code> / <Code>openalex_id</Code></div>
+          论文先按规范化 DOI（小写、去掉 doi.org 前缀）判重，再按 OpenAlex Work ID。
+          同一篇论文的出版社页、DOI 链接与 OpenAlex 记录会合并为一条。
+        </div>
+        <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
           <div class="font-bold text-leaf-800 mb-1">第 1 级 · URL 精确去重 <Code>exact_url</Code></div>
           URL 先做规范化（去除 utm_*/from/ref 等追踪参数、统一协议与大小写、去锚点与末尾斜杠），再取 SHA-256。
           哈希已存在 → 判重。同一篇文章带不同追踪参数重复推送会被识别为同一条。
@@ -168,7 +173,7 @@ CodeBlock.props = ['lang', 'code']
 
 const fields = [
   { name: 'title', type: 'string', req: true, desc: '标题，4–500 字' },
-  { name: 'url', type: 'string', req: true, desc: '原文链接，去重主键（规范化后比对）' },
+  { name: 'url', type: 'string', req: true, desc: '原文链接；论文优先填 DOI 链接（https://doi.org/…）' },
   { name: 'summary', type: 'string', req: true, desc: '摘要，≥10 字；论文建议附原文标题与作者' },
   { name: 'source_name', type: 'string', req: false, desc: '信源名称，如「农民日报」；多信源合并时展示' },
   { name: 'source_url', type: 'string', req: false, desc: '信源首页/出处链接' },
@@ -178,6 +183,7 @@ const fields = [
   { name: 'cover_url', type: 'string', req: false, desc: '封面图 URL' },
   { name: 'content', type: 'string', req: false, desc: '正文（可选，Markdown，详情页展示；缺省时服务端自动抓取补充）' },
   { name: 'lang', type: 'string', req: false, desc: '语种标记，如 zh / en' },
+  { name: 'doi', type: 'string', req: false, desc: '论文 DOI。不填时若 url 是 doi.org 链接会自动抽取。DOI 相同视为同一篇，优先于 URL / 标题去重' },
 ]
 
 const quickstart = `# 推送第一条资讯

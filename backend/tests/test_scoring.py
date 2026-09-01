@@ -16,6 +16,7 @@ TEST_DB = "sqlite+aiosqlite:////tmp/agrihot_test.db"
 os.environ["DATABASE_URL"] = TEST_DB
 # never hit the network in tests; enrichment tests monkeypatch fetch_fulltext
 os.environ["CONTENT_FETCH_ENABLED"] = "false"
+os.environ["LITERATURE_FETCH_ENABLED"] = "false"
 
 from app.config import settings  # noqa: E402
 from app.database import get_session  # noqa: E402

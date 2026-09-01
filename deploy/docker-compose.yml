@@ -41,6 +41,11 @@ services:
       DAILY_GENERATE_ENABLED: ${DAILY_GENERATE_ENABLED:-true}
       DAILY_GENERATE_TIME: ${DAILY_GENERATE_TIME:-20:00}
       DAILY_TIMEZONE: ${DAILY_TIMEZONE:-Asia/Shanghai}
+      # OpenAlex 文献雷达（免费元数据；OPENALEX_API_KEY 可选，有 key 速率更高）
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      OPENALEX_MAILTO: ${OPENALEX_MAILTO:-ijedyu@gmail.com}
+      LITERATURE_FETCH_ENABLED: ${LITERATURE_FETCH_ENABLED:-true}
+      LITERATURE_FETCH_TIME: ${LITERATURE_FETCH_TIME:-07:30}
     depends_on:
       db:
         condition: service_healthy

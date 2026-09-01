@@ -3,14 +3,16 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Item, Tag, item_tags
+from ..models import Item, PaperMeta, Tag, item_tags
 from ..schemas import IngestItemIn, IngestResultOut
 from . import dedup
+from .doi import normalize_doi
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +40,18 @@ TAG_MIN_LEN = 2
 TAG_MAX_CJK = 16
 TAG_MAX_ASCII = 40
 TAG_MAX_COUNT = 20
+
+
+@dataclass
+class PaperDraft:
+    """Optional scholarly metadata attached at ingest (OpenAlex / DOAJ / 论文)."""
+    openalex_id: str | None = None
+    authors: list = field(default_factory=list)
+    venue: str | None = None
+    cited_by_count: int = 0
+    oa_url: str | None = None
+    direction: str | None = None
+    ingested_from: str = "agent"
 
 
 def normalize_tags(names: list[str] | None) -> list[str]:
@@ -170,6 +184,29 @@ async def retag_all_items(session: AsyncSession, *, dry_run: bool = False) -> di
     }
 
 
+async def maybe_backfill_doi(session: AsyncSession) -> int:
+    """Startup helper: fill Item.doi from url / source_url when missing."""
+    items = (
+        await session.execute(select(Item).where(Item.doi.is_(None)))
+    ).scalars().all()
+    filled = 0
+    seen: set[str] = set()
+    existing = (
+        await session.execute(select(Item.doi).where(Item.doi.is_not(None)))
+    ).scalars().all()
+    seen.update(d for d in existing if d)
+    for item in items:
+        doi = normalize_doi(item.url) or normalize_doi(item.source_url)
+        if not doi or doi in seen:
+            continue
+        item.doi = doi
+        seen.add(doi)
+        filled += 1
+    if filled:
+        log.info("backfilled doi on %s existing items", filled)
+    return filled
+
+
 async def maybe_retag_existing(session: AsyncSession) -> dict | None:
     """Startup helper: retag only if some stored names still look like blobs."""
     names = (await session.execute(select(Tag.name))).scalars().all()
@@ -197,6 +234,40 @@ def _merge_source(item: Item, payload: IngestItemIn) -> bool:
     return False
 
 
+def _apply_paper_meta(item: Item, draft: PaperDraft | None, doi: str | None) -> None:
+    """Create or fill-empty paper_meta. Never overwrite a non-empty field."""
+    if draft is None and item.category != "论文":
+        return
+    meta = item.paper
+    if meta is None:
+        meta = PaperMeta(
+            ingested_from=(draft.ingested_from if draft else "agent"),
+        )
+        item.paper = meta
+    if draft is None:
+        return
+    if draft.openalex_id and not meta.openalex_id:
+        meta.openalex_id = draft.openalex_id
+    if draft.authors and not meta.authors:
+        meta.authors = draft.authors
+    if draft.venue and not meta.venue:
+        meta.venue = draft.venue
+    if draft.cited_by_count and (meta.cited_by_count or 0) < draft.cited_by_count:
+        meta.cited_by_count = draft.cited_by_count
+    if draft.oa_url and not meta.oa_url:
+        meta.oa_url = draft.oa_url
+    if draft.direction and not meta.direction:
+        meta.direction = draft.direction
+    if draft.ingested_from and meta.ingested_from == "agent" and draft.ingested_from != "agent":
+        meta.ingested_from = draft.ingested_from
+
+
+def _resolved_doi(payload: IngestItemIn) -> str | None:
+    return normalize_doi(payload.doi) or normalize_doi(payload.url) or normalize_doi(
+        payload.source_url
+    )
+
+
 async def _find_similar_title(
     session: AsyncSession, title: str, simhash: int
 ) -> Item | None:
@@ -220,11 +291,60 @@ async def _find_similar_title(
     return None
 
 
+async def _find_by_openalex_id(session: AsyncSession, openalex_id: str) -> Item | None:
+    meta = (
+        await session.execute(
+            select(PaperMeta).where(PaperMeta.openalex_id == openalex_id)
+        )
+    ).scalar_one_or_none()
+    if meta is None:
+        return None
+    return await session.get(Item, meta.item_id)
+
+
 async def ingest_item(
-    session: AsyncSession, payload: IngestItemIn, pushed_by: str = ""
+    session: AsyncSession,
+    payload: IngestItemIn,
+    pushed_by: str = "",
+    paper_draft: PaperDraft | None = None,
 ) -> IngestResultOut:
     """Push one item through dedup; create or merge. Caller commits."""
+    doi = _resolved_doi(payload)
     uhash = dedup.url_hash(payload.url)
+
+    # Level 0a: DOI
+    if doi:
+        existing = (
+            await session.execute(select(Item).where(Item.doi == doi))
+        ).scalar_one_or_none()
+        if existing is not None:
+            merged = _merge_source(existing, payload)
+            _apply_paper_meta(existing, paper_draft, doi)
+            await session.flush()
+            return IngestResultOut(
+                status="duplicate",
+                item_id=existing.id,
+                duplicate_of=existing.id,
+                dup_reason="exact_doi",
+                message="DOI 已存在，信源已合并" if merged else "DOI 已存在",
+            )
+
+    # Level 0b: OpenAlex work ID
+    if paper_draft and paper_draft.openalex_id:
+        existing = await _find_by_openalex_id(session, paper_draft.openalex_id)
+        if existing is not None:
+            merged = _merge_source(existing, payload)
+            if doi and not existing.doi:
+                existing.doi = doi
+            _apply_paper_meta(existing, paper_draft, doi)
+            await session.flush()
+            return IngestResultOut(
+                status="duplicate",
+                item_id=existing.id,
+                duplicate_of=existing.id,
+                dup_reason="openalex_id",
+                message="OpenAlex 记录已存在，信源已合并" if merged else "OpenAlex 记录已存在",
+            )
 
     # Level 1: exact URL
     existing = (
@@ -232,8 +352,10 @@ async def ingest_item(
     ).scalar_one_or_none()
     if existing is not None:
         merged = _merge_source(existing, payload)
-        if merged:
-            await session.flush()
+        if doi and not existing.doi:
+            existing.doi = doi
+        _apply_paper_meta(existing, paper_draft, doi)
+        await session.flush()
         return IngestResultOut(
             status="duplicate",
             item_id=existing.id,
@@ -247,6 +369,9 @@ async def ingest_item(
     similar = await _find_similar_title(session, payload.title, shash)
     if similar is not None:
         _merge_source(similar, payload)
+        if doi and not similar.doi:
+            similar.doi = doi
+        _apply_paper_meta(similar, paper_draft, doi)
         await session.flush()
         return IngestResultOut(
             status="duplicate",
@@ -270,9 +395,11 @@ async def ingest_item(
         category=_normalize_category(payload.category),
         cover_url=payload.cover_url,
         hotness=10,
+        doi=doi,
         sources=[{"name": payload.source_name.strip(), "url": payload.source_url or payload.url}],
     )
     item.tags = await _get_or_create_tags(session, payload.tags)
+    _apply_paper_meta(item, paper_draft, doi)
     session.add(item)
     await session.flush()
     return IngestResultOut(status="created", item_id=item.id, message="已收录并直接上线")

@@ -34,7 +34,7 @@
       </div>
       <div class="rounded-xl bg-leaf-50 border border-leaf-100 p-4">
         <div class="text-sm font-bold text-leaf-800">学术论文</div>
-        <div class="text-xs text-stone-500 mt-1.5 leading-5">智慧农业 / 数字乡村研究，外文已译为中文</div>
+        <div class="text-xs text-stone-500 mt-1.5 leading-5">OpenAlex 日更订阅核心期刊与方向；外文摘要译为中文卡片</div>
       </div>
       <div class="rounded-xl bg-leaf-50 border border-leaf-100 p-4">
         <div class="text-sm font-bold text-leaf-800">Agent 友好</div>
@@ -71,7 +71,9 @@
       </div>
     </section>
     <p class="text-xs text-stone-400 leading-5 border-t border-leaf-100 pt-4">
-      免责声明：本站内容整理自公开来源，摘要与翻译由 AI 生成，仅供参考；引用与决策请以官方原文与正式出版物为准。
+      免责声明：本站内容整理自公开来源，学术论文元数据来自
+      <a href="https://openalex.org/" class="text-leaf-600 hover:underline" target="_blank" rel="noopener">OpenAlex</a>
+      等开放接口，摘要与翻译由 AI 生成，仅供参考；引用与决策请以官方原文与正式出版物为准。
       如涉及来源方权益问题，请邮件联系
       <a href="mailto:ijedyu@gmail.com" class="text-leaf-600 hover:underline">ijedyu@gmail.com</a>
       更正或下线。

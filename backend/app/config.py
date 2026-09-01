@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     daily_timezone: str = "Asia/Shanghai"
     # admin console password; empty disables the admin endpoints entirely
     admin_password: str = ""
+    # OpenAlex 文献雷达：免费学术元数据，不爬期刊官网 / WoS
+    openalex_api_key: str = ""
+    openalex_mailto: str = "ijedyu@gmail.com"
+    literature_fetch_enabled: bool = True
+    literature_fetch_time: str = "07:30"
+    # 增量窗口重叠天数（OpenAlex 索引延迟）
+    literature_lookback_days: int = 2
+    # 从未跑过时的回看天数；避免首次把几千篇灌进公共站
+    literature_bootstrap_days: int = 7
+    # 单次运行最多新建条目（控制评分 / 卡片 token）
+    literature_max_new_per_run: int = 80
+    # 空则使用包内 app/watchlist.yaml
+    watchlist_path: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
