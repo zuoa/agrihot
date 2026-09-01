@@ -28,11 +28,12 @@
         class="text-leaf-700 hover:underline">开放获取 PDF ↗</a>
     </div>
 
-    <PaperCard v-if="item.paper?.card" class="mt-5" :card="item.paper.card" />
+    <InsightCard v-if="item.paper?.card || item.score != null" class="mt-5"
+      :card="item.paper?.card" :score="item.score" :detail="item.score_detail" />
 
-    <div class="mt-5 rounded-xl bg-leaf-50 border border-leaf-100 p-4">
+    <div class="mt-5 rounded-xl border border-stone-200 bg-white p-4">
       <div class="flex items-center justify-between gap-3 mb-2">
-        <div class="text-xs font-bold text-leaf-700">{{ item.paper?.card ? '原文摘要' : '摘要' }}</div>
+        <div class="text-xs font-bold text-stone-600">{{ item.paper?.card ? '原文摘要' : '摘要' }}</div>
         <div v-if="item.summary_zh"
           class="flex rounded-full border border-leaf-200 overflow-hidden text-[11px] font-medium leading-none">
           <button type="button" class="px-2.5 py-1"
@@ -45,8 +46,6 @@
       </div>
       <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ displayedSummary }}</p>
     </div>
-
-    <ScoreBreakdown v-if="item.score != null" class="mt-5" :score="item.score" :detail="item.score_detail" />
 
     <section v-if="item.content" class="mt-5 rounded-xl border border-stone-200 bg-stone-50/70">
       <div class="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-stone-200/80">
@@ -103,8 +102,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { adminSession, api, fmtDay } from '../api'
 import { renderMarkdown } from '../markdown'
 import ItemEditModal from '../components/ItemEditModal.vue'
-import PaperCard from '../components/PaperCard.vue'
-import ScoreBreakdown from '../components/ScoreBreakdown.vue'
+import InsightCard from '../components/InsightCard.vue'
 
 const route = useRoute()
 const router = useRouter()
