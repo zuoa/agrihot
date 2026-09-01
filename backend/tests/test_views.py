@@ -75,23 +75,38 @@ async def create_item(client) -> int:
 
 
 @pytest.mark.asyncio
-async def test_detail_view_increments_count(client):
+async def test_detail_get_does_not_increment(client):
     item_id = await create_item(client)
 
-    # 列表返回初始阅读数 0
     r = await client.get("/api/v1/items")
     assert r.status_code == 200
     assert r.json()["items"][0]["view_count"] == 0
 
-    # 每打开一次详情页 +1
     r = await client.get(f"/api/v1/items/{item_id}")
     assert r.status_code == 200
-    assert r.json()["view_count"] == 1
+    assert r.json()["view_count"] == 0
+
+    r = await client.get(f"/api/v1/items/{item_id}")
+    assert r.json()["view_count"] == 0
+
+    r = await client.get("/api/v1/items")
+    assert r.json()["items"][0]["view_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_record_view_increments_count(client):
+    item_id = await create_item(client)
+
+    r = await client.post(f"/api/v1/items/{item_id}/view")
+    assert r.status_code == 200
+    assert r.json() == {"view_count": 1}
+
+    r = await client.post(f"/api/v1/items/{item_id}/view")
+    assert r.json() == {"view_count": 2}
 
     r = await client.get(f"/api/v1/items/{item_id}")
     assert r.json()["view_count"] == 2
 
-    # 列表同步反映累计值
     r = await client.get("/api/v1/items")
     assert r.json()["items"][0]["view_count"] == 2
 
@@ -99,6 +114,8 @@ async def test_detail_view_increments_count(client):
 @pytest.mark.asyncio
 async def test_view_count_404_not_counted(client):
     r = await client.get("/api/v1/items/999")
+    assert r.status_code == 404
+    r = await client.post("/api/v1/items/999/view")
     assert r.status_code == 404
 
 
@@ -148,7 +165,7 @@ async def test_stats_counts_items_categories_and_sources(client):
         await s.commit()
 
     item_id = (await client.get("/api/v1/items")).json()["items"][0]["id"]
-    await client.get(f"/api/v1/items/{item_id}")
+    await client.post(f"/api/v1/items/{item_id}/view")
 
     r = await client.get("/api/v1/stats")
     assert r.status_code == 200

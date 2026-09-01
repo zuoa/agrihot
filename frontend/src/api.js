@@ -13,6 +13,12 @@ async function get(path, params = {}) {
   return res.json()
 }
 
+async function post(path) {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST' })
+  if (!res.ok) throw new Error(`API ${res.status}`)
+  return res.json()
+}
+
 // ---------- admin session (token persisted in localStorage) ----------
 
 const TOKEN_KEY = 'agrihot_admin_token'
@@ -55,6 +61,7 @@ async function adminFetch(path, { method = 'GET', body, params } = {}) {
 export const api = {
   items: (params) => get('/items', params),
   item: (id) => get(`/items/${id}`),
+  recordView: (id) => post(`/items/${id}/view`),
   tags: () => get('/tags'),
   paperDirections: () => get('/paper-directions'),
   stats: () => get('/stats'),

@@ -306,6 +306,10 @@ class ItemOut(BaseModel):
     created_at: datetime
 
 
+class ViewOut(BaseModel):
+    view_count: int
+
+
 class ItemListOut(BaseModel):
     total: int
     page: int

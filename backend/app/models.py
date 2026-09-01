@@ -51,7 +51,7 @@ class Item(Base):
     score_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # merged multi-source reports: [{"name": ..., "url": ...}, ...]
     sources: Mapped[list] = mapped_column(JSON, default=list)
-    # 阅读次数：详情页每打开一次 +1
+    # 阅读次数：详情页可见停留后由 POST /items/{id}/view 自增
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     # 规范化 DOI（小写、无 doi.org 前缀）；新闻条目多为 NULL
     doi: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True, index=True)

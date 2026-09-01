@@ -10,7 +10,7 @@ from ...database import get_session
 from ...models import Daily, Item, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DirectionOut,
                         ItemListOut, ItemOut, PaperAuthorOut, PaperCardOut,
-                        PaperMetaOut, SourceOut, StatsOut, TagOut)
+                        PaperMetaOut, SourceOut, StatsOut, TagOut, ViewOut)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -128,21 +128,35 @@ async def list_items(
     )
 
 
+def _item_404() -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={"title": "Not Found", "status": 404, "detail": "条目不存在"},
+    )
+
+
 @router.get("/items/{item_id}", response_model=ItemOut)
 async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -> ItemOut:
     item = await session.get(Item, item_id)
     if item is None:
-        raise HTTPException(
-            status_code=404,
-            detail={"title": "Not Found", "status": 404, "detail": "条目不存在"},
-        )
-    # 打开详情页计一次阅读；原子自增避免并发丢失
+        raise _item_404()
+    return _to_item_out(item)
+
+
+@router.post("/items/{item_id}/view", response_model=ViewOut)
+async def record_item_view(
+    item_id: int, session: AsyncSession = Depends(get_session)
+) -> ViewOut:
+    item = await session.get(Item, item_id)
+    if item is None:
+        raise _item_404()
+    # 原子自增避免并发丢失；是否计为阅读由前端在可见停留后调用本接口决定
     await session.execute(
         update(Item).where(Item.id == item_id).values(view_count=Item.view_count + 1)
     )
     await session.commit()
     await session.refresh(item)
-    return _to_item_out(item)
+    return ViewOut(view_count=item.view_count)
 
 
 @router.get("/stats", response_model=StatsOut)

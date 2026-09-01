@@ -97,12 +97,14 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { adminSession, api, fmtDay } from '../api'
 import { renderMarkdown } from '../markdown'
 import ItemEditModal from '../components/ItemEditModal.vue'
 import InsightCard from '../components/InsightCard.vue'
+
+const VIEW_DWELL_MS = 3000
 
 const route = useRoute()
 const router = useRouter()
@@ -113,7 +115,49 @@ const deleting = ref(false)
 const fetching = ref(false)
 const absLang = ref('zh')
 
+let dwellTimer = null
+let viewRecorded = false
+
+function stopDwell() {
+  if (dwellTimer != null) {
+    clearTimeout(dwellTimer)
+    dwellTimer = null
+  }
+}
+
+function startDwell() {
+  stopDwell()
+  if (viewRecorded || !item.value) return
+  if (document.visibilityState !== 'visible') return
+  dwellTimer = setTimeout(recordView, VIEW_DWELL_MS)
+}
+
+async function recordView() {
+  if (viewRecorded || !item.value) return
+  viewRecorded = true
+  stopDwell()
+  const id = item.value.id
+  try {
+    const data = await api.recordView(id)
+    if (item.value?.id === id && data.view_count != null) {
+      item.value.view_count = data.view_count
+    }
+  } catch {
+    // 计数失败不影响阅读
+  }
+}
+
+function onVisibility() {
+  if (document.visibilityState === 'visible') startDwell()
+  else stopDwell()
+}
+
 watch(() => route.params.id, load, { immediate: true })
+document.addEventListener('visibilitychange', onVisibility)
+onUnmounted(() => {
+  stopDwell()
+  document.removeEventListener('visibilitychange', onVisibility)
+})
 
 // 路由 meta 只是占位标题，加载到条目后用实际标题覆盖浏览器标签页标题
 watch(() => item.value?.title, (title) => {
@@ -121,6 +165,8 @@ watch(() => item.value?.title, (title) => {
 })
 
 async function load() {
+  stopDwell()
+  viewRecorded = false
   loading.value = true
   item.value = null
   absLang.value = 'zh'
@@ -131,6 +177,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  startDwell()
 }
 
 async function fetchContent() {
