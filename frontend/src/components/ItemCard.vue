@@ -70,7 +70,7 @@ const emit = defineEmits(['updated', 'deleted'])
 
 const showEdit = ref(false)
 const deleting = ref(false)
-const blurb = computed(() => props.item.paper?.card?.tldr || props.item.summary)
+const blurb = computed(() => props.item.paper?.card?.tldr || props.item.summary_zh || props.item.summary)
 
 async function remove() {
   if (!confirm(`确定删除「${props.item.title.slice(0, 30)}」？此操作不可恢复。`)) return

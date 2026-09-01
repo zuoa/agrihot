@@ -55,6 +55,7 @@ def _to_item_out(item: Item) -> ItemOut:
         title=item.title,
         url=item.url,
         summary=item.summary,
+        summary_zh=item.summary_zh,
         content=item.content,
         source_name=item.source_name,
         source_url=item.source_url,

@@ -10,7 +10,7 @@
           <span v-if="topItem.sources?.length > 1">· {{ topItem.sources.length }} 个信源同时报道</span>
         </div>
         <h1 class="text-xl sm:text-2xl font-bold leading-snug">{{ topItem.title }}</h1>
-        <p class="mt-3 text-sm text-leaf-100 leading-6 line-clamp-2">{{ topItem.summary }}</p>
+        <p class="mt-3 text-sm text-leaf-100 leading-6 line-clamp-2">{{ topItem.summary_zh || topItem.summary }}</p>
       </router-link>
     </section>
 

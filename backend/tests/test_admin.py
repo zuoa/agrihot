@@ -163,6 +163,28 @@ async def test_patch_item_fields(client):
 
     # 未提供的字段保持不变
     assert body["summary"] == sample_item()["summary"]
+    assert body.get("summary_zh") is None
+
+
+@pytest.mark.asyncio
+async def test_patch_summary_zh(client):
+    headers = {"X-API-Key": TEST_KEY}
+    r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
+    item_id = r.json()["item_id"]
+
+    auth = await login(client)
+    zh = "这是一条人工校对过的中文摘要，用于覆盖模型译文。"
+    r = await client.patch(
+        f"/api/v1/admin/items/{item_id}", json={"summary_zh": zh}, headers=auth,
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["summary_zh"] == zh
+    assert r.json()["summary"] == sample_item()["summary"]
+
+    r = await client.patch(
+        f"/api/v1/admin/items/{item_id}", json={"summary_zh": "  "}, headers=auth,
+    )
+    assert r.json()["summary_zh"] is None
 
 
 @pytest.mark.asyncio

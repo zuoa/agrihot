@@ -34,6 +34,8 @@ class Item(Base):
     # signed 64-bit storage of the unsigned simhash value
     title_simhash: Mapped[int] = mapped_column(BigInteger)
     summary: Mapped[str] = mapped_column(Text)
+    # 外文摘要的中文译文；原文始终在 summary。中文原文保持 NULL。
+    summary_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_name: Mapped[str] = mapped_column(String(200), default="")
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)

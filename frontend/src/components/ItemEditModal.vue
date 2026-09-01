@@ -12,8 +12,14 @@
           </label>
 
           <label class="block">
-            <span class="text-xs text-stone-500">摘要</span>
+            <span class="text-xs text-stone-500">摘要（原文）</span>
             <textarea v-model="form.summary" rows="3" required
+              class="mt-1 w-full px-3 py-2 rounded-lg border border-leaf-200 focus:outline-none focus:border-leaf-500" />
+          </label>
+
+          <label class="block">
+            <span class="text-xs text-stone-500">中文摘要（外文译文，可空）</span>
+            <textarea v-model="form.summary_zh" rows="3"
               class="mt-1 w-full px-3 py-2 rounded-lg border border-leaf-200 focus:outline-none focus:border-leaf-500" />
           </label>
 
@@ -83,6 +89,7 @@ const emit = defineEmits(['close', 'saved'])
 const form = reactive({
   title: props.item.title,
   summary: props.item.summary,
+  summary_zh: props.item.summary_zh || '',
   content: props.item.content || '',
   category: props.item.category,
   hotness: props.item.hotness,
@@ -100,6 +107,7 @@ async function save() {
     const patch = { ...form }
     // 空字符串 -> null：清空全文而不是存一个空串（后端 exclude_unset，null 是显式赋值）
     patch.content = form.content.trim() || null
+    patch.summary_zh = form.summary_zh.trim() || null
     patch.tags = tagsText.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
     const updated = await api.adminUpdateItem(props.item.id, patch)
     emit('saved', updated)

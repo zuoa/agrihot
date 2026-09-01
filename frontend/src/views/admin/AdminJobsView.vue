@@ -51,6 +51,7 @@ const hints = {
   literature_fetch: '按关注面从 OpenAlex 增量拉取一轮论文',
   daily_generate: '生成或覆盖指定日期的农业日报',
   rescore_unscored: '只给尚未评分的条目打分（需 DeepSeek）',
+  translate_abstracts: '给尚未翻译的外文论文摘要补中文译文（需 DeepSeek）',
   retag: '把历史标签再切成短词并清理空标签',
   fetch_content: '从内容页批量勾选后触发；此处仅查看状态',
 }
@@ -75,6 +76,9 @@ function formatStats(j) {
     return `${s.title || ''} · ${s.item_count ?? 0} 条`
   }
   if (j.name === 'rescore_unscored') return `评分 ${s.scored ?? 0} / ${s.total ?? 0}，失败 ${s.failed ?? 0}`
+  if (j.name === 'translate_abstracts') {
+    return `译成 ${s.translated ?? 0} / ${s.total ?? 0}，跳过 ${s.skipped ?? 0}，失败 ${s.failed ?? 0}`
+  }
   if (j.name === 'retag') return `条目 ${s.items ?? 0}，改动 ${s.changed ?? 0}`
   if (j.name === 'fetch_content') return `抓取 ${s.fetched ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   return JSON.stringify(s)

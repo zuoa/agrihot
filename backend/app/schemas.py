@@ -218,6 +218,7 @@ class AdminItemUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=4, max_length=500)
     url: str | None = Field(default=None, max_length=2000)
     summary: str | None = Field(default=None, min_length=10)
+    summary_zh: str | None = None
     content: str | None = None
     source_name: str | None = Field(default=None, max_length=200)
     source_url: str | None = None
@@ -234,6 +235,14 @@ class AdminItemUpdate(BaseModel):
         if v is None:
             return None
         return _coerce_tag_list(v)
+
+    @field_validator("summary_zh")
+    @classmethod
+    def blank_summary_zh(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 # ---------- public read ----------
@@ -278,6 +287,7 @@ class ItemOut(BaseModel):
     title: str
     url: str
     summary: str
+    summary_zh: str | None = None
     content: str | None
     source_name: str
     source_url: str | None

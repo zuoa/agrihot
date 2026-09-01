@@ -12,7 +12,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any, Awaitable, Callable
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from ..database import SessionLocal
 from ..models import Item, PipelineState, utcnow
@@ -25,6 +25,7 @@ JOB_LABELS = {
     "literature_fetch": "拉取文献",
     "daily_generate": "生成日报",
     "rescore_unscored": "补评未评分条目",
+    "translate_abstracts": "补译外文摘要",
     "retag": "重切标签",
     "fetch_content": "批量抓取全文",
 }
@@ -231,6 +232,40 @@ async def _rescore_unscored(_params: dict[str, Any]) -> dict[str, Any]:
     return {"total": total, "scored": scored, "failed": failed}
 
 
+async def _translate_abstracts(_params: dict[str, Any]) -> dict[str, Any]:
+    from ..config import settings
+    from . import abstract_translate_service
+
+    if not settings.deepseek_api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY 未配置，无法翻译")
+    async with SessionLocal() as session:
+        items = (
+            await session.execute(
+                select(Item)
+                .where(
+                    Item.summary_zh.is_(None),
+                    or_(Item.category == "论文", Item.paper.has()),
+                )
+                .order_by(Item.id)
+            )
+        ).scalars().all()
+        total = len(items)
+        translated = skipped = failed = 0
+        for i, item in enumerate(items, start=1):
+            if not abstract_translate_service.needs_translation(item):
+                skipped += 1
+            else:
+                result = await abstract_translate_service.fill_summary_zh(session, item)
+                if result:
+                    translated += 1
+                else:
+                    failed += 1
+            if i % 5 == 0 or i == total:
+                await set_progress("translate_abstracts", done=i, total=total)
+        await session.commit()
+    return {"total": total, "translated": translated, "skipped": skipped, "failed": failed}
+
+
 async def _retag(_params: dict[str, Any]) -> dict[str, Any]:
     from . import ingest_service
 
@@ -279,6 +314,7 @@ HANDLERS: dict[str, Handler] = {
     "literature_fetch": _literature_fetch,
     "daily_generate": _daily_generate,
     "rescore_unscored": _rescore_unscored,
+    "translate_abstracts": _translate_abstracts,
     "retag": _retag,
     "fetch_content": _fetch_content,
 }

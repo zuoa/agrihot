@@ -13,6 +13,7 @@ _ITEM_COLUMN_PATCHES = (
     ("score_detail", "JSON"),
     ("view_count", "INTEGER NOT NULL DEFAULT 0"),
     ("doi", "VARCHAR(200)"),
+    ("summary_zh", "TEXT"),
 )
 
 

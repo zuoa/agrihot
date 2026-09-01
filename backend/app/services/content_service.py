@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item
-from . import paper_card_service, runtime_settings, scoring_service
+from . import abstract_translate_service, paper_card_service, runtime_settings, scoring_service
 
 log = logging.getLogger(__name__)
 
@@ -99,4 +99,5 @@ async def enrich_and_score(item_id: int) -> None:
                 await scoring_service.refresh_day_selection(session, item.created_at)
             if is_paper:
                 await paper_card_service.fill_card(session, item)
+                await abstract_translate_service.fill_summary_zh(session, item)
         await session.commit()

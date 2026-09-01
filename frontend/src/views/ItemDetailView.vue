@@ -31,8 +31,19 @@
     <PaperCard v-if="item.paper?.card" class="mt-5" :card="item.paper.card" />
 
     <div class="mt-5 rounded-xl bg-leaf-50 border border-leaf-100 p-4">
-      <div class="text-xs font-bold text-leaf-700 mb-2">{{ item.paper?.card ? '原文摘要' : '摘要' }}</div>
-      <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ item.summary }}</p>
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <div class="text-xs font-bold text-leaf-700">{{ item.paper?.card ? '原文摘要' : '摘要' }}</div>
+        <div v-if="item.summary_zh"
+          class="flex rounded-full border border-leaf-200 overflow-hidden text-[11px] font-medium leading-none">
+          <button type="button" class="px-2.5 py-1"
+            :class="absLang === 'zh' ? 'bg-leaf-700 text-white' : 'text-leaf-700 hover:bg-white'"
+            @click="absLang = 'zh'">中</button>
+          <button type="button" class="px-2.5 py-1"
+            :class="absLang === 'en' ? 'bg-leaf-700 text-white' : 'text-leaf-700 hover:bg-white'"
+            @click="absLang = 'en'">EN</button>
+        </div>
+      </div>
+      <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ displayedSummary }}</p>
     </div>
 
     <ScoreBreakdown v-if="item.score != null" class="mt-5" :score="item.score" :detail="item.score_detail" />
@@ -102,6 +113,7 @@ const loading = ref(true)
 const showEdit = ref(false)
 const deleting = ref(false)
 const fetching = ref(false)
+const absLang = ref('zh')
 
 watch(() => route.params.id, load, { immediate: true })
 
@@ -113,6 +125,7 @@ watch(() => item.value?.title, (title) => {
 async function load() {
   loading.value = true
   item.value = null
+  absLang.value = 'zh'
   try {
     item.value = await api.item(route.params.id)
   } catch {
@@ -149,6 +162,11 @@ async function remove() {
 }
 
 const dateLabel = computed(() => (item.value ? fmtDay(item.value.published_at || item.value.created_at) : ''))
+const displayedSummary = computed(() => {
+  if (!item.value) return ''
+  if (absLang.value === 'zh' && item.value.summary_zh) return item.value.summary_zh
+  return item.value.summary
+})
 const contentHtml = computed(() => renderMarkdown(item.value?.content))
 const authorLine = computed(() => {
   const authors = item.value?.paper?.authors
