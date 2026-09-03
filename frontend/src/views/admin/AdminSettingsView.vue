@@ -64,7 +64,7 @@
       <h2 class="text-sm font-bold">抓取</h2>
       <label class="flex items-center gap-2 text-sm">
         <input v-model="form.content_fetch_enabled" type="checkbox" class="accent-leaf-700" />
-        启用 Jina 全文抓取 {{ source('content_fetch_enabled') }}
+        启用 Jina 全文抓取（自动回补政策/报道/行业；论文不抓） {{ source('content_fetch_enabled') }}
       </label>
     </section>
 

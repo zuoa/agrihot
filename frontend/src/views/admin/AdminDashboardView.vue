@@ -30,8 +30,10 @@
         <div v-for="(sch, key) in data.schedulers" :key="key"
           class="bg-white border border-stone-200 rounded-lg p-4 flex items-start justify-between gap-3">
           <div>
-            <div class="text-sm font-medium">{{ key === 'daily_generate' ? '日报生成' : '文献拉取' }}</div>
-            <div class="text-xs text-stone-400 mt-1">每天 {{ sch.time }} · {{ sch.timezone }}</div>
+            <div class="text-sm font-medium">{{ schedulerLabel(key) }}</div>
+            <div class="text-xs text-stone-400 mt-1">
+              {{ key === 'content_fetch' ? sch.time : `每天 ${sch.time}` }} · {{ sch.timezone }}
+            </div>
             <div class="text-xs text-stone-500 mt-1">下次 {{ fmtNext(sch.next_run_at) }}</div>
           </div>
           <span class="text-[11px] px-2 py-0.5 rounded-full"
@@ -96,6 +98,13 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+function schedulerLabel(key) {
+  if (key === 'daily_generate') return '日报生成'
+  if (key === 'literature_fetch') return '文献拉取'
+  if (key === 'content_fetch') return '全文回补'
+  return key
+}
 
 function fmtWhen(iso) {
   if (!iso) return '—'

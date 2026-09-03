@@ -43,6 +43,7 @@ from ...security import (
     require_admin,
 )
 from ...services import (
+    content_scheduler,
     content_service,
     daily_service,
     ingest_service,
@@ -139,6 +140,12 @@ async def overview(
             next_run_at=runtime_settings.next_run_at(
                 str(runtime_settings.get("literature_fetch_time")), tz, default=(7, 30),
             ),
+        ),
+        "content_fetch": SchedulerInfoOut(
+            enabled=bool(runtime_settings.get("content_fetch_enabled")),
+            time="每 10 分钟",
+            timezone=tz,
+            next_run_at=content_scheduler.next_run_at(),
         ),
     }
     jobs = [_job_out(j) for j in await job_runner.list_jobs()]
@@ -391,6 +398,8 @@ async def patch_settings(
         await session.commit()
     except ValueError as exc:
         raise problem(422, "Unprocessable Entity", str(exc))
+    if runtime_settings.get("content_fetch_enabled"):
+        job_runner.spawn("fetch_content", {})
     writable = {
         k: SettingValueOut(value=v["value"], source=v["source"])
         for k, v in snap.items()

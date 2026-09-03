@@ -276,18 +276,39 @@ async def _retag(_params: dict[str, Any]) -> dict[str, Any]:
     return stats
 
 
+FETCH_CONTENT_BATCH = 20
+
+
+async def missing_content_ids(session, *, limit: int = FETCH_CONTENT_BATCH) -> list[int]:
+    """政策/报道/行业且无正文。论文有摘要，不进自动回补。"""
+    rows = await session.execute(
+        select(Item.id)
+        .where(
+            or_(Item.content.is_(None), Item.content == ""),
+            Item.category != "论文",
+            ~Item.paper.has(),
+        )
+        .order_by(Item.id)
+        .limit(limit)
+    )
+    return list(rows.scalars().all())
+
+
 async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
     from ..config import settings
     from . import content_service, runtime_settings, scoring_service
 
     ids = [int(i) for i in (params.get("item_ids") or [])]
     force = bool(params.get("force"))
-    if not ids:
-        raise RuntimeError("未指定条目")
     if not runtime_settings.get("content_fetch_enabled"):
         raise RuntimeError("全文抓取功能未启用")
     fetched = skipped = failed = 0
     async with SessionLocal() as session:
+        if not ids:
+            ids = await missing_content_ids(session)
+            force = False
+        if not ids:
+            return {"requested": 0, "fetched": 0, "skipped": 0, "failed": 0}
         for i, item_id in enumerate(ids, start=1):
             item = await session.get(Item, item_id)
             if item is None:

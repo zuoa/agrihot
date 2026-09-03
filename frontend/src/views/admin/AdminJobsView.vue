@@ -22,10 +22,10 @@
           <input v-if="j.name === 'daily_generate'" v-model="dailyDate" type="date"
             class="px-2 py-1 text-xs rounded border border-stone-200" />
           <router-link v-if="j.name === 'fetch_content'" to="/admin/items?has_content=false"
-            class="ml-auto px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50">
+            class="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50">
             去内容页勾选
           </router-link>
-          <button v-else :disabled="j.status === 'running' || busy === j.name"
+          <button :disabled="j.status === 'running' || busy === j.name"
             @click="run(j)"
             class="ml-auto px-3 py-1.5 text-xs rounded-md bg-leaf-700 text-white hover:bg-leaf-800 disabled:opacity-40">
             {{ j.status === 'running' ? '运行中…' : '立即执行' }}
@@ -53,7 +53,7 @@ const hints = {
   rescore_unscored: '只给尚未评分的条目打分（需 DeepSeek）',
   translate_abstracts: '给尚未翻译的外文论文摘要补中文译文（需 DeepSeek）',
   retag: '把历史标签再切成短词并清理空标签',
-  fetch_content: '从内容页批量勾选后触发；此处仅查看状态',
+  fetch_content: '回补无全文的政策/报道/行业；论文不抓。也可从内容页勾选指定条目',
 }
 
 function hint(name) {

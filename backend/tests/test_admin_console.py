@@ -89,6 +89,7 @@ async def test_overview_counts(client):
     assert "missing_content" in body
     assert "unscored" in body
     assert "daily_generate" in body["schedulers"]
+    assert "content_fetch" in body["schedulers"]
     assert len(body["jobs"]) >= 4
 
 
@@ -217,6 +218,55 @@ async def test_job_overlap_and_status(client, monkeypatch):
         await asyncio.sleep(0.05)
     assert status is not None and status["status"] == "ok"
     assert status["stats"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_job_auto_selects_non_papers(client, monkeypatch):
+    from app.config import settings
+    from app.services import content_service
+
+    headers = {"X-API-Key": TEST_KEY}
+    news_id = (
+        await client.post(
+            "/api/v1/ingest/items",
+            json=sample_item(url="https://example.com/news-auto-1"),
+            headers=headers,
+        )
+    ).json()["item_id"]
+    paper_id = (
+        await client.post(
+            "/api/v1/ingest/items",
+            json=sample_item(
+                title="A deep learning approach to irrigation scheduling",
+                url="https://doi.org/10.1016/j.compag.2026.auto1",
+                category="论文",
+            ),
+            headers=headers,
+        )
+    ).json()["item_id"]
+    # let ingest background enrich finish while fetch is still disabled
+    await asyncio.sleep(0.05)
+
+    async def fake_fetch(url):
+        return "# 全文\n\n" + "正文段落。" * 100
+
+    monkeypatch.setattr(settings, "content_fetch_enabled", True)
+    monkeypatch.setattr(content_service, "fetch_fulltext", fake_fetch)
+
+    auth = await login(client)
+    r = await client.post("/api/v1/admin/jobs/fetch_content/run", json={}, headers=auth)
+    assert r.status_code == 202, r.text
+    status = None
+    for _ in range(40):
+        jobs = (await client.get("/api/v1/admin/jobs", headers=auth)).json()["jobs"]
+        status = next(j for j in jobs if j["name"] == "fetch_content")
+        if status["status"] in ("ok", "error"):
+            break
+        await asyncio.sleep(0.05)
+    assert status is not None and status["status"] == "ok", status
+    assert status["stats"]["fetched"] >= 1
+    assert (await client.get(f"/api/v1/items/{news_id}")).json()["content"]
+    assert (await client.get(f"/api/v1/items/{paper_id}")).json()["content"] is None
 
 
 # ---------- watchlist ----------

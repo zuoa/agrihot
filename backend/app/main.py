@@ -29,6 +29,7 @@ async def lifespan(app: FastAPI):
         await watchlist_service.load_from_db(session)
         await session.commit()
 
+    from .services.content_scheduler import start_content_scheduler
     from .services.daily_scheduler import start_daily_scheduler
     from .services.literature_scheduler import start_literature_scheduler
 
@@ -36,9 +37,11 @@ async def lifespan(app: FastAPI):
     # admin console can toggle schedulers without a process restart.
     scheduler = start_daily_scheduler()
     literature = start_literature_scheduler()
+    content = start_content_scheduler()
     yield
     scheduler.cancel()
     literature.cancel()
+    content.cancel()
 
 
 app = FastAPI(
