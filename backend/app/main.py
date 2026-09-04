@@ -11,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
 from .api.v1.public import router as public_router
+from .api.v1.seo import router as seo_router
 from .config import settings
 from .database import SessionLocal, ensure_schema
 
@@ -95,6 +96,7 @@ async def unhandled_handler(request: Request, exc: Exception):
 app.include_router(ingest_router)
 app.include_router(admin_router)
 app.include_router(public_router)
+app.include_router(seo_router)
 
 
 @app.get("/api/health")

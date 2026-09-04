@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     literature_max_new_per_run: int = 80
     # 空则使用包内 app/watchlist.yaml
     watchlist_path: str = ""
+    # public site origin for canonical / sitemap / Open Graph
+    site_url: str = "https://agrihot.com"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

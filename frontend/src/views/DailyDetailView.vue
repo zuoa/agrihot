@@ -82,6 +82,7 @@ import QRCode from 'qrcode'
 import { adminSession, api, fmtDay } from '../api'
 import ItemCard from '../components/ItemCard.vue'
 import DailyShareCard from '../components/DailyShareCard.vue'
+import { DEFAULT_DESC, dailyJsonLd, setPageMeta } from '../seo'
 
 const route = useRoute()
 const daily = ref(null)
@@ -96,6 +97,31 @@ const generating = ref(false)
 const generateMsg = ref('')
 
 watch(() => route.params.date, load, { immediate: true })
+
+watch(
+  [daily, loading],
+  ([d, isLoading]) => {
+    if (isLoading) return
+    const date = route.params.date
+    if (!d) {
+      setPageMeta({
+        title: '该日期暂无日报 · AgriHot',
+        description: DEFAULT_DESC,
+        path: `/dailies/${date}`,
+        noindex: true,
+      })
+      return
+    }
+    const desc = (d.highlights || []).join(' ') || d.content || d.title
+    setPageMeta({
+      title: `${d.title}（${d.date}）｜农业农村日报`,
+      description: desc,
+      path: `/dailies/${d.date}`,
+      type: 'article',
+      jsonLd: dailyJsonLd(d),
+    })
+  },
+)
 
 async function load() {
   loading.value = true

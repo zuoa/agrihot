@@ -1,16 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { adminSession } from './api'
+import { DEFAULT_DESC, DEFAULT_TITLE, setPageMeta, websiteJsonLd } from './seo'
 
 const routes = [
-  { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { title: '精选' } },
-  { path: '/feed', name: 'feed', component: () => import('./views/FeedView.vue'), meta: { title: '全部动态' } },
-  { path: '/dailies', name: 'dailies', component: () => import('./views/DailiesView.vue'), meta: { title: '农业日报' } },
-  { path: '/dailies/:date', name: 'daily-detail', component: () => import('./views/DailyDetailView.vue'), meta: { title: '日报详情' } },
-  { path: '/items/:id', name: 'item-detail', component: () => import('./views/ItemDetailView.vue'), meta: { title: '资讯详情' } },
-  { path: '/tags', name: 'tags', component: () => import('./views/TagsView.vue'), meta: { title: '主题' } },
-  { path: '/tags/:name', name: 'tag-detail', component: () => import('./views/TagDetailView.vue'), meta: { title: '主题' } },
-  { path: '/agent', name: 'agent', component: () => import('./views/AgentDocsView.vue'), meta: { title: 'Agent 接入' } },
-  { path: '/about', name: 'about', component: () => import('./views/AboutView.vue'), meta: { title: '关于' } },
+  { path: '/', name: 'home', component: () => import('./views/HomeView.vue'), meta: { title: '精选', description: '农业信息化每日精选：政策、报道、学术论文与行业动态。' } },
+  { path: '/feed', name: 'feed', component: () => import('./views/FeedView.vue'), meta: { title: '全部动态', description: '农业信息化全部动态：政策、报道、学术论文与行业资讯。' } },
+  { path: '/dailies', name: 'dailies', component: () => import('./views/DailiesView.vue'), meta: { title: '农业日报', description: '每日《农业农村日报》：农业信息化政策、报道、论文与行业动态精选。' } },
+  { path: '/dailies/:date', name: 'daily-detail', component: () => import('./views/DailyDetailView.vue'), meta: { title: '日报详情', dynamic: true } },
+  { path: '/items/:id', name: 'item-detail', component: () => import('./views/ItemDetailView.vue'), meta: { title: '资讯详情', dynamic: true } },
+  { path: '/tags', name: 'tags', component: () => import('./views/TagsView.vue'), meta: { title: '主题', description: '按主题浏览农业信息化资讯与论文。' } },
+  { path: '/tags/:name', name: 'tag-detail', component: () => import('./views/TagDetailView.vue'), meta: { title: '主题', dynamic: true } },
+  { path: '/agent', name: 'agent', component: () => import('./views/AgentDocsView.vue'), meta: { title: 'Agent 接入', description: 'AgriHot 开放推送 API：农业信息化资讯接入、自动去重与精选评分。' } },
+  { path: '/about', name: 'about', component: () => import('./views/AboutView.vue'), meta: { title: '关于', description: '关于 AgriHot：农业信息化资讯聚合、农业农村日报与学术论文雷达。' } },
   {
     path: '/admin/login',
     name: 'admin-login',
@@ -48,7 +49,16 @@ router.beforeEach((to) => {
 })
 
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · AgriHot` : 'AgriHot · 农业信息化动态聚合'
+  const admin = to.matched.some((r) => r.meta.admin)
+  if (to.meta.dynamic && !admin) return
+  const title = to.meta.title ? `${to.meta.title} · AgriHot` : DEFAULT_TITLE
+  setPageMeta({
+    title,
+    description: to.meta.description || DEFAULT_DESC,
+    path: to.fullPath,
+    noindex: admin || Boolean(to.query.q),
+    jsonLd: to.name === 'home' ? websiteJsonLd() : null,
+  })
 })
 
 export default router

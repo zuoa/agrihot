@@ -103,6 +103,7 @@ import { adminSession, api, fmtDay } from '../api'
 import { renderMarkdown } from '../markdown'
 import ItemEditModal from '../components/ItemEditModal.vue'
 import InsightCard from '../components/InsightCard.vue'
+import { DEFAULT_DESC, itemJsonLd, setPageMeta } from '../seo'
 
 const VIEW_DWELL_MS = 3000
 
@@ -159,10 +160,29 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', onVisibility)
 })
 
-// 路由 meta 只是占位标题，加载到条目后用实际标题覆盖浏览器标签页标题
-watch(() => item.value?.title, (title) => {
-  if (title) document.title = `${title} · AgriHot`
-})
+watch(
+  [item, loading],
+  ([it, isLoading]) => {
+    if (isLoading) return
+    if (!it) {
+      setPageMeta({
+        title: '条目不存在 · AgriHot',
+        description: DEFAULT_DESC,
+        path: route.path,
+        noindex: true,
+      })
+      return
+    }
+    setPageMeta({
+      title: `${it.title} · AgriHot`,
+      description: it.summary_zh || it.summary,
+      path: `/items/${it.id}`,
+      type: 'article',
+      image: it.cover_url || undefined,
+      jsonLd: itemJsonLd(it),
+    })
+  },
+)
 
 async function load() {
   stopDwell()

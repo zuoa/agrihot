@@ -17,6 +17,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import ItemCard from '../components/ItemCard.vue'
+import { setPageMeta } from '../seo'
 
 const route = useRoute()
 const items = ref([])
@@ -33,5 +34,12 @@ async function load() {
   } finally {
     loading.value = false
   }
+  const tag = name.value
+  setPageMeta({
+    title: `#${tag} · AgriHot`,
+    description: `农业信息化主题「${tag}」相关资讯与论文，共 ${items.value.length} 条。`,
+    path: `/tags/${encodeURIComponent(tag)}`,
+    noindex: items.value.length === 0,
+  })
 }
 </script>

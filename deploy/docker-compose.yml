@@ -25,6 +25,7 @@ services:
     image: ghcr.io/zuoa/agrihot-backend:latest
     environment:
       DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
+      SITE_URL: ${SITE_URL:-https://agrihot.com}
       CORS_ORIGINS: "*"
       INGEST_RATE_LIMIT: 60/minute
       # 自动精选评分（DeepSeek）；不设置 DEEPSEEK_API_KEY 则新条目一律不进精选
