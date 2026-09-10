@@ -6,7 +6,7 @@
 ## 结构
 
 - `backend/` — FastAPI + PostgreSQL（SQLAlchemy 2.0 async）
-- `frontend/` — Vue 3 + Vite + Tailwind（绿色主题 SPA）
+- `frontend/` — Nuxt 4 + Vue 3 + Tailwind（公开页 SSR，`/admin` 客户端渲染）
 
 ## 启动
 
@@ -31,7 +31,7 @@ createdb agrihot                     # 需要本地 PostgreSQL
 .venv/bin/python -m scripts.create_api_key my-crawler
 ```
 
-### 前端（:5173，/api 代理到 :8100）
+### 前端（:3000，公开页 SSR；`/api` 代理到 :8100）
 
 ```bash
 cd frontend
@@ -131,7 +131,7 @@ GitHub Container Registry，**无需配置任何 Secret**（使用自动注入�
 ```bash
 cd deploy
 cp .env.example .env          # 设置 DB_PASSWORD（自动精选填 DEEPSEEK_API_KEY；文献雷达可选 OPENALEX_API_KEY）
-docker compose up -d          # 启动 db + backend + frontend（前端 :80）
+docker compose up -d          # 启动 db + backend + frontend（Nitro SSR，:80）
 
 # 首次初始化：
 docker compose exec backend python -m scripts.create_api_key my-crawler   # 签发推送 Key

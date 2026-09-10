@@ -8,6 +8,8 @@ __pycache__/
 # node
 node_modules/
 dist/
+.nuxt/
+.output/
 
 # env / os
 .env

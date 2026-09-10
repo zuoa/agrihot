@@ -98,55 +98,7 @@ async def test_sitemap_includes_pages_and_item(client):
 
 
 @pytest.mark.asyncio
-async def test_crawler_item_html(client):
-    item_id = await create_item(client)
-    r = await client.get(f"/seo/items/{item_id}")
-    assert r.status_code == 200
-    html = r.text
-    assert "农业农村部发布智慧农业发展指导意见" in html
-    assert 'rel="canonical" href="https://agrihot.com/items/' in html
-    assert "application/ld+json" in html
-    assert "NewsArticle" in html
-    assert "智慧农业发展指导意见" in html
-    assert f"/tags/" in html
-
-
-@pytest.mark.asyncio
-async def test_crawler_item_404(client):
-    r = await client.get("/seo/items/99999")
-    assert r.status_code == 404
-    assert "noindex" in r.text
-    assert r.headers.get("x-robots-tag", "").startswith("noindex")
-
-
-@pytest.mark.asyncio
-async def test_crawler_escapes_html_in_title(client):
-    item_id = await create_item(
-        client,
-        title="测试<script>alert(1)</script>标题足够长",
-        url="https://example.com/news/xss",
-        summary="摘要里也有<script>alert(2)</script>应被转义。",
-    )
-    html = (await client.get(f"/seo/items/{item_id}")).text
-    assert "<script>alert(1)</script>" not in html
-    assert "<script>alert(2)</script>" not in html
-    assert "&lt;script&gt;" in html
-
-
-@pytest.mark.asyncio
-async def test_crawler_home_and_about(client):
-    home = await client.get("/seo/")
-    assert home.status_code == 200
-    assert "农业信息化每日精选" in home.text
-    assert "WebSite" in home.text
-    about = await client.get("/seo/about")
-    assert about.status_code == 200
-    assert "关于 AgriHot" in about.text
-    assert 'rel="canonical" href="https://agrihot.com/about"' in about.text
-
-
-@pytest.mark.asyncio
-async def test_crawler_daily(client):
+async def test_sitemap_includes_daily(client):
     item_id = await create_item(client)
     day = date(2026, 9, 1)
     async with TestSession() as s:
@@ -158,30 +110,5 @@ async def test_crawler_daily(client):
             item_ids=[item_id],
         ))
         await s.commit()
-    r = await client.get("/seo/dailies/2026-09-01")
-    assert r.status_code == 200
-    assert "智慧农业专题" in r.text
-    assert "要点一" in r.text
-    assert f"/items/{item_id}" in r.text
-    missing = await client.get("/seo/dailies/2010-01-01")
-    assert missing.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_crawler_tag_and_feed(client):
-    await create_item(client)
-    tag = await client.get("/seo/tags/智慧农业")
-    assert tag.status_code == 200
-    assert "智慧农业" in tag.text
-    feed = await client.get("/seo/feed", params={"category": "政策"})
-    assert feed.status_code == 200
-    assert "全部动态 · 政策" in feed.text
-    unknown = await client.get("/seo/tags/不存在的主题xyz")
-    assert unknown.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_crawler_unknown_path_404(client):
-    r = await client.get("/seo/admin")
-    assert r.status_code == 404
-    assert "noindex" in r.text
+    r = await client.get("/sitemap.xml")
+    assert "https://agrihot.com/dailies/2026-09-01" in r.text

@@ -1,4 +1,4 @@
-# 远程部署：全部使用 Docker Hub 上的预构建镜像（zuoa/agrihot-*）。
+# 远程部署：拉取 GHCR 预构建镜像（backend FastAPI + frontend Nuxt SSR）。
 # 用法：
 #   cp .env.example .env   # 填入 DB_PASSWORD
 #   docker compose up -d
@@ -59,11 +59,19 @@ services:
 
   frontend:
     image: ghcr.io/zuoa/agrihot-frontend:latest
+    environment:
+      NUXT_API_BASE: http://backend:8000
+      NUXT_PUBLIC_SITE_URL: ${SITE_URL:-https://agrihot.com}
     ports:
       - "80:80"
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:80/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
 volumes:
