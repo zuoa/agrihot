@@ -244,7 +244,7 @@ async def list_paper_directions(
 
 @router.get("/topics", response_model=TopicOut)
 async def get_topic(
-    name: str = Query(..., min_length=1, max_length=120),
+    name: str = Query(..., min_length=1, max_length=400),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
     session: AsyncSession = Depends(get_session),

@@ -65,6 +65,21 @@ export function tagPath(name) {
   return `/tags/${encodeURIComponent(name)}`
 }
 
+export function decodeTagName(raw) {
+  let s = String(raw ?? '').replace(/\+/g, ' ')
+  for (let i = 0; i < 4; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(s)) break
+    try {
+      const next = decodeURIComponent(s)
+      if (next === s) break
+      s = next
+    } catch {
+      break
+    }
+  }
+  return s.trim()
+}
+
 export function topicJsonLd(topic, origin) {
   const path = tagPath(topic.name)
   const tokens = topic.tokens || []

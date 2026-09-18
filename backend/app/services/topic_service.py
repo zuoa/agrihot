@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,8 +29,19 @@ _LIKE_UNSAFE = re.compile(r"[%_\\]")
 _SLUG_STRIP = re.compile(r"[\s/\\?#&=]+")
 
 
+def _fully_unquote(raw: str) -> str:
+    """Undo one or more layers of percent-encoding (crawler URLs are often doubled)."""
+    s = raw.replace("+", " ")
+    for _ in range(4):
+        nxt = unquote(s)
+        if nxt == s:
+            break
+        s = nxt
+    return s
+
+
 def _clean_name(raw: str | None) -> str:
-    return (raw or "").strip()[:NAME_MAX]
+    return _fully_unquote(raw or "").strip()[:NAME_MAX]
 
 
 def tokens_of(raw: str | None) -> list[str]:

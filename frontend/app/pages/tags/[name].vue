@@ -23,9 +23,16 @@
 <script setup>
 const route = useRoute()
 const api = useApi()
-const name = computed(() => decodeURIComponent(String(route.params.name || '')))
+const name = computed(() => decodeTagName(route.params.name))
 
-const { data, pending, refresh } = await useAsyncData(
+if (import.meta.server && name.value) {
+  const reqUrl = useRequestURL()
+  if (/%25[0-9A-Fa-f]{2}/.test(reqUrl.pathname)) {
+    await navigateTo(tagPath(name.value), { redirectCode: 301, replace: true })
+  }
+}
+
+const { data, pending, status, refresh } = await useAsyncData(
   () => `topic-${name.value}`,
   () => api.topic(name.value, { page_size: 100 }),
   { watch: [name] },
@@ -37,9 +44,20 @@ const tokens = computed(() => data.value?.tokens || [])
 const isPhrase = computed(() => data.value?.kind === 'phrase')
 const heading = computed(() => (isPhrase.value ? name.value : `#${name.value}`))
 
-if (!pending.value && !items.value.length) {
-  throw createError({ statusCode: 404, statusMessage: '主题不存在', fatal: true })
+function missingTopic() {
+  return createError({ statusCode: 404, statusMessage: '主题不存在', fatal: true })
 }
+
+// pending=false with empty data happens during hydration before payload restore;
+// only 404 after the request actually succeeded with zero hits.
+if (import.meta.server && status.value === 'success' && !items.value.length) {
+  throw missingTopic()
+}
+watch(status, (s) => {
+  if (s === 'success' && !items.value.length) {
+    showError(missingTopic())
+  }
+})
 
 usePageSeo(() => ({
   title: isPhrase.value

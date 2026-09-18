@@ -19,6 +19,7 @@ from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import ApiKey, Base, hash_api_key  # noqa: E402
 from app.services.topic_service import (  # noqa: E402
+    _clean_name,
     derive_phrases,
     effective_phrases,
     item_slug,
@@ -26,6 +27,7 @@ from app.services.topic_service import (  # noqa: E402
     parse_item_slug,
     parse_search_phrases,
     parse_tag_query,
+    tokens_of,
 )
 
 TEST_KEY = "agri_test_key_topics"
@@ -125,6 +127,20 @@ def test_parse_tag_query_splits_commas_not_spaces():
     assert parse_tag_query("花生", "大豆，薯花系列") == ["花生", "大豆", "薯花系列"]
 
 
+def test_clean_name_unquotes_double_encoded_crawler_url():
+    raw = (
+        "%25E6%259D%2591BA%2520%25E4%25B9%25A1%25E6%259D%2591%25E6%258C%25AF"
+        "%25E5%2585%25B4%2520%25E9%25BB%2591%25E9%25BE%2599%25E6%25B1%259F"
+        "%2520%25E4%25B9%25A1%25E6%259D%2591%25E6%2596%2587%25E5%258C%2596"
+    )
+    assert _clean_name(raw) == "村BA 乡村振兴 黑龙江 乡村文化"
+    assert tokens_of(raw) == ["村BA", "乡村振兴", "黑龙江", "乡村文化"]
+    assert tokens_of("%E6%9D%91BA%20%E4%B9%A1%E6%9D%91%E6%8C%AF%E5%85%B4") == [
+        "村BA", "乡村振兴",
+    ]
+    assert _clean_name("村BA 乡村振兴") == "村BA 乡村振兴"
+
+
 @pytest.mark.asyncio
 async def test_items_match_all_and_any(client):
     a = await create_item(
@@ -199,6 +215,24 @@ async def test_topic_english_phrase_tag_is_atomic(client):
     )).json()
     assert r["kind"] == "tag"
     assert r["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_topic_accepts_percent_encoded_name(client):
+    item_id = await create_item(
+        client,
+        url="https://example.com/cunba",
+        tags=["村BA", "乡村振兴", "黑龙江", "乡村文化"],
+        title="全国村 BA 黑龙江开赛",
+        summary="村BA北部赛区在黑龙江开幕，配套乡村文化活动。",
+    )
+    r = (await client.get(
+        "/api/v1/topics",
+        params={"name": "%E6%9D%91BA%20%E4%B9%A1%E6%9D%91%E6%8C%AF%E5%85%B4%20%E9%BB%91%E9%BE%99%E6%B1%9F"},
+    )).json()
+    assert r["name"] == "村BA 乡村振兴 黑龙江"
+    assert r["total"] == 1
+    assert r["items"][0]["id"] == item_id
 
 
 @pytest.mark.asyncio
