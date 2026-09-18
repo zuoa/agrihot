@@ -167,7 +167,7 @@ const fields = [
   { name: 'source_url', type: 'string', req: false, desc: '信源首页/出处链接' },
   { name: 'published_at', type: 'datetime', req: false, desc: '原文发布时间（ISO 8601 带时区）' },
   { name: 'category', type: 'string', req: false, desc: '政策 / 报道 / 论文 / 行业，缺省归「报道」' },
-  { name: 'tags', type: 'string[]', req: false, desc: '标签数组，每项一个短主题，如 ["智慧农业","遥感"]。不要把标题拼成一条。服务端会先按空格/顿号切开，评分时再用正文提炼 3–6 个可聚合主题并覆盖；模型失败则保留切开后的原标签' },
+  { name: 'tags', type: 'string[]', req: false, desc: '标签数组，每项一个短主题，如 ["智慧农业","遥感"]。不要把标题或机构+作物拼成一条。服务端会先按空格/顿号切开，评分时再用正文提炼 3–6 个可聚合主题并覆盖；长尾检索短语由评分另写，不会进标签表' },
   { name: 'cover_url', type: 'string', req: false, desc: '封面图 URL' },
   { name: 'content', type: 'string', req: false, desc: '正文（可选，Markdown，详情页展示；缺省时服务端自动抓取补充）' },
   { name: 'lang', type: 'string', req: false, desc: '语种标记，如 zh / en' },

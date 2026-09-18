@@ -300,6 +300,8 @@ class ItemOut(BaseModel):
     score_detail: dict | None = None
     sources: list[SourceOut]
     tags: list[str]
+    search_phrases: list[str] = Field(default_factory=list)
+    slug: str = ""
     view_count: int = 0
     doi: str | None = None
     paper: PaperMetaOut | None = None
@@ -311,6 +313,16 @@ class ViewOut(BaseModel):
 
 
 class ItemListOut(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[ItemOut]
+
+
+class TopicOut(BaseModel):
+    name: str
+    kind: str  # tag | phrase
+    tokens: list[str]
     total: int
     page: int
     page_size: int

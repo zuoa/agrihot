@@ -31,6 +31,7 @@ export default defineNuxtConfig({
     '/dailies': { swr: 60 },
     '/dailies/**': { swr: 300 },
     '/items/**': { swr: 300 },
+    '/n/**': { swr: 300 },
     '/tags': { swr: 300 },
     '/tags/**': { swr: 300 },
     '/about': { swr: 3600 },

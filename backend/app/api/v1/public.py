@@ -10,7 +10,11 @@ from ...database import get_session
 from ...models import Daily, Item, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DirectionOut,
                         ItemListOut, ItemOut, PaperAuthorOut, PaperCardOut,
-                        PaperMetaOut, SourceOut, StatsOut, TagOut, ViewOut)
+                        PaperMetaOut, SourceOut, StatsOut, TagOut, TopicOut,
+                        ViewOut)
+from ...services.topic_service import (apply_tag_match, effective_phrases,
+                                       item_slug, parse_tag_query,
+                                       related_items, resolve_topic)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -50,6 +54,8 @@ def _to_paper_out(item: Item) -> PaperMetaOut | None:
 
 
 def _to_item_out(item: Item) -> ItemOut:
+    tags = [t.name for t in item.tags]
+    phrases = effective_phrases(tags, item.search_phrases)
     return ItemOut(
         id=item.id,
         title=item.title,
@@ -67,7 +73,9 @@ def _to_item_out(item: Item) -> ItemOut:
         score=item.score,
         score_detail=item.score_detail,
         sources=[SourceOut(**s) for s in (item.sources or [])],
-        tags=[t.name for t in item.tags],
+        tags=tags,
+        search_phrases=phrases,
+        slug=item_slug(item.id, item.title, phrases),
         view_count=item.view_count,
         doi=item.doi,
         paper=_to_paper_out(item),
@@ -81,6 +89,8 @@ async def list_items(
     window: str | None = Query(default=None, pattern="^(24h|7d)$"),
     category: str | None = None,
     tag: str | None = None,
+    tags: str | None = None,
+    match: str = Query(default="all", pattern="^(all|any)$"),
     direction: str | None = None,
     q: str | None = None,
     page: int = Query(default=1, ge=1),
@@ -102,9 +112,10 @@ async def list_items(
     if category:
         stmt = stmt.where(Item.category == category)
         count_stmt = count_stmt.where(Item.category == category)
-    if tag:
-        stmt = stmt.where(Item.tags.any(Tag.name == tag))
-        count_stmt = count_stmt.where(Item.tags.any(Tag.name == tag))
+    tag_names = parse_tag_query(tag, tags)
+    if tag_names:
+        stmt = apply_tag_match(stmt, tag_names, match)
+        count_stmt = apply_tag_match(count_stmt, tag_names, match)
     if direction:
         stmt = stmt.join(Item.paper).where(PaperMeta.direction == direction)
         count_stmt = count_stmt.join(Item.paper).where(PaperMeta.direction == direction)
@@ -141,6 +152,21 @@ async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -
     if item is None:
         raise _item_404()
     return _to_item_out(item)
+
+
+@router.get("/items/{item_id}/related", response_model=ItemListOut)
+async def list_related_items(
+    item_id: int,
+    session: AsyncSession = Depends(get_session),
+) -> ItemListOut:
+    item = await session.get(Item, item_id)
+    if item is None:
+        raise _item_404()
+    rows = await related_items(session, item)
+    return ItemListOut(
+        total=len(rows), page=1, page_size=len(rows) or 1,
+        items=[_to_item_out(i) for i in rows],
+    )
 
 
 @router.post("/items/{item_id}/view", response_model=ViewOut)
@@ -214,6 +240,26 @@ async def list_paper_directions(
         )
     ).all()
     return [DirectionOut(name=name, count=count) for name, count in rows]
+
+
+@router.get("/topics", response_model=TopicOut)
+async def get_topic(
+    name: str = Query(..., min_length=1, max_length=120),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
+    session: AsyncSession = Depends(get_session),
+) -> TopicOut:
+    """Resolve an atomic tag or a space-separated long-tail phrase. Never writes Tag rows."""
+    result = await resolve_topic(session, name, page=page, page_size=page_size)
+    return TopicOut(
+        name=result.name,
+        kind=result.kind,
+        tokens=result.tokens,
+        total=result.total,
+        page=page,
+        page_size=page_size,
+        items=[_to_item_out(i) for i in result.items],
+    )
 
 
 @router.get("/tags", response_model=list[TagOut])

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+from collections import defaultdict
 from datetime import date, datetime, timezone
 from urllib.parse import quote
 
@@ -10,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..models import Daily, Item, Tag
+from ..models import Daily, Item, Tag, item_tags
+from .topic_service import effective_phrases
 
 CATEGORIES = ("政策", "报道", "论文", "行业")
 
@@ -98,8 +100,25 @@ async def sitemap_xml(session: AsyncSession) -> Response:
             .having(func.count(Item.id) > 0)
         )
     ).all()
-    for (name,) in tags:
+    atomic = {name for (name,) in tags}
+    for name in atomic:
         add(tag_path(name), None, "weekly", "0.5")
+
+    tag_map: dict[int, list[str]] = defaultdict(list)
+    for iid, tname in (
+        await session.execute(
+            select(item_tags.c.item_id, Tag.name).join(Tag, Tag.id == item_tags.c.tag_id)
+        )
+    ).all():
+        tag_map[iid].append(tname)
+    stored_rows = (await session.execute(select(Item.id, Item.search_phrases))).all()
+    seen_phrases: set[str] = set()
+    for iid, stored in stored_rows:
+        for phrase in effective_phrases(tag_map.get(iid, []), stored):
+            if phrase in atomic or phrase in seen_phrases:
+                continue
+            seen_phrases.add(phrase)
+            add(tag_path(phrase), None, "weekly", "0.4")
 
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',

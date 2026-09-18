@@ -55,6 +55,8 @@ class Item(Base):
     view_count: Mapped[int] = mapped_column(Integer, default=0)
     # 规范化 DOI（小写、无 doi.org 前缀）；新闻条目多为 NULL
     doi: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True, index=True)
+    # LLM 给出的检索短语（空格分词长尾）；不入库为 Tag。NULL = 未评分，读时按标签推导
+    search_phrases: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, index=True
     )

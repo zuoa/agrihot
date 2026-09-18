@@ -103,6 +103,7 @@ def test_prompt_falls_back_to_summary():
 def test_prompt_asks_for_topic_tags():
     prompt = scoring_service._build_user_prompt(_prompt_item())
     assert "tags" in prompt
+    assert "search_phrases" in prompt
     assert "已有标签" in prompt
 
 
@@ -223,6 +224,27 @@ async def test_scoring_replaces_tags_from_model(client, monkeypatch):
     )
     detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
     assert set(detail["tags"]) == {"智慧农业", "农业人工智能", "行业标准"}
+
+
+@pytest.mark.asyncio
+async def test_scoring_stores_search_phrases(client, monkeypatch):
+    mock_deepseek(monkeypatch, {
+        "relevant": True, "impact": 26, "substance": 22, "depth": 16,
+        "authority": 12, "freshness": 9,
+        "tags": ["花生", "大豆", "品种"],
+        "search_phrases": ["四川省农科院 薯花系列 花生", "政策"],
+        "comment": "品种",
+    })
+    r = await client.post(
+        "/api/v1/ingest/items",
+        json=sample_item(tags=["花生"]),
+        headers={"X-API-Key": TEST_KEY},
+    )
+    detail = (await client.get(f"/api/v1/items/{r.json()['item_id']}")).json()
+    assert "四川省农科院 薯花系列 花生" in detail["search_phrases"]
+    listed = await client.get("/api/v1/tags")
+    names = {t["name"] for t in listed.json()}
+    assert "四川省农科院 薯花系列 花生" not in names
 
 
 @pytest.mark.asyncio

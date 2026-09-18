@@ -1,6 +1,7 @@
 <template>
   <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
-  <article v-else-if="item" class="bg-white rounded-2xl border border-leaf-100 p-6 sm:p-8">
+  <div v-else-if="item">
+  <article class="bg-white rounded-2xl border border-leaf-100 p-6 sm:p-8">
     <div class="flex items-center gap-2 text-xs text-stone-400 flex-wrap mb-3">
       <span class="text-leaf-700 font-medium">{{ item.source_name || '未知来源' }}</span>
       <span>·</span>
@@ -56,10 +57,20 @@
     </section>
 
     <div class="mt-5 flex flex-wrap gap-1.5" v-if="item.tags?.length">
-      <NuxtLink v-for="t in item.tags" :key="t" :to="`/tags/${encodeURIComponent(t)}`"
+      <NuxtLink v-for="t in item.tags" :key="t" :to="tagPath(t)"
         class="px-2.5 py-1 text-xs rounded-full bg-leaf-50 text-leaf-700 border border-leaf-100 hover:bg-leaf-100 transition-colors">
         #{{ t }}
       </NuxtLink>
+    </div>
+
+    <div v-if="item.search_phrases?.length" class="mt-5">
+      <div class="text-xs font-bold text-stone-500 mb-2">相关检索</div>
+      <div class="flex flex-wrap gap-2">
+        <NuxtLink v-for="p in item.search_phrases" :key="p" :to="tagPath(p)"
+          class="px-2.5 py-1 text-xs rounded-full bg-white text-stone-700 border border-leaf-200 hover:border-leaf-500 hover:text-leaf-700 transition-colors">
+          {{ p }}
+        </NuxtLink>
+      </div>
     </div>
 
     <div class="mt-6 border-t border-leaf-100 pt-5">
@@ -92,6 +103,14 @@
     <ItemEditModal v-if="showEdit" :item="item"
       @close="showEdit = false" @saved="onSaved" />
   </article>
+
+  <section v-if="related.length" class="mt-8">
+    <h2 class="text-lg font-bold text-leaf-800 mb-3">{{ relatedHeading }}</h2>
+    <div class="space-y-3">
+      <ItemCard v-for="it in related" :key="it.id" :item="it" />
+    </div>
+  </section>
+  </div>
 </template>
 
 <script setup>
@@ -112,6 +131,18 @@ const { data, pending, error, refresh } = await useAsyncData(
   { watch: [() => route.params.id] },
 )
 
+const { data: relatedData } = await useAsyncData(
+  () => `related-${route.params.id}`,
+  async () => {
+    try {
+      return await api.related(route.params.id)
+    } catch {
+      return { items: [] }
+    }
+  },
+  { watch: [() => route.params.id] },
+)
+
 if (error.value) {
   throw createError({ statusCode: 404, statusMessage: '条目不存在', fatal: true })
 }
@@ -121,6 +152,11 @@ watch(error, (e) => {
 })
 
 const item = computed(() => data.value)
+const related = computed(() => (relatedData.value?.items || []).filter((it) => it.id !== item.value?.id))
+const relatedHeading = computed(() => {
+  const phrase = item.value?.search_phrases?.[0]
+  return phrase ? `${phrase}相关资讯` : '相关报道'
+})
 
 watch(() => route.params.id, () => { absLang.value = 'zh' })
 

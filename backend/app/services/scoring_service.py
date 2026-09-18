@@ -35,6 +35,7 @@ from ..database import SessionLocal
 from ..models import Item
 from . import runtime_settings
 from .ingest_service import _get_or_create_tags
+from .topic_service import parse_search_phrases
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +52,8 @@ DIMENSION_MAX = {
 
 _SYSTEM_PROMPT = (
     "你是农业信息化资讯平台的资深编辑，负责评估资讯是否值得进入「每日精选」，"
-    "并提炼可在「主题」页聚合的短标签。只输出 JSON，不要输出任何其他内容。"
+    "并提炼可在「主题」页聚合的短标签，以及供搜索引擎匹配的检索短语。"
+    "只输出 JSON，不要输出任何其他内容。"
 )
 
 
@@ -74,7 +76,7 @@ def _build_user_prompt(item: Item) -> str:
         body_label = "摘要"
         body = item.summary
     existing = _existing_tag_line(item)
-    return f"""请评估以下资讯能否进入「每日精选」，并重新提炼主题标签。
+    return f"""请评估以下资讯能否进入「每日精选」，并重新提炼主题标签与检索短语。
 
 标题：{item.title}
 来源：{item.source_name or "未知"}
@@ -99,8 +101,14 @@ relevant：主题是否属于三农、农业信息化、智慧农业、数字乡
 - 不要：分类名（政策/报道/论文/行业）、论文方法词（作用机理、门槛特征）、日期、期刊名、把标题或机构全称整段塞进一个标签
 - 好：["智慧农业","农业人工智能","行业标准"]  坏：["黑龙江农科院 寒地龙果 金秋博览会"]
 
+第四步——检索短语 search_phrases（0–2 条）：
+- 人们会搜的词组，2–5 个词用空格分开，例如 "四川省农科院 薯花系列 花生"
+- 从机构、作物、品种、地名等具体词组合；不要用政策/报道/农业/资讯等宽词
+- 这不是 tags 的替代，禁止把短语写进 tags
+- 没有具体实体时输出 []
+
 输出格式（仅此 JSON）：
-{{"relevant": true, "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0, "tags": ["智慧农业"], "comment": "一句话简评"}}"""
+{{"relevant": true, "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0, "tags": ["智慧农业"], "search_phrases": [], "comment": "一句话简评"}}"""
 
 
 def parse_scores(text: str) -> dict[str, int] | None:
@@ -151,7 +159,7 @@ async def _call_deepseek(item: Item) -> str | None:
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.2,
-        "max_tokens": 450,
+        "max_tokens": 600,
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -190,7 +198,13 @@ async def score_item(session: AsyncSession, item: Item) -> int | None:
         new_tags = await _get_or_create_tags(session, topic_names)
         if new_tags:
             item.tags = new_tags
-    log.info("item %s scored %d tags=%s", item.id, total, [t.name for t in item.tags])
+    phrases = parse_search_phrases(data) if isinstance(data, dict) else []
+    if phrases:
+        item.search_phrases = phrases
+    log.info(
+        "item %s scored %d tags=%s phrases=%s",
+        item.id, total, [t.name for t in item.tags], item.search_phrases or [],
+    )
     return total
 
 

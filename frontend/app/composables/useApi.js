@@ -46,8 +46,10 @@ export function useApi() {
   return {
     items: (params) => get('/items', params),
     item: (id) => get(`/items/${id}`),
+    related: (id) => get(`/items/${id}/related`),
     recordView: (id) => post(`/items/${id}/view`),
     tags: () => get('/tags'),
+    topic: (name, params = {}) => get('/topics', { name, ...params }),
     paperDirections: () => get('/paper-directions'),
     stats: () => get('/stats'),
     dailies: (params) => get('/dailies', params),

@@ -52,12 +52,39 @@ function tagNames(item) {
 
 export function itemKeywords(item) {
   return uniqueKeywords([
+    item?.search_phrases,
     tagNames(item),
     item?.category,
     item?.paper?.direction,
     item?.category === '论文' || item?.paper ? '农业论文' : '',
     '农业信息化',
   ])
+}
+
+export function tagPath(name) {
+  return `/tags/${encodeURIComponent(name)}`
+}
+
+export function topicJsonLd(topic, origin) {
+  const path = tagPath(topic.name)
+  const tokens = topic.tokens || []
+  const desc = topic.kind === 'phrase'
+    ? `与「${tokens.join('、')}」同时相关的农业资讯，共 ${topic.total} 条。`
+    : `农业信息化主题「${topic.name}」相关资讯与论文，共 ${topic.total} 条。`
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: topic.name,
+    description: clip(desc, 300),
+    url: absUrl(path, origin),
+    isPartOf: { '@type': 'WebSite', name: SITE_NAME, url: absUrl('/', origin) },
+    keywords: uniqueKeywords([topic.name, tokens, '农业信息化']).join(','),
+    hasPart: (topic.items || []).slice(0, 20).map((it) => ({
+      '@type': 'Article',
+      name: it.title,
+      url: absUrl(`/items/${it.id}`, origin),
+    })),
+  }
 }
 
 export function dailyKeywords(daily) {

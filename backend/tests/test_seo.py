@@ -95,6 +95,8 @@ async def test_sitemap_includes_pages_and_item(client):
     assert "https://agrihot.com/dailies" in body
     assert f"https://agrihot.com/items/{item_id}" in body
     assert "智慧农业" in body or "%E6%99%BA%E6%85%A7%E5%86%9C%E4%B8%9A" in body
+    detail = (await client.get(f"/api/v1/items/{item_id}")).json()
+    assert detail["slug"].endswith(f"-{item_id}")
 
 
 @pytest.mark.asyncio

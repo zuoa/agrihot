@@ -14,6 +14,7 @@ _ITEM_COLUMN_PATCHES = (
     ("view_count", "INTEGER NOT NULL DEFAULT 0"),
     ("doi", "VARCHAR(200)"),
     ("summary_zh", "TEXT"),
+    ("search_phrases", "JSON"),
 )
 
 
