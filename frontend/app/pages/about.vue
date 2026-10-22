@@ -3,9 +3,9 @@
     <h1 class="text-2xl font-bold text-stone-900">关于 AgriHot</h1>
     <p class="text-sm text-stone-600 leading-7">
       AgriHot 是一个农业信息化资讯聚合站：聚合农业农村政策、行业报道与农业信息化学术论文，
-      每日生成《农业农村日报》。内容主要由爬虫 Agent 通过
-      <NuxtLink to="/agent" class="text-leaf-700 hover:underline">开放推送接口</NuxtLink>
-      提交，服务层自动去重（URL 精确 + 标题相似），多信源报道自动合并。
+      每日生成《农业农村日报》。内容自动收录与去重，多信源报道合并呈现。
+      通过 <NuxtLink to="/agent" class="text-leaf-700 hover:underline">Agent Skill 或 MCP</NuxtLink>
+      接入，可按主题与语义检索资讯、论文和日报。
     </p>
     <section class="rounded-xl bg-leaf-50 border border-leaf-100 p-4 sm:p-5">
       <div class="flex items-baseline justify-between gap-3 mb-3">
@@ -38,7 +38,7 @@
       </div>
       <div class="rounded-xl bg-leaf-50 border border-leaf-100 p-4">
         <div class="text-sm font-bold text-leaf-800">Agent 友好</div>
-        <div class="text-xs text-stone-500 mt-1.5 leading-5">开放推送 API，去重后自动上线</div>
+        <div class="text-xs text-stone-500 mt-1.5 leading-5">Skill 与 MCP 接入，按关键词和语义召回内容</div>
       </div>
     </div>
     <section class="border-t border-leaf-100 pt-5 space-y-4">

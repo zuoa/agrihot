@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.database import SessionLocal, engine
-from app.models import Base, Daily, Item
+from app.database import SessionLocal, ensure_schema
+from app.models import Daily, Item
 from app.schemas import IngestItemIn
 from app.services import ingest_service
 
@@ -161,8 +161,7 @@ DISCLAIMER = (
 
 
 async def main() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_schema()
 
     async with SessionLocal() as session:
         existing = (

@@ -1,5 +1,6 @@
 """AgriHot backend entrypoint."""
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -12,6 +13,9 @@ from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
 from .api.v1.public import router as public_router
 from .api.v1.seo import router as seo_router
+from .api.v1.agent import router as agent_router
+from .api.v1.agent_admin import router as agent_admin_router
+from .mcp_server import mcp, mcp_app
 from .config import settings
 from .database import SessionLocal, ensure_schema
 
@@ -28,6 +32,8 @@ async def lifespan(app: FastAPI):
         await maybe_backfill_doi(session)
         await runtime_settings.load(session)
         await watchlist_service.load_from_db(session)
+        from .services.taxonomy_service import sync_catalog
+        await sync_catalog(session)
         await session.commit()
 
     from .services.content_scheduler import start_content_scheduler
@@ -39,16 +45,23 @@ async def lifespan(app: FastAPI):
     scheduler = start_daily_scheduler()
     literature = start_literature_scheduler()
     content = start_content_scheduler()
-    yield
-    scheduler.cancel()
-    literature.cancel()
-    content.cancel()
+    from .services.search_index_service import run_worker
+    indexer = asyncio.create_task(run_worker())
+    try:
+        async with mcp.session_manager.run():
+            yield
+    finally:
+        for task in (scheduler, literature, content, indexer):
+            task.cancel()
+        for task in (scheduler, literature, content, indexer):
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(
     title="AgriHot API",
-    description="农业信息化资讯聚合 · Agent 推送与公开只读接口",
-    version="1.0.0",
+    description="农业信息化资讯 · Agent Skill 与 MCP 读取接入",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -72,7 +85,7 @@ def _problem(status: int, title: str, detail) -> JSONResponse:
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return _problem(429, "Too Many Requests", f"超出推送频率限制（{settings.ingest_rate_limit}），请稍后重试")
+    return _problem(429, "Too Many Requests", "请求过于频繁，请稍后重试")
 
 
 @app.exception_handler(RequestValidationError)
@@ -97,6 +110,17 @@ app.include_router(ingest_router)
 app.include_router(admin_router)
 app.include_router(public_router)
 app.include_router(seo_router)
+app.include_router(agent_router)
+app.include_router(agent_admin_router)
+app.add_route("/api/v1/mcp", mcp_app, methods=["GET", "POST", "DELETE"])
+
+
+@app.middleware("http")
+async def private_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/api/v1/agent/", "/api/v1/mcp", "/api/v1/admin/")):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/health")

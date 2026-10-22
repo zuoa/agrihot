@@ -1,0 +1,2248 @@
+version: 2026-10-22.2
+aliases:
+  江苏农科院: 江苏省农科院
+  江苏省农业科学院: 江苏省农科院
+  山东农科院: 山东省农科院
+  山东省农业科学院: 山东省农科院
+  浙江农科院: 浙江省农科院
+  浙江省农业科学院: 浙江省农科院
+  福建农科院: 福建省农科院
+  福建省农业科学院: 福建省农科院
+  广东农科院: 广东省农科院
+  广东省农业科学院: 广东省农科院
+  云南农科院: 云南省农科院
+  云南省农业科学院: 云南省农科院
+  河南农科院: 河南省农科院
+  河南省农业科学院: 河南省农科院
+  湖北农科院: 湖北省农科院
+  湖北省农业科学院: 湖北省农科院
+  湖南农科院: 湖南省农科院
+  湖南省农业科学院: 湖南省农科院
+  四川农科院: 四川省农科院
+  四川省农业科学院: 四川省农科院
+  安徽农科院: 安徽省农科院
+  安徽省农业科学院: 安徽省农科院
+  黑龙江农科院: 黑龙江省农科院
+  黑龙江省农业科学院: 黑龙江省农科院
+  江西农科院: 江西省农科院
+  江西省农业科学院: 江西省农科院
+  河北农科院: 河北省农科院
+  河北省农业科学院: 河北省农科院
+  辽宁农科院: 辽宁省农科院
+  辽宁省农业科学院: 辽宁省农科院
+  吉林农科院: 吉林省农科院
+  吉林省农业科学院: 吉林省农科院
+  陕西农科院: 陕西省农科院
+  陕西省农业科学院: 陕西省农科院
+  山西农科院: 山西省农科院
+  山西省农业科学院: 山西省农科院
+  甘肃农科院: 甘肃省农科院
+  甘肃省农业科学院: 甘肃省农科院
+  贵州农科院: 贵州省农科院
+  贵州省农业科学院: 贵州省农科院
+  海南农科院: 海南省农科院
+  海南省农业科学院: 海南省农科院
+  青海农科院: 青海省农科院
+  青海省农业科学院: 青海省农科院
+  台湾农科院: 台湾省农科院
+  台湾省农业科学院: 台湾省农科院
+  上海农科院: 上海市农科院
+  上海市农业科学院: 上海市农科院
+  北京农科院: 北京市农科院
+  北京市农业科学院: 北京市农科院
+  天津农科院: 天津市农科院
+  天津市农业科学院: 天津市农科院
+  重庆农科院: 重庆市农科院
+  重庆市农业科学院: 重庆市农科院
+  中国农业科学院: 中国农科院
+  农业AI: 农业人工智能
+  农业人工智慧: 农业人工智能
+  IoT: 物联网
+  GIS空间分析: GIS
+hidden_tags:
+- 政策
+- 报道
+- 论文
+- 行业
+- 农业
+- 资讯
+- 新闻
+- 动态
+- 专题
+- 要闻
+- 热点
+- 研究
+- 进展
+- 分析
+- 综述
+- 观点
+- 评论
+- 科技
+- 技术
+- 三农
+- 农村
+- 快讯
+- 关注
+- 会议
+- 论坛
+- 培训会
+technologies:
+- 农业人工智能
+- 人工智能
+- AI
+- 机器学习
+- 深度学习
+- 计算机视觉
+- 目标检测
+- 图像识别
+- 图像分割
+- 遥感
+- 农业遥感
+- 遥感监测
+- 卫星遥感
+- 无人机遥感
+- 高光谱遥感
+- 多源遥感
+- 高光谱
+- 多光谱成像
+- 作物表型
+- 无人机多光谱
+- 农业物联网
+- 物联网
+- 传感器
+- 农业传感器
+- 边缘计算
+- GIS
+- 地理信息系统
+- 大模型
+- 农业大模型
+- 大语言模型
+- 多模态
+- 联邦学习
+- 强化学习
+- 精准农业
+- 数字孪生
+- 基因编辑
+- 生物育种
+- 分子育种
+- 农业机器人
+- 区块链
+- 农产品溯源
+regions:
+- 浙江
+- 江苏
+- 山东
+- 四川
+- 河南
+- 河北
+- 湖北
+- 湖南
+- 安徽
+- 福建
+- 广东
+- 广西
+- 云南
+- 贵州
+- 江西
+- 陕西
+- 山西
+- 甘肃
+- 青海
+- 宁夏
+- 新疆
+- 内蒙古
+- 西藏
+- 海南
+- 黑龙江
+- 吉林
+- 辽宁
+- 北京
+- 上海
+- 天津
+- 重庆
+- 京津冀
+- 黄河流域
+- 长江流域
+- 丘陵山区
+- 海外
+- 中国
+- 美国
+- 尼日利亚
+- 肯尼亚
+topics:
+- code: A
+  slug: field-crops
+  name: 大田作物
+  description: 浏览大田作物相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 3
+  terms:
+  - 大田作物
+  - 粮食生产
+  text_terms: []
+- code: B
+  slug: horticulture
+  name: 园艺作物
+  description: 浏览园艺作物相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 4
+  terms:
+  - 园艺作物
+  text_terms: []
+- code: C
+  slug: livestock
+  name: 畜牧兽医
+  description: 浏览畜牧兽医相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 5
+  terms:
+  - 畜牧业
+  - 畜牧兽医
+  - 畜禽养殖
+  text_terms:
+  - 畜牧
+  - 畜禽
+  - livestock
+- code: D
+  slug: aquaculture
+  name: 渔业水产
+  description: 浏览渔业水产相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 6
+  terms:
+  - 水产养殖
+  - 渔业
+  - 水产业
+  text_terms:
+  - 水产
+  - 渔业
+  - aquaculture
+  - fish farming
+- code: E
+  slug: food-supply
+  name: 农产品加工与流通
+  description: 浏览农产品加工与流通相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 7
+  terms:
+  - 农产品供应链
+  text_terms: []
+- code: F
+  slug: inputs-equipment
+  name: 农业投入品与装备
+  description: 浏览农业投入品与装备相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 1
+  terms:
+  - 农业投入品
+  text_terms: []
+- code: G
+  slug: rural-services
+  name: 农业服务与乡村发展
+  description: 浏览农业服务与乡村发展相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 8
+  terms:
+  - 乡村振兴
+  - 农村发展
+  text_terms:
+  - 乡村振兴
+  - 农村发展
+  - rural development
+- code: H
+  slug: environment
+  name: 资源环境与气候变化
+  description: 浏览资源环境与气候变化相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 2
+  terms:
+  - 农业资源环境
+  text_terms: []
+- code: I
+  slug: digital-agriculture
+  name: 数字农业与前沿技术
+  description: 浏览数字农业与前沿技术相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 0
+  terms:
+  - 农业数字化
+  text_terms: []
+- code: J
+  slug: policy
+  name: 政策与宏观
+  description: 浏览政策与宏观相关政策、产业动态与研究。
+  parent_code: null
+  sort_order: 9
+  terms:
+  - 三农工作
+  text_terms: []
+- code: A1
+  slug: rice
+  name: 水稻
+  description: 以水稻为对象的生产、育种、植保、机械化与产业内容
+  parent_code: A
+  sort_order: 1
+  terms:
+  - 水稻
+  - 水稻生产
+  - 水稻种植
+  - 水稻育种
+  - 水稻品种
+  - 水稻新品种
+  - 水稻高产
+  - 水稻机械化
+  - 水稻种业
+  - 水稻病虫害
+  - 水稻病害
+  - 杂交水稻
+  - 超级稻
+  - 再生稻
+  - 节水抗旱稻
+  - 耐盐碱水稻
+  - 粳稻
+  - 糯稻
+  - 优质稻
+  - 功能稻米
+  - 稻品芯1号
+  - 稻飞虱
+  - 水稻测产
+  - 丝苗米
+  - 五常大米
+  text_terms:
+  - 水稻
+  - 杂交稻
+  - 再生稻
+  - 稻米
+  - 稻田
+  - rice
+  - paddy
+  requires_any: []
+- code: A2
+  slug: wheat
+  name: 小麦
+  description: 小麦及冬春麦区相关生产与科研
+  parent_code: A
+  sort_order: 2
+  terms:
+  - 小麦
+  - 小麦育种
+  - 冬小麦
+  - 济麦系列
+  - 济麦22
+  text_terms:
+  - 小麦
+  - winter wheat
+  - wheat
+  requires_any: []
+- code: A3
+  slug: maize
+  name: 玉米
+  description: 玉米生产、育种、密植高产与复合种植
+  parent_code: A
+  sort_order: 3
+  terms:
+  - 玉米
+  - 玉米育种
+  - 玉米种植
+  - 玉米新品种
+  - 玉米密植
+  - 玉米单产提升
+  - 鲜食玉米
+  - 青贮玉米
+  - 高蛋白玉米
+  - 未玉002
+  - 夏玉米
+  - 玉米大豆
+  - 大豆玉米带状复合种植
+  text_terms:
+  - 玉米
+  - maize
+  - corn
+  requires_any: []
+- code: A4
+  slug: soybean-oilseeds
+  name: 大豆与油料
+  description: 大豆、油菜、花生、向日葵、芝麻等油料与蛋白作物
+  parent_code: A
+  sort_order: 4
+  terms:
+  - 大豆
+  - 大豆育种
+  - 克豆91
+  - 油菜
+  - 油菜育种
+  - 油菜品种
+  - 花生
+  - 花生种植
+  - 高油酸花生
+  - 向日葵
+  - 芝麻
+  - 亚麻
+  text_terms:
+  - 大豆
+  - 油菜
+  - 花生
+  - 向日葵
+  - 芝麻
+  - soybean
+  - rapeseed
+  - peanut
+  requires_any: []
+- code: A5
+  slug: tubers-grains
+  name: 薯类与杂粮
+  description: 马铃薯、甘薯、高粱、谷子、荞麦等薯类杂粮
+  parent_code: A
+  sort_order: 5
+  terms:
+  - 马铃薯
+  - 甘薯
+  - 木薯
+  - 高粱
+  - 酿酒高粱
+  - 谷子
+  - 谷子育种
+  - 糜子
+  - 荞麦
+  - 苦荞
+  - 藜麦
+  - 绿豆
+  - 豌豆
+  - 蚕豆
+  - 大麦
+  - 燕麦
+  - 黑麦
+  text_terms:
+  - 马铃薯
+  - 甘薯
+  - 红薯
+  - 高粱
+  - 谷子
+  - 藜麦
+  - 荞麦
+  - potato
+  - sorghum
+  - millet
+  requires_any: []
+- code: A6
+  slug: cash-crops
+  name: 棉麻糖与特色经作
+  description: 棉花、甘蔗、烟草、蚕桑等工业原料型作物
+  parent_code: A
+  sort_order: 6
+  terms:
+  - 棉花
+  - 棉花种植
+  - 棉花黄萎病
+  - 甘蔗
+  - 甘蔗育种
+  - 云蔗081609
+  - 烟叶
+  - 烟草
+  - 蚕桑产业
+  text_terms:
+  - 棉花
+  - 甘蔗
+  - 烟草
+  - 蚕桑
+  - cotton
+  - sugarcane
+  - tobacco
+  - sericulture
+  requires_any: []
+- code: A7
+  slug: forage-cropping
+  name: 饲草与耕作制度
+  description: 饲草产业与间套轮作、连作障碍等种植制度
+  parent_code: A
+  sort_order: 7
+  terms:
+  - 紫花苜蓿
+  - 饲草产业
+  - 饲用小黑麦
+  - 绿肥
+  - 覆盖作物
+  - 间作
+  - 套种
+  - 轮作
+  - 连作障碍
+  text_terms:
+  - 轮作
+  - 间作
+  - 套种
+  - 苜蓿
+  - crop rotation
+  - intercropping
+  - alfalfa
+  requires_any: []
+- code: A8
+  slug: yield-food-security
+  name: 单产提升与粮食安全
+  description: 单产行动、产能建设与粮食安全、收购形势
+  parent_code: A
+  sort_order: 8
+  terms:
+  - 单产提升
+  - 粮食单产提升
+  - 粮油单产提升
+  - 水稻单产提升
+  - 玉米单产提升
+  - 千亿斤粮食产能
+  - 粮食产能
+  - 粮食生产
+  - 粮食生产韧性
+  - 粮食主产区
+  - 吨粮田
+  - 密植高产
+  - 高产示范
+  - 高产纪录
+  - 高产栽培
+  - 测产
+  - 测产验收
+  - 粮食安全
+  - 粮油安全
+  - 粮食收购
+  - 最低收购价
+  - 粮食仓储
+  - 粮食烘干
+  - 秋粮收购
+  text_terms:
+  - 粮食安全
+  - 粮油安全
+  - 单产提升
+  - 粮食产能
+  - 粮食收购
+  - food security
+  - grain security
+  requires_any: []
+- code: B1
+  slug: vegetables
+  name: 蔬菜
+  description: 蔬菜育种、栽培、病虫害与产业
+  parent_code: B
+  sort_order: 1
+  terms:
+  - 蔬菜
+  - 蔬菜产业
+  - 蔬菜育种
+  - 蔬菜品种
+  - 蔬菜种植
+  - 设施蔬菜
+  - 设施番茄
+  - 番茄
+  - 番茄种植
+  - 番茄病害
+  - 番茄潜叶蛾
+  - 辣椒
+  - 辣椒育种
+  - 辣椒产业
+  - 黄瓜
+  - 黄瓜育种
+  - 茄子
+  - 生菜
+  - 甘蓝
+  - 萝卜
+  - 胡萝卜
+  - 甜瓜
+  - 西瓜
+  - 草莓
+  - 樱桃番茄
+  text_terms:
+  - 蔬菜
+  - 番茄
+  - 辣椒
+  - 黄瓜
+  - 茄子
+  - 生菜
+  - 甘蓝
+  - 萝卜
+  - 西瓜
+  - 甜瓜
+  - 草莓
+  - vegetable
+  - tomato
+  - cucumber
+  - strawberry
+  requires_any: []
+- code: B2
+  slug: fruit
+  name: 果树
+  description: 苹果、柑橘、猕猴桃、葡萄、热带亚热带果树
+  parent_code: B
+  sort_order: 2
+  terms:
+  - 苹果
+  - 苹果病害
+  - 柑橘
+  - 猕猴桃
+  - 葡萄
+  - 葡萄种植
+  - 葡萄园
+  - 葡萄产业
+  - 桃
+  - 黄桃
+  - 芒果
+  - 荔枝
+  - 龙眼
+  - 火龙果
+  - 牛油果
+  - 香蕉
+  - 蓝莓
+  - 榴莲产业
+  text_terms:
+  - 果树
+  - 苹果
+  - 柑橘
+  - 葡萄
+  - 猕猴桃
+  - 芒果
+  - 荔枝
+  - 龙眼
+  - 枣树
+  - 柿树
+  - 甜柿
+  - orchard
+  - apple
+  - citrus
+  - grape
+  - kiwifruit
+  requires_any: []
+- code: B3
+  slug: tea-coffee
+  name: 茶叶与咖啡
+  description: 茶叶、咖啡、可可等饮品原料作物
+  parent_code: B
+  sort_order: 3
+  terms:
+  - 茶叶
+  - 茶产业
+  - 咖啡产业
+  - 咖啡种植
+  - 可可
+  text_terms:
+  - 茶叶
+  - 茶树
+  - 咖啡
+  - 可可
+  - tea plant
+  - coffee
+  - cacao
+  requires_any: []
+- code: B4
+  slug: flowers
+  name: 花卉与观赏植物
+  description: 花卉产业、月季等观赏园艺
+  parent_code: B
+  sort_order: 4
+  terms:
+  - 花卉
+  - 花卉产业
+  - 月季
+  - 姜荷花
+  text_terms:
+  - 花卉
+  - 月季
+  - 姜荷花
+  - ornamental
+  - floriculture
+  requires_any: []
+- code: B5
+  slug: mushrooms
+  name: 食用菌
+  description: 食用菌菌种、栽培与产业
+  parent_code: B
+  sort_order: 5
+  terms:
+  - 食用菌
+  - 双孢蘑菇
+  text_terms:
+  - 食用菌
+  - 蘑菇
+  - 香菇
+  - mushroom
+  requires_any: []
+- code: B6
+  slug: medicinal-plants
+  name: 中药材与药食同源
+  description: 道地药材、药用植物与药食同源开发
+  parent_code: B
+  sort_order: 6
+  terms:
+  - 中药材
+  - 中药材种植
+  - 道地药材
+  - 药用植物
+  - 药食同源
+  text_terms:
+  - 中药材
+  - 药用植物
+  - 药食同源
+  - medicinal plant
+  requires_any: []
+- code: B7
+  slug: protected-horticulture
+  name: 设施园艺与植物工厂
+  description: 设施化保护地生产与植物工厂、无土栽培、都市农业
+  parent_code: B
+  sort_order: 7
+  terms:
+  - 设施园艺
+  - 设施栽培
+  - 温室种植
+  - 温室番茄
+  - 智能温室
+  - 智慧大棚
+  - 植物工厂
+  - 垂直农业
+  - 垂直农场
+  - 无土栽培
+  - 水培
+  - 雾培
+  - 环境调控
+  - 光伏农业
+  - 数字农业工厂
+  - 都市农业
+  - 城市农业
+  text_terms:
+  - 温室
+  - 植物工厂
+  - 设施园艺
+  - 设施蔬菜
+  - 垂直农业
+  - 无土栽培
+  - greenhouse
+  - plant factory
+  - hydroponic
+  - vertical farm
+  requires_any:
+  - 温室
+  - 园艺
+  - 蔬菜
+  - 植物工厂
+  - 垂直农业
+  - greenhouse
+  - hydroponic
+  - plant factory
+- code: C1
+  slug: pigs
+  name: 生猪
+  description: 生猪养殖、产能与产业形势
+  parent_code: C
+  sort_order: 1
+  terms:
+  - 生猪养殖
+  - 生猪
+  - 猪价
+  - 能繁母猪
+  text_terms:
+  - 生猪
+  - 养猪
+  - 母猪
+  - swine
+  - pig farming
+  - piglet
+  requires_any: []
+- code: C2
+  slug: ruminants
+  name: 草食牲畜
+  description: 奶牛、肉牛、羊养殖与奶业
+  parent_code: C
+  sort_order: 2
+  terms:
+  - 奶牛养殖
+  - 肉牛养殖
+  - 奶业
+  - 羊养殖
+  - 草原畜牧业
+  - 湖羊
+  - 肉羊
+  - 奶牛
+  - 肉牛
+  text_terms:
+  - 奶牛
+  - 肉牛
+  - 湖羊
+  - 肉羊
+  - 绵羊
+  - 山羊
+  - 奶业
+  - dairy cow
+  - cattle
+  - sheep
+  - goat
+  requires_any: []
+- code: C3
+  slug: poultry
+  name: 家禽
+  description: 蛋鸡、肉鸡、水禽养殖
+  parent_code: C
+  sort_order: 3
+  terms:
+  - 家禽养殖
+  - 蛋鸡
+  - 肉鸡
+  - 水禽
+  - 肉种鸡
+  - 畜禽养殖
+  text_terms:
+  - 家禽
+  - 蛋鸡
+  - 肉鸡
+  - 肉种鸡
+  - 产蛋
+  - 养鸡
+  - 养鸭
+  - poultry
+  - broiler
+  - laying hen
+  - chicken
+  - duck
+  requires_any: []
+- code: C4
+  slug: feed
+  name: 饲料与饲草
+  description: 饲料安全、蛋白饲料与饲草供给
+  parent_code: C
+  sort_order: 4
+  terms:
+  - 饲料安全
+  - 饲料蛋白
+  - 饲草产业
+  - 青贮玉米
+  - 紫花苜蓿
+  text_terms:
+  - 饲料
+  - 饲草
+  - 青贮
+  - 苜蓿
+  - animal feed
+  - silage
+  - forage
+  requires_any: []
+- code: C5
+  slug: animal-health
+  name: 疫病防控与兽药
+  description: 动物疫病、疫苗、兽药与人兽共患病
+  parent_code: C
+  sort_order: 5
+  terms:
+  - 动物疫苗
+  - 动物防疫
+  - 动物疫病防控
+  - 非洲猪瘟
+  - 人兽共患病
+  - One Health
+  - 兽药注册
+  - 兽药监管
+  - 兽药研发
+  - 新兽药
+  - 进口兽药
+  - 生物安全
+  text_terms:
+  - 动物疫病
+  - 非洲猪瘟
+  - 兽药
+  - 动物疫苗
+  - 人兽共患
+  - veterinary
+  - animal disease
+  - zoonotic
+  requires_any: []
+- code: C6
+  slug: smart-livestock
+  name: 养殖环境与智慧畜牧
+  description: 粪污资源化、动物福利与智能化养殖
+  parent_code: C
+  sort_order: 6
+  terms:
+  - 畜禽粪污
+  - 绿色养殖
+  - 健康养殖
+  - 动物福利
+  - 精准畜牧
+  - 智慧畜牧
+  text_terms:
+  - 智慧畜牧
+  - 精准畜牧
+  - 畜禽粪污
+  - 动物福利
+  - 动物行为
+  - livestock monitoring
+  - animal welfare
+  requires_any:
+  - 畜
+  - 牛
+  - 羊
+  - 猪
+  - 鸡
+  - 禽
+  - livestock
+  - cattle
+  - sheep
+  - swine
+  - poultry
+- code: D1
+  slug: pond-factory-aquaculture
+  name: 池塘与工厂化养殖
+  description: 池塘养殖、循环水与设施渔业
+  parent_code: D
+  sort_order: 1
+  terms:
+  - 池塘养殖
+  - 工厂化循环水
+  - 设施渔业
+  text_terms:
+  - 池塘养殖
+  - 工厂化循环水
+  - 设施渔业
+  - 循环水养殖
+  - recirculating aquaculture
+  - pond aquaculture
+  requires_any:
+  - 池塘
+  - 工厂化
+  - 循环水
+  - pond
+  - recirculating
+- code: D2
+  slug: offshore-aquaculture
+  name: 深远海养殖与海洋牧场
+  description: 深远海养殖工船、海洋牧场与渔业资源
+  parent_code: D
+  sort_order: 2
+  terms:
+  - 深远海养殖
+  - 海洋牧场
+  - 渔业资源
+  - 捕捞
+  - 禁渔
+  text_terms:
+  - 深远海养殖
+  - 海洋牧场
+  - 养殖工船
+  - offshore aquaculture
+  - marine ranch
+  requires_any: []
+- code: D3
+  slug: integrated-aquaculture
+  name: 稻渔种养与生态渔业
+  description: 稻渔综合种养、增殖渔业与生态养殖
+  parent_code: D
+  sort_order: 3
+  terms:
+  - 稻渔综合种养
+  - 生态渔业
+  - 增殖放流
+  text_terms:
+  - 稻渔
+  - 稻鱼
+  - 稻虾
+  - 增殖放流
+  - rice-fish
+  - integrated aquaculture
+  requires_any: []
+- code: D4
+  slug: aquatic-health
+  name: 水质与病害
+  description: 养殖水质调控与水生动物病害防控
+  parent_code: D
+  sort_order: 4
+  terms:
+  - 水质监测
+  - 水生动物病害
+  - 鱼类病害
+  text_terms:
+  - 水生动物病害
+  - 鱼类病害
+  - aquatic disease
+  - fish disease
+  requires_any:
+  - 养殖
+  - 水产
+  - 鱼
+  - 虾
+  - 蟹
+  - aquaculture
+  - fish
+  - shrimp
+- code: D5
+  slug: smart-aquaculture
+  name: 智慧渔业
+  description: 渔业数字化、智能投喂与养殖装备
+  parent_code: D
+  sort_order: 5
+  terms:
+  - 智慧渔业
+  - 智能投喂
+  - 养殖工船
+  - 渔光互补
+  text_terms:
+  - 智慧渔业
+  - 智能投喂
+  - 渔光互补
+  - smart aquaculture
+  - precision aquaculture
+  requires_any:
+  - 渔
+  - 水产
+  - 鱼
+  - 虾
+  - aquaculture
+  - fish
+  - shrimp
+- code: E1
+  slug: food-processing
+  name: 加工与食品制造
+  description: 初加工、精深加工与食品制造工艺
+  parent_code: E
+  sort_order: 1
+  terms:
+  - 农产品加工
+  - 食品加工
+  - 农产品分级
+  - 农产品精深加工
+  text_terms:
+  - 农产品加工
+  - 食品加工
+  - 粮油加工
+  - 粗饲料加工
+  - food processing
+  - food manufacturing
+  requires_any: []
+- code: E2
+  slug: nutrition
+  name: 营养与功能食品
+  description: 膳食营养、功能成分与大食物观
+  parent_code: E
+  sort_order: 2
+  terms:
+  - 功能食品
+  - 功能成分
+  - 膳食营养
+  - 营养安全
+  - 大食物观
+  - 食物系统
+  - 可持续食物系统
+  - 食物浪费
+  - 农食系统转型
+  text_terms:
+  - 功能食品
+  - 膳食营养
+  - 食品营养
+  - 功能成分
+  - food nutrition
+  - functional food
+  requires_any: []
+- code: E3
+  slug: cold-chain
+  name: 冷链仓储物流
+  description: 保鲜包装、冷链与粮食仓储物流
+  parent_code: E
+  sort_order: 3
+  terms:
+  - 食品保鲜
+  - 食品包装
+  - 冷链物流
+  - 低空物流
+  text_terms:
+  - 冷链
+  - 粮食仓储
+  - 食品保鲜
+  - 食品包装
+  - 粮食烘干
+  - cold chain
+  - food packaging
+  requires_any: []
+- code: E4
+  slug: food-safety
+  name: 质量安全与溯源
+  description: 质量安全检测、农药残留与全链条追溯
+  parent_code: E
+  sort_order: 4
+  terms:
+  - 农产品质量安全
+  - 食品安全
+  - 品质检测
+  - 无损检测
+  - 光谱检测
+  - 农药残留
+  - 追溯体系
+  - 农产品溯源
+  - 农产品追溯
+  - 数字溯源
+  - 区块链溯源
+  - 供应链溯源
+  text_terms:
+  - 食品安全
+  - 农产品质量
+  - 农产品溯源
+  - 农药残留
+  - 品质检测
+  - food safety
+  - food traceability
+  - pesticide residue
+  requires_any:
+  - 农产品
+  - 食品
+  - 粮
+  - food
+  - agricultural product
+  - fruit
+- code: E5
+  slug: branding-commerce
+  name: 品牌流通与电商
+  description: 品牌建设、产销对接与农村电商
+  parent_code: E
+  sort_order: 5
+  terms:
+  - 品牌农业
+  - 品牌建设
+  - 品牌培育
+  - 农产品品牌
+  - 区域公用品牌
+  - 农业品牌
+  - 地理标志
+  - 订单农业
+  - 定制农业
+  - 认养农业
+  - 共享农业
+  - 产销对接
+  - 农产品流通
+  - 农产品贸易
+  - 农产品出口
+  - 农产品电商
+  - 农产品上行
+  - 农村电商
+  - 电商助农
+  - 直播助农
+  - 数商兴农
+  - 电子商务进农村
+  text_terms:
+  - 农村电商
+  - 农产品电商
+  - 农产品品牌
+  - 地理标志
+  - 直播助农
+  - 农产品流通
+  - agricultural e-commerce
+  requires_any: []
+- code: F1
+  slug: seed-industry
+  name: 种业与品种管理
+  description: 种质资源、品种审定与知识产权
+  parent_code: F
+  sort_order: 1
+  terms:
+  - 种业振兴
+  - 种质资源
+  - 品种审定
+  - 国审品种
+  - 品种认定
+  - 品种选育
+  - 品种推广
+  - 良种推广
+  - 良种良法
+  - 主导品种
+  - 主推技术
+  - 新品种
+  - 新品种推广
+  - 植物新品种保护
+  - 植物新品种权
+  - 品种权
+  - 实质性派生品种
+  - EDV
+  - EDV制度
+  - 种业知识产权
+  - 种业
+  - 品种转让
+  - 专利许可
+  - 知识产权
+  text_terms:
+  - 种业
+  - 品种审定
+  - 品种许可
+  - 新品种权
+  - 种质资源
+  - seed industry
+  - germplasm
+  - variety registration
+  requires_any: []
+- code: F2
+  slug: biotechnology
+  name: 生物育种与基因技术
+  description: 分子设计育种、基因编辑与合成生物
+  parent_code: F
+  sort_order: 2
+  terms:
+  - 生物育种
+  - 分子育种
+  - 分子设计育种
+  - 智能育种
+  - 智慧育种
+  - 基因组育种
+  - 基因组选择
+  - 全基因组选择
+  - 基因编辑
+  - 基因组编辑
+  - 基因芯片
+  - 育种芯片
+  - 基因挖掘
+  - 基因调控
+  - 转基因检测
+  - 合成生物学
+  - 泛基因组
+  - 多组学
+  - 基因组学
+  - 育种机器人
+  - 育种创新
+  - 育种攻关
+  - 自主育种
+  - 品质育种
+  - 抗病育种
+  - 生物技术
+  - 生物强化
+  text_terms:
+  - 生物育种
+  - 分子育种
+  - 基因编辑
+  - 基因组选择
+  - 合成生物
+  - gene editing
+  - genomic selection
+  - plant breeding
+  - molecular breeding
+  requires_any: []
+- code: F3
+  slug: fertilizers
+  name: 肥料与水肥一体化
+  description: 施肥技术、化肥减量与新型肥料
+  parent_code: F
+  sort_order: 3
+  terms:
+  - 有机肥
+  - 化肥减量
+  - 化肥减量增效
+  - 科学施肥
+  - 精准施肥
+  - 水肥一体化
+  - 变量施肥
+  - 生物刺激素
+  - 生物固氮
+  - 养分管理
+  - 养分利用效率
+  - 氮肥管理
+  text_terms:
+  - 施肥
+  - 肥料
+  - 水肥一体化
+  - 养分管理
+  - fertilizer
+  - fertilization
+  - fertigation
+  requires_any: []
+- code: F4
+  slug: crop-protection
+  name: 农药与绿色防控
+  description: 农药管理、绿色植保与生物防治
+  parent_code: F
+  sort_order: 4
+  terms:
+  - 农药管理
+  - 农药减量
+  - 农药登记
+  - 农药检定
+  - 禁限用农药
+  - 绿色农药
+  - 生物农药
+  - 微生物农药
+  - 纳米农药
+  - 绿色防控
+  - 绿色植保
+  - 统防统治
+  - 植保
+  - 植保无人机
+  - 无人机植保
+  - 精准施药
+  - 一喷多促
+  - 生物防治
+  - 天敌
+  - RNA干扰
+  - 杂草识别
+  - 杂草防控
+  - 激光除草
+  text_terms:
+  - 农药
+  - 植保
+  - 绿色防控
+  - 生物防治
+  - 杂草防控
+  - 除草
+  - pesticide
+  - crop protection
+  - weed control
+  requires_any: []
+- code: F5
+  slug: machinery
+  name: 农机装备与机械化
+  description: 农机装备、机械化作业与导航
+  parent_code: F
+  sort_order: 5
+  terms:
+  - 农机装备
+  - 农业装备
+  - 农业机械
+  - 农业机械化
+  - 全程机械化
+  - 机械化
+  - 农机农艺融合
+  - 宜机收品种
+  - 智能农机
+  - 智慧农机
+  - 无人农机
+  - 农机导航
+  - 北斗导航
+  - 北斗应用
+  - 自主导航
+  - 路径规划
+  - 丘陵山区农机
+  - 设施装备
+  - 智能装备
+  text_terms:
+  - 农机
+  - 农业机械
+  - 机械化
+  - 收割机
+  - agricultural machinery
+  - tractor
+  - harvester
+  requires_any: []
+- code: F6
+  slug: agricultural-robots
+  name: 机器人与无人农场
+  description: 农业机器人、无人农场与智能作业
+  parent_code: F
+  sort_order: 6
+  terms:
+  - 农业机器人
+  - 采摘机器人
+  - 无人农场
+  - 未来农场
+  - 智慧农场
+  - 无人收割机
+  text_terms:
+  - 农业机器人
+  - 采摘机器人
+  - 无人农场
+  - 无人收割机
+  - agricultural robot
+  - harvesting robot
+  - robotic harvesting
+  requires_any:
+  - 农
+  - 采摘
+  - 育种
+  - 养殖
+  - 收割
+  - agricultur
+  - farm
+  - harvest
+- code: G1
+  slug: extension-transfer
+  name: 农技推广与成果转化
+  description: 农技推广体系、科技特派员与科技小院
+  parent_code: G
+  sort_order: 1
+  terms:
+  - 农技推广
+  - 农业技术推广
+  - 农技服务
+  - 农技培训
+  - 技术推广
+  - 技术培训
+  - 技术意见
+  - 技术采纳
+  - 农业技术采纳
+  - 科技服务
+  - 科技特派员
+  - 科技特派团
+  - 科技包联
+  - 科技下乡
+  - 科技助农
+  - 科技兴农
+  - 科技赋能
+  - 科技小院
+  - 亚夫科技服务
+  - 三区人才
+  - 银龄行动
+  - 头雁项目
+  - 高素质农民
+  - 新农人
+  - 成果转化
+  - 科技成果转化
+  - 农业科技成果转化
+  - 院地合作
+  - 院企合作
+  - 产学研合作
+  - 农业推广
+  text_terms:
+  - 农技推广
+  - 成果转化
+  - 院地合作
+  - 院企合作
+  - 产学研
+  - 科技特派
+  - 科技小院
+  - 农业推广
+  - 技术培训
+  - agricultural extension
+  - technology transfer
+  requires_any: []
+- code: G2
+  slug: farm-services
+  name: 社会化服务与规模经营
+  description: 托管服务、土地流转与新型经营主体
+  parent_code: G
+  sort_order: 2
+  terms:
+  - 农业社会化服务
+  - 社会化服务
+  - 农机社会化服务
+  - 农事服务
+  - 土地托管
+  - 土地流转
+  - 农地流转
+  - 土地整治
+  - 家庭农场
+  - 农民合作社
+  - 合作社
+  - 新型农业经营主体
+  - 农业经营主体
+  - 农业企业
+  - 小农户
+  - 小农户服务
+  - 小农经济
+  - 农户采纳
+  - 农户行为
+  - 农户调查
+  text_terms:
+  - 土地托管
+  - 土地流转
+  - 农民合作社
+  - 家庭农场
+  - 社会化服务
+  - 小农户
+  - smallholder
+  - land transfer
+  - farm service
+  requires_any: []
+- code: G3
+  slug: rural-finance
+  name: 农村金融与保险
+  description: 信贷担保、农业保险与财政支农
+  parent_code: G
+  sort_order: 3
+  terms:
+  - 农村金融
+  - 农业保险
+  - 农业信贷
+  - 农业信贷担保
+  - 农业风险管理
+  - 绿色金融
+  - 数字金融
+  - 数字普惠金融
+  - 农业补贴
+  - 农机补贴
+  - 财政支农
+  - 财政金融
+  - 金融支农
+  - 农业投资
+  - 农业价值链
+  text_terms:
+  - 农业保险
+  - 农村金融
+  - 农业信贷
+  - 农业补贴
+  - 财政支农
+  - agricultural insurance
+  - rural finance
+  - agricultural credit
+  requires_any: []
+- code: G4
+  slug: rural-industry
+  name: 乡村产业与县域经济
+  description: 乡村产业、三产融合与县域经济
+  parent_code: G
+  sort_order: 4
+  terms:
+  - 乡村产业
+  - 乡村产业振兴
+  - 县域经济
+  - 县域农业
+  - 县域消费
+  - 三产融合
+  - 产业融合
+  - 产业集聚
+  - 产业政策
+  - 特色产业
+  - 特色农业
+  - 土特产
+  - 林下经济
+  - 乡村旅游
+  - 农村产业融合
+  - 农村集体经济
+  - 农村创业
+  - 共同富裕
+  - 千万工程
+  - 百千万工程
+  - 联农带农
+  - 订单农业
+  text_terms:
+  - 乡村产业
+  - 县域经济
+  - 三产融合
+  - 联农带农
+  - 乡村旅游
+  - rural industry
+  - rural tourism
+  requires_any: []
+- code: G5
+  slug: rural-governance
+  name: 乡村治理与人才
+  description: 乡村治理、数字治理与人才培养
+  parent_code: G
+  sort_order: 5
+  terms:
+  - 乡村治理
+  - 数字治理
+  - 党建引领
+  - 政绩观
+  - 基层治理
+  - 乡村人才
+  - 人才培养
+  - 人才引进
+  - 人才招聘
+  - 产教融合
+  - 农村改革
+  - 城乡融合
+  - 农村养老
+  text_terms:
+  - 乡村治理
+  - 乡村人才
+  - 农村养老
+  - 基层治理
+  - rural governance
+  requires_any: []
+- code: G6
+  slug: rural-integration
+  name: 帮扶与城乡融合
+  description: 常态化帮扶、区域协作与农民增收
+  parent_code: G
+  sort_order: 6
+  terms:
+  - 常态化帮扶
+  - 防返贫
+  - 防止返贫
+  - 脱贫攻坚
+  - 易地搬迁
+  - 东西部协作
+  - 闽宁协作
+  - 城乡收入差距
+  - 农民增收
+  - 农户收入
+  - 农户增收
+  - 农户生计
+  - 非农就业
+  text_terms:
+  - 防返贫
+  - 农民增收
+  - 城乡融合
+  - 农户收入
+  - 常态化帮扶
+  - rural income
+  - urban-rural integration
+  requires_any: []
+- code: H1
+  slug: farmland
+  name: 耕地保护与高标准农田
+  description: 耕地数量质量、高标准农田与农田建设
+  parent_code: H
+  sort_order: 1
+  terms:
+  - 耕地保护
+  - 耕地质量
+  - 高标准农田
+  - 数字农田
+  - 农田建设
+  - 黑土地保护
+  - 土地退化
+  - 土地整治
+  - 土地适宜性
+  text_terms:
+  - 耕地保护
+  - 高标准农田
+  - 黑土地保护
+  - 农田建设
+  - farmland protection
+  requires_any: []
+- code: H2
+  slug: soil
+  name: 土壤健康与改良
+  description: 土壤理化生物性状、盐碱地治理与固碳
+  parent_code: H
+  sort_order: 2
+  terms:
+  - 土壤健康
+  - 土壤改良
+  - 土壤修复
+  - 土壤有机碳
+  - 土壤微生物
+  - 土壤肥力
+  - 土壤水分
+  - 土壤养分
+  - 土壤重金属
+  - 土壤检测
+  - 土壤制图
+  - 土壤数据
+  - 土壤墒情
+  - 土壤耕作
+  - 酸化
+  - 盐渍化
+  - 盐碱地
+  - 盐碱地治理
+  - 盐碱地改良
+  - 盐碱地利用
+  - 耐盐碱
+  - 生物炭
+  - 土壤固碳
+  - 根际微生物
+  - 重金属污染
+  - 耕地质量
+  text_terms:
+  - 土壤
+  - 盐碱地
+  - 根际
+  - soil
+  - rhizosphere
+  requires_any: []
+- code: H3
+  slug: irrigation
+  name: 水资源与灌溉
+  description: 水资源配置、节水灌溉与旱作农业
+  parent_code: H
+  sort_order: 3
+  terms:
+  - 水资源
+  - 水资源利用
+  - 水资源管理
+  - 农业水资源
+  - 地下水
+  - 地下水潜力
+  - 灌溉农业
+  - 节水农业
+  - 节水灌溉
+  - 智慧灌溉
+  - 智能灌溉
+  - 精准灌溉
+  - 灌溉管理
+  - 灌溉决策
+  - 旱作农业
+  - 有机旱作
+  - 雨养农业
+  - 蒸散发
+  - 水文模型
+  text_terms:
+  - 灌溉
+  - 水资源
+  - 农业节水
+  - 蒸散发
+  - irrigation
+  - water resource
+  - evapotranspiration
+  requires_any: []
+- code: H4
+  slug: carbon
+  name: 农业碳与绿色低碳
+  description: 碳排放核算、碳汇与绿色转型
+  parent_code: H
+  sort_order: 4
+  terms:
+  - 农业碳排放
+  - 农业碳减排
+  - 农业碳汇
+  - 土壤碳汇
+  - 森林碳汇
+  - 农业温室气体
+  - 甲烷减排
+  - 碳足迹
+  - 碳汇
+  - 碳汇核算
+  - 碳储量
+  - 碳交易
+  - 低碳农业
+  - 低碳转型
+  - 绿色低碳
+  - 绿色转型
+  - 绿色全要素生产率
+  - 农业绿色转型
+  - 农业绿色发展
+  - 农业减排
+  - 温室气体
+  - 氨排放
+  - 生命周期评价
+  text_terms:
+  - 碳排放
+  - 碳汇
+  - 农业碳
+  - 甲烷减排
+  - 碳足迹
+  - carbon emission
+  - carbon sequestration
+  - carbon footprint
+  requires_any:
+  - 农
+  - 土壤
+  - 林
+  - 稻
+  - 粮
+  - 养殖
+  - agricultur
+  - farm
+  - crop
+  - soil
+  - forest
+  - livestock
+- code: H5
+  slug: waste
+  name: 面源污染与废弃物利用
+  description: 面源污染治理与秸秆粪污等废弃物利用
+  parent_code: H
+  sort_order: 5
+  terms:
+  - 农业面源污染
+  - 面源污染
+  - 农业废弃物
+  - 农业废弃物利用
+  - 秸秆还田
+  - 秸秆利用
+  - 秸秆焚烧
+  - 农业微生物
+  - 生物基材料
+  text_terms:
+  - 面源污染
+  - 秸秆利用
+  - 秸秆还田
+  - 农业废弃物
+  - nonpoint source
+  - agricultural waste
+  requires_any: []
+- code: H6
+  slug: biodiversity
+  name: 生态保护与生物多样性
+  description: 生态系统修复、生物多样性与土地利用变化
+  parent_code: H
+  sort_order: 6
+  terms:
+  - 生态修复
+  - 生态保护
+  - 生态补偿
+  - 生态监测
+  - 生态质量
+  - 生态系统服务
+  - 农业生态
+  - 农业生态学
+  - 生物多样性
+  - 外来入侵物种
+  - 野生动物保护
+  - 红树林
+  - 湿地保护
+  - 湿地生态
+  - 草原生态
+  - 矿区生态
+  - 荒漠化
+  - 荒漠化防治
+  - 毁林治理
+  - 水土保持
+  - 土地覆盖
+  - 土地覆盖变化
+  - 土地利用
+  - 土地利用变化
+  - 城市生态
+  text_terms:
+  - 生物多样性
+  - 农业生态
+  - 生态系统服务
+  - 水土保持
+  - biodiversity
+  - agroecology
+  - ecosystem service
+  requires_any: []
+- code: H7
+  slug: climate
+  name: 气候适应与防灾减灾
+  description: 气候变化影响、气候韧性农业与灾害预警
+  parent_code: H
+  sort_order: 7
+  terms:
+  - 气候变化
+  - 气候变化适应
+  - 气候适应
+  - 气候韧性
+  - 气候韧性农业
+  - 气候风险
+  - 气候智慧农业
+  - 气候智慧型农业
+  - 气候智能农业
+  - 农业气象
+  - 灾害预警
+  - 灾害评估
+  - 防灾减灾
+  - 农业防灾
+  - 农业防灾减灾
+  - 干旱监测
+  - 干旱预警
+  - 干旱指数
+  - 干旱区
+  - 干旱区农业
+  - 洪水风险
+  - 洪水风险评估
+  - 洪涝灾害
+  - 野火风险
+  - 森林防火
+  - 森林火灾
+  - 台风
+  text_terms:
+  - 气候变化
+  - 气候适应
+  - 农业气象
+  - 防灾减灾
+  - 干旱
+  - 洪涝
+  - 渍害
+  - climate change
+  - climate resilience
+  - drought
+  - waterlogging
+  requires_any: []
+- code: H8
+  slug: sustainable-agriculture
+  name: 可持续与保护性农业
+  description: 可持续生产模式与保护性耕作
+  parent_code: H
+  sort_order: 8
+  terms:
+  - 可持续农业
+  - 农业可持续
+  - 农业可持续发展
+  - 保护性耕作
+  - 保护性农业
+  - 再生农业
+  - 循环农业
+  - 有机农业
+  - 生态农业
+  - 绿色农业
+  - 绿色生产
+  - 绿色种植
+  - 绿色栽培
+  - 绿色增产
+  - 绿色防控
+  - 农业绿色发展
+  - 农业绿色技术
+  - 种养循环
+  text_terms:
+  - 可持续农业
+  - 保护性耕作
+  - 再生农业
+  - 生态农业
+  - 种养循环
+  - sustainable agriculture
+  - conservation agriculture
+  - regenerative agriculture
+  requires_any: []
+- code: I1
+  slug: smart-agriculture
+  name: 智慧农业总论
+  description: 智慧农业总体路径、模式与数字化转型
+  parent_code: I
+  sort_order: 1
+  terms:
+  - 智慧农业
+  - 数字农业
+  - 农业数字化
+  - 农业数智化
+  - 农业信息化
+  - 数字化转型
+  - 农业数字化转型
+  - 数字技术
+  - 数字赋能
+  - 数字孪生
+  - 数智技术
+  - 产业大脑
+  - 精准农业
+  text_terms:
+  - 智慧农业
+  - 精准农业
+  - 数字农业
+  - 农业信息化
+  - 数字孪生
+  - smart agriculture
+  - precision agriculture
+  - digital agriculture
+  - digital twin
+  requires_any: []
+- code: I2
+  slug: agricultural-ai
+  name: 农业AI与大模型
+  description: 人工智能算法、大模型与决策支持系统
+  parent_code: I
+  sort_order: 2
+  terms:
+  - 农业人工智能
+  - 人工智能
+  - AI
+  - AI农业
+  - 人工智能+
+  - 人工智能+农业
+  - 农业大模型
+  - 大语言模型
+  - LLM
+  - 大模型
+  - 多模态
+  - 多模态大模型
+  - 多模态融合
+  - 多模态感知
+  - 视觉语言模型
+  - AI智能体
+  - 智能体
+  - 农业智能体
+  - 多智能体
+  - 神农大模型
+  - 可解释AI
+  - 可解释机器学习
+  - 联邦学习
+  - 迁移学习
+  - 强化学习
+  - 深度学习
+  - 机器学习
+  - 计算机视觉
+  - 机器视觉
+  - 图像识别
+  - 图像分割
+  - 图像分析
+  - 语义分割
+  - 实例分割
+  - 目标检测
+  - 三维重建
+  - 三维点云
+  - 知识图谱
+  - YOLOv8
+  - 随机森林
+  - SHAP
+  - 轻量化模型
+  - 模型轻量化
+  - 决策支持系统
+  - 决策支持
+  - 作物模型
+  - 作物生长模型
+  - 模型模拟
+  - 系统动力学
+  - 病害识别
+  - 植物病害识别
+  - 作物病害识别
+  - 病虫害检测
+  - 病虫害识别
+  text_terms:
+  - 农业人工智能
+  - 大模型
+  - 目标检测
+  - 深度学习
+  - 机器学习
+  - 计算机视觉
+  - 图像识别
+  - 病虫害识别
+  - machine learning
+  - deep learning
+  - artificial intelligence
+  - computer vision
+  - YOLO
+  - large language model
+  - decision support
+  requires_any: []
+- code: I3
+  slug: remote-sensing
+  name: 遥感与农情监测
+  description: 卫星与无人机遥感、长势监测与产量估测
+  parent_code: I
+  sort_order: 3
+  terms:
+  - 遥感
+  - 遥感监测
+  - 遥感技术
+  - 遥感估产
+  - 农业遥感
+  - 卫星遥感
+  - 无人机遥感
+  - 高光谱遥感
+  - 多源遥感
+  - 生态遥感
+  - 无人机测绘
+  - 多光谱无人机
+  - 多光谱成像
+  - 高光谱
+  - 植被指数
+  - NDVI
+  - 叶面积指数
+  - 植被覆盖
+  - 植被监测
+  - 植被动态
+  - 植被退化
+  - 植被恢复
+  - 生物量估算
+  - 产量估算
+  - 产量估测
+  - 作物估产
+  - 作物监测
+  - 农情监测
+  - 农情调度
+  - 长势监测
+  - 产量预测
+  - 作物产量预测
+  - 作物产量
+  - Sentinel-2
+  - Landsat
+  - Google Earth Engine
+  - 卫星影像
+  - 作物分类
+  - 地表温度
+  - 作物表型
+  - 无人机多光谱
+  text_terms:
+  - 遥感
+  - 无人机多光谱
+  - 农情监测
+  - 估产
+  - 作物表型
+  - remote sensing
+  - multispectral
+  - hyperspectral
+  - crop phenotyping
+  requires_any: []
+- code: I4
+  slug: gis
+  name: GIS与空间分析
+  description: 地理信息、空间统计与区域计量方法
+  parent_code: I
+  sort_order: 4
+  terms:
+  - GIS
+  - GIS空间分析
+  - 地理信息系统
+  - 空间规划
+  - 空间分析
+  - 空间溢出
+  - 空间溢出效应
+  - 耦合协调
+  - 耦合协调度
+  - 空间计量
+  text_terms:
+  - 地理信息
+  - 空间分析
+  - 空间计量
+  - GIS
+  - spatial analysis
+  - geographic information
+  requires_any: []
+- code: I5
+  slug: agricultural-iot
+  name: 物联网传感与边缘计算
+  description: 农业传感器、物联网组网与边缘计算
+  parent_code: I
+  sort_order: 5
+  terms:
+  - 传感器
+  - 农业传感器
+  - 可穿戴传感器
+  - 无线传感器网络
+  - 物联网
+  - 农业物联网
+  - 边缘计算
+  - 5G
+  - 数据同化
+  - 多源数据融合
+  text_terms:
+  - 物联网
+  - 农业传感
+  - 边缘计算
+  - 无线传感
+  - internet of things
+  - IoT
+  - edge computing
+  - wireless sensor
+  requires_any: []
+- code: I6
+  slug: digital-village
+  name: 数字乡村与数据要素
+  description: 数字乡村建设、数字鸿沟与数据治理
+  parent_code: I
+  sort_order: 6
+  terms:
+  - 数字乡村
+  - 数字乡村试点
+  - 数字鸿沟
+  - 数字素养
+  - 数字能力
+  - 数字基础设施
+  - 数据要素
+  - 农业数据要素
+  - 数据治理
+  - 数据安全
+  - 数据隐私
+  - 隐私保护
+  - 网络安全
+  - 可信数据空间
+  - 大数据
+  - 农业大数据
+  - 农业数据
+  - 农业数据集
+  - 数字经济
+  text_terms:
+  - 数字乡村
+  - 数据要素
+  - 数字鸿沟
+  - 农业大数据
+  - digital village
+  - digital divide
+  - agricultural data
+  requires_any: []
+- code: I7
+  slug: research-methods
+  name: 研究方法与评估
+  description: 综述、文献计量与因果识别方法
+  parent_code: I
+  sort_order: 7
+  terms:
+  - 系统综述
+  - 文献计量
+  - 证据图谱
+  - 研究范式
+  - 因果推断
+  - 双重差分
+  - 双重机器学习
+  - fsQCA
+  - 中介效应
+  - 门槛效应
+  - 面板数据
+  - 省级面板
+  - 省级面板数据
+  - 30省面板
+  - 双向固定效应
+  - 准自然实验
+  - 政策评估
+  - 政策协同
+  - 空间计量
+  text_terms:
+  - 因果推断
+  - 文献计量
+  - 研究方法
+  - causal inference
+  - bibliometric
+  - methodological framework
+  requires_any:
+  - 研究方法
+  - 因果推断
+  - 文献计量
+  - 方法比较
+  - causal inference
+  - bibliometric
+  - methodological
+- code: J1
+  slug: policy-planning
+  name: 政策制度与发展规划
+  description: 部委政策、规划文件与解读
+  parent_code: J
+  sort_order: 1
+  terms:
+  - 十五五规划
+  - 十五五
+  - 政策解读
+  - 政策支持
+  - 政府采购
+  - 行业标准
+  - 政策文件
+  text_terms:
+  - 农业政策
+  - 农业规划
+  - 农业农村规划
+  - 政策解读
+  - agricultural policy
+  requires_any: []
+- code: J2
+  slug: modernization
+  name: 农业强国与现代化
+  description: 农业强国、农业农村现代化与新质生产力
+  parent_code: J
+  sort_order: 2
+  terms:
+  - 农业强国
+  - 农业现代化
+  - 农业农村现代化
+  - 现代农业
+  - 农业高质量发展
+  - 农业新质生产力
+  - 新质生产力
+  - 三农工作
+  - 农业科技创新
+  - 农业科技进步
+  - 农业科技投入
+  text_terms:
+  - 农业强国
+  - 农业现代化
+  - 农业农村现代化
+  - agricultural modernization
+  requires_any: []
+- code: J3
+  slug: global-agriculture
+  name: 国际合作与全球农业
+  description: 国际农业合作与国别农业研究
+  parent_code: J
+  sort_order: 3
+  terms:
+  - 国际合作
+  - 非洲农业
+  - 印度农业
+  - 撒哈拉以南非洲
+  - 国际农业
+  text_terms:
+  - 国际农业合作
+  - 全球农业
+  - 非洲农业
+  - international agricultural cooperation
+  - global agriculture
+  requires_any: []
+- code: J4
+  slug: seasonal-agriculture
+  name: 农时与节庆活动
+  description: 农时生产调度、丰收节与消费季
+  parent_code: J
+  sort_order: 4
+  terms:
+  - 丰收节
+  - 农民丰收节
+  - 中国农民丰收节
+  - 金秋消费季
+  - 秋收
+  - 秋收秋种
+  - 秋粮
+  - 秋粮生产
+  - 秋粮收获
+  - 秋粮田管
+  - 三秋生产
+  - 秋冬种
+  - 夏粮
+  text_terms:
+  - 丰收节
+  - 秋收
+  - 秋冬种
+  - 三秋生产
+  - 夏粮
+  - harvest festival
+  requires_any: []

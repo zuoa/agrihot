@@ -56,7 +56,7 @@ from ...services import (
 from .ingest import limiter  # shared app limiter; login keys on remote IP
 from .public import _to_item_out
 
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+router = APIRouter(prefix="/api/v1/admin", tags=["admin"], include_in_schema=False)
 
 PAGE_SIZE_MAX = 100
 
@@ -163,6 +163,8 @@ async def list_admin_items(
     q: str | None = None,
     category: str | None = None,
     tag: str | None = None,
+    topic: str | None = None,
+    classification_status: str | None = Query(default=None, pattern="^(classified|partial|unclassified|needs_review)$"),
     is_selected: bool | None = None,
     has_content: bool | None = None,
     scored: bool | None = None,
@@ -190,6 +192,17 @@ async def list_admin_items(
         _apply(Item.category == category)
     if tag:
         _apply(Item.tags.any(Tag.name == tag))
+    from ...models import ItemClassification
+    from ...services.taxonomy_service import filter_conditions
+    try:
+        for condition in filter_conditions(topic):
+            _apply(condition)
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc))
+    if classification_status == "unclassified":
+        _apply(or_(~Item.classification.has(), Item.classification.has(ItemClassification.status == "unclassified")))
+    elif classification_status:
+        _apply(Item.classification.has(ItemClassification.status == classification_status))
     if is_selected is not None:
         _apply(Item.is_selected.is_(is_selected))
     if has_content is True:
@@ -236,10 +249,12 @@ async def update_item(
     _: None = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> ItemOut:
-    item = await session.get(Item, item_id)
+    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update())).scalar_one_or_none()
     if item is None:
         raise problem(404, "Not Found", "条目不存在")
     updates = payload.model_dump(exclude_unset=True)
+    updates.pop("taxonomy", None)
+    taxonomy = payload.taxonomy
     tags = updates.pop("tags", None)
     for field, value in updates.items():
         if field == "category":
@@ -247,6 +262,30 @@ async def update_item(
         setattr(item, field, value)
     if tags is not None:
         item.tags = await ingest_service._get_or_create_tags(session, tags)
+    if taxonomy is not None:
+        from ...services.taxonomy_service import set_manual_topics
+        try:
+            await set_manual_topics(session, item, taxonomy.primary_code, taxonomy.secondary_codes, taxonomy.locked)
+        except ValueError as exc:
+            raise problem(422, "Unprocessable Entity", str(exc))
+    await session.commit()
+    await session.refresh(item)
+    return _to_item_out(item)
+
+
+@router.post("/items/{item_id}/classify", response_model=ItemOut)
+async def classify_item(item_id: int, use_model: bool = False, _: None = Depends(require_admin),
+                        session: AsyncSession = Depends(get_session)):
+    from ...services.taxonomy_service import classify_one
+
+    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update())).scalar_one_or_none()
+    if item is None:
+        raise problem(404, "Not Found", "条目不存在")
+    if item.classification and item.classification.locked:
+        raise problem(409, "Conflict", "请先在编辑中解除主题锁定")
+    if use_model and not settings.deepseek_api_key:
+        raise problem(503, "Service Unavailable", "未配置 DEEPSEEK_API_KEY，不能启用模型补判")
+    await classify_one(session, item, force=True, use_model=use_model)
     await session.commit()
     await session.refresh(item)
     return _to_item_out(item)
@@ -441,7 +480,7 @@ async def list_api_keys(
     ).scalars().all()
     return [
         ApiKeyOut(
-            id=k.id, name=k.name, is_active=k.is_active,
+            id=k.id, name=k.name, purpose=k.purpose, is_active=k.is_active,
             last_used_at=k.last_used_at, created_at=k.created_at,
         )
         for k in rows
@@ -456,13 +495,13 @@ async def create_api_key(
 ) -> ApiKeyCreatedOut:
     import secrets
 
-    raw = f"agri_{secrets.token_urlsafe(32)}"
-    key = ApiKey(key_hash=hash_api_key(raw), name=payload.name.strip())
+    raw = f"agri_{'read_' if payload.purpose == 'read' else ''}{secrets.token_urlsafe(32)}"
+    key = ApiKey(key_hash=hash_api_key(raw), name=payload.name.strip(), purpose=payload.purpose)
     session.add(key)
     await session.commit()
     await session.refresh(key)
     return ApiKeyCreatedOut(
-        id=key.id, name=key.name, is_active=key.is_active,
+        id=key.id, name=key.name, purpose=key.purpose, is_active=key.is_active,
         last_used_at=key.last_used_at, created_at=key.created_at, key=raw,
     )
 
@@ -481,7 +520,7 @@ async def patch_api_key(
     await session.commit()
     await session.refresh(key)
     return ApiKeyOut(
-        id=key.id, name=key.name, is_active=key.is_active,
+        id=key.id, name=key.name, purpose=key.purpose, is_active=key.is_active,
         last_used_at=key.last_used_at, created_at=key.created_at,
     )
 

@@ -33,6 +33,10 @@
         <option value="view_count">按阅读</option>
       </select>
       <button type="submit" class="px-3 py-1.5 rounded-md bg-leaf-700 text-white text-sm hover:bg-leaf-800">筛选</button>
+      <select v-model="form.classification_status" aria-label="主题分类状态" class="px-3 py-1.5 rounded-md border border-stone-200 bg-white">
+        <option value="">主题状态不限</option><option value="unclassified">待分类</option><option value="needs_review">待复核</option>
+        <option value="partial">待细分</option><option value="classified">已分类</option>
+      </select>
     </form>
 
     <div class="flex items-center justify-between text-xs text-stone-500">
@@ -67,6 +71,7 @@
             <td class="px-3 py-2">
               <router-link :to="`/items/${it.id}`" class="font-medium text-stone-900 hover:text-leaf-700 line-clamp-2">{{ it.title }}</router-link>
               <div class="text-[11px] text-stone-400 mt-0.5">{{ it.source_name }} · {{ fmtDate(it.created_at) }}</div>
+              <div class="text-[11px] text-leaf-700 mt-1">{{ it.primary_topic?.name || '待分类' }}<span v-if="it.classification?.locked"> · 已锁定</span><span v-else-if="it.classification?.status === 'needs_review'"> · 待复核</span></div>
             </td>
             <td class="px-3 py-2 text-xs text-stone-500">{{ it.category }}</td>
             <td class="px-3 py-2 tabular-nums">{{ it.score == null ? '—' : it.score }}</td>
@@ -77,6 +82,7 @@
                 <button class="text-xs px-2 py-0.5 rounded border border-stone-200 hover:bg-stone-50" @click="edit = it">编辑</button>
                 <button class="text-xs px-2 py-0.5 rounded border border-stone-200 hover:bg-stone-50" :disabled="busy" @click="fetchOne(it)">抓全文</button>
                 <button class="text-xs px-2 py-0.5 rounded border border-stone-200 hover:bg-stone-50" :disabled="busy" @click="rescore(it)">重评</button>
+                <button class="text-xs px-2 py-0.5 rounded border border-leaf-200 text-leaf-700 disabled:opacity-40" :disabled="busy || it.classification?.locked" @click="classifyItem(it)">重分主题</button>
                 <button class="text-xs px-2 py-0.5 rounded border border-red-200 text-red-600 hover:bg-red-50" :disabled="busy" @click="remove(it)">删除</button>
               </div>
             </td>
@@ -125,6 +131,7 @@ const form = reactive({
   is_selected: '',
   ingested_from: '',
   sort: 'created_at',
+  classification_status: '',
 })
 
 const page = computed(() => Math.max(1, Number(route.query.page) || 1))
@@ -139,11 +146,12 @@ function syncFormFromQuery() {
   form.is_selected = route.query.is_selected || ''
   form.ingested_from = route.query.ingested_from || ''
   form.sort = route.query.sort || 'created_at'
+  form.classification_status = route.query.classification_status || ''
 }
 
 function queryPayload(extra = {}) {
   const q = { page: page.value, page_size: pageSize, sort: form.sort, ...extra }
-  for (const k of ['q', 'category', 'has_content', 'scored', 'is_selected', 'ingested_from']) {
+  for (const k of ['q', 'category', 'has_content', 'scored', 'is_selected', 'ingested_from', 'classification_status']) {
     if (form[k] !== '') q[k] = form[k]
   }
   return q
@@ -216,6 +224,11 @@ async function rescore(it) {
   } finally {
     busy.value = false
   }
+}
+
+async function classifyItem(it) {
+  busy.value = true
+  try { onSaved(await api.adminClassifyItem(it.id)) } catch (e) { msg.value = e.message } finally { busy.value = false }
 }
 
 async function remove(it) {

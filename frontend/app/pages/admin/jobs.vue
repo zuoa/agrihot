@@ -58,6 +58,7 @@ const hints = {
   rescore_unscored: '只给尚未评分的条目打分（需 DeepSeek）',
   translate_abstracts: '给尚未翻译的外文论文摘要补中文译文（需 DeepSeek）',
   retag: '把历史标签再切成短词并清理空标签',
+  taxonomy_backfill: '按主题规则回填历史内容；跳过人工锁定，评分和精选不变',
   fetch_content: '回补无全文的政策/报道/行业；论文不抓。也可从内容页勾选指定条目',
 }
 
@@ -85,6 +86,7 @@ function formatStats(j) {
     return `译成 ${s.translated ?? 0} / ${s.total ?? 0}，跳过 ${s.skipped ?? 0}，失败 ${s.failed ?? 0}`
   }
   if (j.name === 'retag') return `条目 ${s.items ?? 0}，改动 ${s.changed ?? 0}`
+  if (j.name === 'taxonomy_backfill') return `已处理 ${s.processed ?? 0} · 更新 ${s.changed ?? 0} · 锁定跳过 ${s.locked ?? 0} · 待复核 ${s.needs_review ?? 0}`
   if (j.name === 'fetch_content') return `抓取 ${s.fetched ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   return JSON.stringify(s)
 }

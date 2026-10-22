@@ -42,7 +42,7 @@
       <div class="max-w-3xl mx-auto px-4 py-6 text-center text-xs text-stone-400 space-y-1">
         <p>AgriHot · 农业信息化动态聚合 — 内容整理自公开来源，摘要由 AI 生成，引用请以官方原文为准</p>
         <p>
-          <NuxtLink to="/agent" class="text-leaf-600 hover:underline">Agent 接入说明</NuxtLink>
+          <NuxtLink to="/agent" class="text-leaf-600 hover:underline">Agent 接入</NuxtLink>
           · <NuxtLink to="/about" class="text-leaf-600 hover:underline">关于本站</NuxtLink>
           · Made with 🩷 By <a href="mailto:ijedyu@gmail.com" class="text-leaf-600 hover:underline">AJ</a>
         </p>
@@ -66,7 +66,7 @@ const links = [
   { to: '/', label: '精选', name: 'index' },
   { to: '/feed', label: '全部动态', name: 'feed' },
   { to: '/dailies', label: '农业日报', name: 'dailies' },
-  { to: '/tags', label: '主题', name: 'tags' },
+  { to: '/topic', label: '主题', name: 'topic' },
   { to: '/agent', label: 'Agent 接入', name: 'agent' },
   { to: '/about', label: '关于', name: 'about' },
 ]
@@ -74,7 +74,7 @@ const links = [
 const isActive = (l) => {
   if (l.to === '/') return route.path === '/'
   if (l.to === '/dailies') return route.path.startsWith('/dailies')
-  if (l.to === '/tags') return route.path.startsWith('/tags')
+  if (l.to === '/topic') return route.path.startsWith('/topic') || route.path.startsWith('/tags')
   return route.path === l.to
 }
 </script>

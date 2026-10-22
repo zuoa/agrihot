@@ -9,11 +9,12 @@ import re
 from dataclasses import dataclass
 from urllib.parse import unquote
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import Item, Tag, item_tags
+from ..models import Item, ItemTopic, Tag, item_tags
 from .ingest_service import _CJK_CHAR, _is_usable_tag, _split_tag_blob
+from .taxonomy_catalog import canonical_name, equivalent_names
 
 GENERIC_TAGS = {
     "政策", "报道", "论文", "行业", "农业", "资讯", "新闻", "动态", "专题",
@@ -71,9 +72,9 @@ def apply_tag_match(stmt, names: list[str], match: str):
     if not names:
         return stmt
     if match == "any":
-        return stmt.where(Item.tags.any(Tag.name.in_(names)))
+        return stmt.where(Item.tags.any(Tag.name.in_([alias for name in names for alias in equivalent_names(name)])))
     for n in names:
-        stmt = stmt.where(Item.tags.any(Tag.name == n))
+        stmt = stmt.where(Item.tags.any(Tag.name.in_(equivalent_names(n))))
     return stmt
 
 
@@ -263,7 +264,7 @@ async def resolve_topic(
     name = _clean_name(name)
     tokens = tokens_of(name)
 
-    if name and await _tag_exists(session, name):
+    if name and (await _tag_exists(session, name) or await _tag_exists(session, canonical_name(name))):
         total, items = await query_by_tags(session, [name], "all", page, page_size)
         return TopicResult(name, "tag", [name], total, items)
 
@@ -288,15 +289,19 @@ async def resolve_topic(
 async def related_items(
     session: AsyncSession, item: Item, limit: int = RELATED_LIMIT
 ) -> list[Item]:
-    tag_ids = [t.id for t in (item.tags or [])]
-    if not tag_ids:
+    tag_ids = [t.id for t in (item.tags or []) if t.name not in GENERIC_TAGS]
+    codes = [link.topic_code for link in item.topic_links]
+    if not tag_ids and not codes:
         return []
-    overlap = (
+    tag_overlap = (
         select(item_tags.c.item_id, func.count().label("n"))
         .where(item_tags.c.tag_id.in_(tag_ids), item_tags.c.item_id != item.id)
         .group_by(item_tags.c.item_id)
-        .subquery()
     )
+    topic_overlap = select(ItemTopic.item_id, literal(3).label("n")).where(
+        ItemTopic.topic_code.in_(codes), ItemTopic.item_id != item.id)
+    matches = union_all(tag_overlap, topic_overlap).subquery()
+    overlap = select(matches.c.item_id, func.sum(matches.c.n).label("n")).group_by(matches.c.item_id).subquery()
     rows = (
         await session.execute(
             select(Item)

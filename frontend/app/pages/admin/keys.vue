@@ -1,10 +1,16 @@
 <template>
   <div class="space-y-4 max-w-3xl">
-    <form class="bg-white border border-stone-200 rounded-lg p-4 flex gap-2 items-end" @submit.prevent="create">
-      <label class="flex-1 text-sm">
+    <form class="bg-white border border-stone-200 rounded-lg p-4 flex flex-wrap gap-2 items-end" @submit.prevent="create">
+      <label class="flex-1 min-w-40 text-sm">
         <span class="text-xs text-stone-500">Key 名称（例如 crawler-policy）</span>
         <input v-model="name" required maxlength="100"
           class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200" />
+      </label>
+      <label class="text-sm">
+        <span class="block text-xs text-stone-500">用途</span>
+        <select v-model="purpose" class="mt-1 px-2 py-1.5 rounded-md border border-stone-200">
+          <option value="push">推送</option><option value="read">Agent 读取</option>
+        </select>
       </label>
       <button type="submit" :disabled="busy || !name.trim()"
         class="px-4 py-1.5 text-sm rounded-md bg-leaf-700 text-white hover:bg-leaf-800 disabled:opacity-50">
@@ -34,7 +40,7 @@
           <tr v-if="loading"><td colspan="4" class="px-3 py-10 text-center text-stone-400">加载中…</td></tr>
           <tr v-else-if="!keys.length"><td colspan="4" class="px-3 py-10 text-center text-stone-400">还没有 Key</td></tr>
           <tr v-for="k in keys" :key="k.id" class="border-t border-stone-100">
-            <td class="px-3 py-2 font-medium">{{ k.name }}</td>
+            <td class="px-3 py-2 font-medium">{{ k.name }}<span class="ml-2 text-xs text-stone-500">{{ k.purpose === 'read' ? '读取' : '推送' }}</span></td>
             <td class="px-3 py-2 text-xs">
               <span :class="k.is_active ? 'text-leaf-700' : 'text-stone-400'">{{ k.is_active ? '启用' : '停用' }}</span>
             </td>
@@ -66,6 +72,7 @@ const keys = ref([])
 const loading = ref(true)
 const busy = ref(false)
 const name = ref('')
+const purpose = ref('push')
 const createdKey = ref('')
 const msg = ref('')
 
@@ -86,7 +93,7 @@ async function create() {
   busy.value = true
   msg.value = ''
   try {
-    const created = await api.adminCreateApiKey(name.value.trim())
+    const created = await api.adminCreateApiKey(name.value.trim(), purpose.value)
     createdKey.value = created.key
     name.value = ''
     await load()

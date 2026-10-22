@@ -3,7 +3,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...database import get_session
@@ -15,6 +15,8 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DirectionOut,
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, parse_tag_query,
                                        related_items, resolve_topic)
+from ...services import taxonomy_service
+from ...services.taxonomy_catalog import canonical_name
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -54,7 +56,7 @@ def _to_paper_out(item: Item) -> PaperMetaOut | None:
 
 
 def _to_item_out(item: Item) -> ItemOut:
-    tags = [t.name for t in item.tags]
+    tags = list(dict.fromkeys(canonical_name(t.name) for t in item.tags))
     phrases = effective_phrases(tags, item.search_phrases)
     return ItemOut(
         id=item.id,
@@ -74,6 +76,11 @@ def _to_item_out(item: Item) -> ItemOut:
         score_detail=item.score_detail,
         sources=[SourceOut(**s) for s in (item.sources or [])],
         tags=tags,
+        primary_topic=next((taxonomy_service.topic_ref(l.topic_code) for l in item.topic_links if l.is_primary), None),
+        secondary_topics=[taxonomy_service.topic_ref(l.topic_code) for l in item.topic_links if not l.is_primary],
+        classification=({"status": item.classification.status, "locked": item.classification.locked,
+                         "version": item.classification.version, "method": item.classification.method,
+                         "evidence": item.classification.evidence} if item.classification else {}),
         search_phrases=phrases,
         slug=item_slug(item.id, item.title, phrases),
         view_count=item.view_count,
@@ -92,6 +99,8 @@ async def list_items(
     tags: str | None = None,
     match: str = Query(default="all", pattern="^(all|any)$"),
     direction: str | None = None,
+    topic: str | None = None,
+    technologies: list[str] = Query(default=[]),
     q: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
@@ -99,6 +108,11 @@ async def list_items(
 ) -> ItemListOut:
     stmt = select(Item)
     count_stmt = select(func.count(Item.id))
+    try:
+        conditions = taxonomy_service.filter_conditions(topic, technologies)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    stmt, count_stmt = stmt.where(*conditions), count_stmt.where(*conditions)
 
     if mode == "selected":
         stmt = stmt.where(Item.is_selected.is_(True))
@@ -120,8 +134,7 @@ async def list_items(
         stmt = stmt.join(Item.paper).where(PaperMeta.direction == direction)
         count_stmt = count_stmt.join(Item.paper).where(PaperMeta.direction == direction)
     if q:
-        like = f"%{q}%"
-        cond = or_(Item.title.ilike(like), Item.summary.ilike(like))
+        cond = taxonomy_service.keyword_condition(q)
         stmt = stmt.where(cond)
         count_stmt = count_stmt.where(cond)
 
@@ -137,6 +150,30 @@ async def list_items(
         total=total, page=page, page_size=page_size,
         items=[_to_item_out(i) for i in rows],
     )
+
+
+@router.get("/taxonomy")
+async def get_taxonomy(session: AsyncSession = Depends(get_session)):
+    return await taxonomy_service.tree(session)
+
+
+@router.get("/taxonomy/facets")
+async def get_topic_facets(topic: str | None = None, category: str | None = None,
+                           technologies: list[str] = Query(default=[]), session: AsyncSession = Depends(get_session)):
+    try:
+        return await taxonomy_service.facets(session, topic, category, technologies)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/taxonomy/{slug}")
+async def get_taxonomy_node(slug: str, session: AsyncSession = Depends(get_session)):
+    data = await taxonomy_service.tree(session)
+    for parent in data["topics"]:
+        for node in [parent, *parent["children"]]:
+            if slug in (node["slug"], node["code"]):
+                return node | {"parent": parent if node["parent_code"] else None}
+    raise HTTPException(status_code=404, detail="主题不存在")
 
 
 def _item_404() -> HTTPException:

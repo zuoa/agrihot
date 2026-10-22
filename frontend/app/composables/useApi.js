@@ -1,7 +1,8 @@
 function qs(params = {}) {
   const search = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== '') search.set(k, v)
+    if (Array.isArray(v)) v.forEach(value => search.append(k, value))
+    else if (v !== undefined && v !== null && v !== '') search.set(k, v)
   }
   return search
 }
@@ -49,6 +50,9 @@ export function useApi() {
     related: (id) => get(`/items/${id}/related`),
     recordView: (id) => post(`/items/${id}/view`),
     tags: () => get('/tags'),
+    taxonomy: () => get('/taxonomy'),
+    taxonomyNode: (slug) => get(`/taxonomy/${encodeURIComponent(slug)}`),
+    taxonomyFacets: (params) => get('/taxonomy/facets', params),
     topic: (name, params = {}) => get('/topics', { name, ...params }),
     paperDirections: () => get('/paper-directions'),
     stats: () => get('/stats'),
@@ -76,6 +80,7 @@ export function useApi() {
     adminOverview: () => adminFetch('/admin/overview'),
     adminItems: (params) => adminFetch('/admin/items', { params }),
     adminRescoreItem: (id) => adminFetch(`/admin/items/${id}/rescore`, { method: 'POST' }),
+    adminClassifyItem: (id) => adminFetch(`/admin/items/${id}/classify`, { method: 'POST' }),
     adminBatchDelete: (ids) => adminFetch('/admin/items/batch-delete', { method: 'POST', body: { ids } }),
     adminBatchFetch: (ids, force = false) =>
       adminFetch('/admin/items/batch-fetch-content', { method: 'POST', body: { ids, force } }),
@@ -86,7 +91,13 @@ export function useApi() {
     adminWatchlist: () => adminFetch('/admin/watchlist'),
     adminPutWatchlist: (data) => adminFetch('/admin/watchlist', { method: 'PUT', body: data }),
     adminApiKeys: () => adminFetch('/admin/api-keys'),
-    adminCreateApiKey: (name) => adminFetch('/admin/api-keys', { method: 'POST', body: { name } }),
+    adminCreateApiKey: (name, purpose = 'push') => adminFetch('/admin/api-keys', { method: 'POST', body: { name, purpose } }),
     adminPatchApiKey: (id, patch) => adminFetch(`/admin/api-keys/${id}`, { method: 'PATCH', body: patch }),
+    agentApply: (body) => $fetch(`${prefix()}/api/v1/agent/applications`, { method: 'POST', body }),
+    adminAgentApplications: (page = 1) => adminFetch('/admin/agent/applications', { params: { page } }),
+    adminAgentReview: (id, decision, note = '') => adminFetch(`/admin/agent/applications/${id}/review`, { method: 'POST', body: { decision, note } }),
+    adminAgentIndex: () => adminFetch('/admin/agent/index'),
+    adminAgentBackfill: () => adminFetch('/admin/agent/index/backfill', { method: 'POST' }),
+    adminPushGuide: () => adminFetch('/admin/agent/push-guide'),
   }
 }

@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import date as date_type
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 
 def _coerce_tag_list(v):
@@ -196,6 +197,7 @@ class WatchlistOut(BaseModel):
 class ApiKeyOut(BaseModel):
     id: int
     name: str
+    purpose: Literal["push", "read"] = "push"
     is_active: bool
     last_used_at: datetime | None
     created_at: datetime
@@ -203,6 +205,14 @@ class ApiKeyOut(BaseModel):
 
 class ApiKeyCreateIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+    purpose: Literal["push", "read"] = "push"
+
+    @field_validator("name")
+    @classmethod
+    def nonblank_name(cls, v):
+        if not v.strip():
+            raise ValueError("名称不能为空")
+        return v.strip()
 
 
 class ApiKeyCreatedOut(ApiKeyOut):
@@ -211,6 +221,19 @@ class ApiKeyCreatedOut(ApiKeyOut):
 
 class ApiKeyPatchIn(BaseModel):
     is_active: bool
+
+
+class TopicAssignmentIn(BaseModel):
+    primary_code: str | None = None
+    secondary_codes: list[str] = Field(default_factory=list, max_length=2)
+    locked: bool = True
+
+    @model_validator(mode="after")
+    def valid_assignment(self):
+        codes = ([self.primary_code] if self.primary_code else []) + self.secondary_codes
+        if len(set(codes)) != len(codes) or (self.secondary_codes and not self.primary_code):
+            raise ValueError("主辅主题不能重复，辅主题需要主主题")
+        return self
 
 
 class AdminItemUpdate(BaseModel):
@@ -228,6 +251,7 @@ class AdminItemUpdate(BaseModel):
     cover_url: str | None = None
     hotness: int | None = Field(default=None, ge=0)
     is_selected: bool | None = None
+    taxonomy: TopicAssignmentIn | None = None
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -282,6 +306,22 @@ class PaperMetaOut(BaseModel):
     ingested_from: str = "agent"
 
 
+class TopicRefOut(BaseModel):
+    code: str
+    slug: str
+    name: str
+    path: str
+    parent_code: str | None = None
+
+
+class ClassificationOut(BaseModel):
+    status: str = "unclassified"
+    locked: bool = False
+    version: str = ""
+    method: str = "rules"
+    evidence: dict = Field(default_factory=dict)
+
+
 class ItemOut(BaseModel):
     id: int
     title: str
@@ -300,6 +340,9 @@ class ItemOut(BaseModel):
     score_detail: dict | None = None
     sources: list[SourceOut]
     tags: list[str]
+    primary_topic: TopicRefOut | None = None
+    secondary_topics: list[TopicRefOut] = Field(default_factory=list)
+    classification: ClassificationOut = Field(default_factory=ClassificationOut)
     search_phrases: list[str] = Field(default_factory=list)
     slug: str = ""
     view_count: int = 0

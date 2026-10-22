@@ -69,7 +69,15 @@ async def sitemap_xml(session: AsyncSession) -> Response:
     add("/feed", changefreq="hourly", priority="0.9")
     add("/dailies", changefreq="daily", priority="0.9")
     add("/tags", changefreq="daily", priority="0.7")
+    from .taxonomy_service import tree
+    taxonomy = await tree(session)
+    add("/topic", changefreq="daily", priority="0.8")
+    for root in taxonomy["topics"]:
+        for node in [root, *root["children"]]:
+            if node["count"]:
+                add(node["path"], changefreq="daily", priority="0.7")
     add("/about", changefreq="monthly", priority="0.4")
+    add("/agent", changefreq="monthly", priority="0.5")
     for cat in CATEGORIES:
         add(f"/feed?category={quote(cat)}", changefreq="daily", priority="0.7")
 

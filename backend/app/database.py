@@ -18,11 +18,13 @@ _ITEM_COLUMN_PATCHES = (
 )
 
 
-async def ensure_schema() -> None:
+async def ensure_schema(target_engine=None) -> None:
     """Create missing tables and patch new columns onto existing `items`."""
     from .models import Base
 
-    async with engine.begin() as conn:
+    async with (target_engine or engine).begin() as conn:
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
         def _item_columns(c):
@@ -36,6 +38,15 @@ async def ensure_schema() -> None:
             if col not in existing:
                 await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
         await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_items_doi ON items (doi)"))
+        key_columns = await conn.run_sync(lambda c: {col["name"] for col in inspect(c).get_columns("api_keys")})
+        if "purpose" not in key_columns:
+            await conn.execute(text("ALTER TABLE api_keys ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'push'"))
+        tag_columns = await conn.run_sync(lambda c: {col["name"] for col in inspect(c).get_columns("tags")})
+        for col, default in (("kind", "keyword"), ("status", "candidate")):
+            if col not in tag_columns:
+                await conn.execute(text(f"ALTER TABLE tags ADD COLUMN {col} VARCHAR(20) NOT NULL DEFAULT '{default}'"))
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_search_chunks_fts ON search_chunks USING gin (to_tsvector('simple', lexemes))"))
 
 
 async def get_session() -> AsyncSession:  # FastAPI dependency

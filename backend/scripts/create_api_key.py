@@ -9,20 +9,20 @@ import secrets
 
 from sqlalchemy import select
 
-from app.database import SessionLocal, engine
-from app.models import ApiKey, Base, hash_api_key
+from app.database import SessionLocal, ensure_schema
+from app.models import ApiKey, hash_api_key
 
 
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("name", help="key owner, e.g. crawler-policy-bot")
     parser.add_argument("--key", help="use this raw key instead of a random one")
+    parser.add_argument("--purpose", choices=["push", "read"], default="push")
     args = parser.parse_args()
 
-    raw = args.key or f"agri_{secrets.token_urlsafe(32)}"
+    raw = args.key or f"agri_{'read_' if args.purpose == 'read' else ''}{secrets.token_urlsafe(32)}"
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_schema()
 
     async with SessionLocal() as session:
         existing = (
@@ -33,7 +33,7 @@ async def main() -> None:
         if existing:
             print(f"key already exists (owner: {existing.name})")
             return
-        session.add(ApiKey(key_hash=hash_api_key(raw), name=args.name))
+        session.add(ApiKey(key_hash=hash_api_key(raw), name=args.name, purpose=args.purpose))
         await session.commit()
 
     print("API Key created (store it safely, it cannot be retrieved later):")

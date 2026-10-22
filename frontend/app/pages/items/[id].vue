@@ -1,6 +1,13 @@
 <template>
   <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
   <div v-else-if="item">
+  <nav v-if="item.primary_topic" aria-label="主题路径" class="flex flex-wrap gap-2 mb-4 text-xs text-stone-500">
+    <NuxtLink to="/topic" class="hover:text-leaf-700">主题</NuxtLink><span aria-hidden="true">/</span>
+    <NuxtLink :to="item.primary_topic.path" class="text-leaf-700 hover:underline">{{ item.primary_topic.name }}</NuxtLink>
+  </nav>
+  <div v-if="item.secondary_topics?.length" class="flex flex-wrap gap-3 text-xs text-stone-500 mb-4">
+    <span>相关方向</span><NuxtLink v-for="topic in item.secondary_topics" :key="topic.code" :to="topic.path" class="text-leaf-700 hover:underline">{{ topic.name }}</NuxtLink>
+  </div>
   <article class="bg-white rounded-2xl border border-leaf-100 p-6 sm:p-8">
     <div class="flex items-center gap-2 text-xs text-stone-400 flex-wrap mb-3">
       <span class="text-leaf-700 font-medium">{{ item.source_name || '未知来源' }}</span>

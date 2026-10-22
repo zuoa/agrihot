@@ -9,8 +9,8 @@ import sys
 from sqlalchemy import select
 
 from app.config import settings
-from app.database import SessionLocal, engine
-from app.models import Base, Item
+from app.database import SessionLocal, ensure_schema
+from app.models import Item
 from app.services import scoring_service
 
 
@@ -20,8 +20,7 @@ async def main() -> None:
         return
     rescore_all = "--all" in sys.argv
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_schema()
 
     async with SessionLocal() as session:
         stmt = select(Item).order_by(Item.id)

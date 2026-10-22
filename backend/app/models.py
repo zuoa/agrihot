@@ -4,8 +4,9 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (JSON, BigInteger, Boolean, Column, Date, DateTime,
-                        ForeignKey, Integer, String, Table, Text)
+                        ForeignKey, Index, Integer, String, Table, Text, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 
 class Base(DeclarativeBase):
@@ -68,6 +69,12 @@ class Item(Base):
         back_populates="item", uselist=False,
         cascade="all, delete-orphan", lazy="selectin",
     )
+    topic_links: Mapped[list["ItemTopic"]] = relationship(
+        back_populates="item", cascade="all, delete-orphan", lazy="selectin",
+    )
+    classification: Mapped["ItemClassification | None"] = relationship(
+        back_populates="item", cascade="all, delete-orphan", uselist=False, lazy="selectin",
+    )
 
 
 class PaperMeta(Base):
@@ -106,10 +113,74 @@ class Tag(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="keyword", server_default="keyword")
+    status: Mapped[str] = mapped_column(String(20), default="candidate", server_default="candidate")
 
     items: Mapped[list[Item]] = relationship(
         secondary=item_tags, back_populates="tags"
     )
+
+
+class Topic(Base):
+    __tablename__ = "topics"
+
+    code: Mapped[str] = mapped_column(String(12), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text, default="")
+    parent_code: Mapped[str | None] = mapped_column(ForeignKey("topics.code"), index=True)
+    sort_order: Mapped[int] = mapped_column(default=0)
+    is_active: Mapped[bool] = mapped_column(default=True, server_default="true")
+
+
+class ItemTopic(Base):
+    __tablename__ = "item_topics"
+    __table_args__ = (
+        Index("uq_item_topics_primary", "item_id", unique=True,
+              postgresql_where=text("is_primary"), sqlite_where=text("is_primary = 1")),
+        Index("ix_item_topics_topic", "topic_code", "item_id"),
+    )
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    topic_code: Mapped[str] = mapped_column(ForeignKey("topics.code"), primary_key=True)
+    is_primary: Mapped[bool] = mapped_column(default=False)
+    topic: Mapped[Topic] = relationship(lazy="joined")
+    item: Mapped[Item] = relationship(back_populates="topic_links")
+
+
+class ItemClassification(Base):
+    __tablename__ = "item_classifications"
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(24), default="unclassified", index=True)
+    locked: Mapped[bool] = mapped_column(default=False)
+    version: Mapped[str] = mapped_column(String(80), default="")
+    input_hash: Mapped[str] = mapped_column(String(64), default="")
+    method: Mapped[str] = mapped_column(String(20), default="rules")
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    batch_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    item: Mapped[Item] = relationship(back_populates="classification")
+
+
+class ClassificationChange(Base):
+    """Audit log and conditional rollback; never overwrites a later edit."""
+    __tablename__ = "classification_changes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[str] = mapped_column(String(64), index=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), index=True)
+    before: Mapped[dict] = mapped_column(JSON)
+    after: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TagAlias(Base):
+    __tablename__ = "tag_aliases"
+
+    name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id", ondelete="CASCADE"), index=True)
+    tag: Mapped[Tag] = relationship(lazy="joined")
 
 
 class Daily(Base):
@@ -130,6 +201,7 @@ class ApiKey(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
+    purpose: Mapped[str] = mapped_column(String(20), default="push", server_default="push")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -137,7 +209,59 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class AgentApplication(Base):
+    __tablename__ = "agent_applications"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    contact: Mapped[str] = mapped_column(String(200))
+    use_case: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    api_key_id: Mapped[int | None] = mapped_column(ForeignKey("api_keys.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SearchJob(Base):
+    """Durable per-item indexing queue; revision prevents stale API responses winning."""
+    __tablename__ = "search_jobs"
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    revision: Mapped[int] = mapped_column(default=1)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), default="")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    attempts: Mapped[int] = mapped_column(default=0)
+    error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SearchChunk(Base):
+    __tablename__ = "search_chunks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(default=0)
+    text: Mapped[str] = mapped_column(Text)
+    lexemes: Mapped[str] = mapped_column(Text)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    # No fixed typmod: model/dimension changes create a new fingerprint.
+    embedding: Mapped[list | None] = mapped_column(Vector().with_variant(JSON(), "sqlite"), nullable=True)
+
+
 def hash_api_key(raw: str) -> str:
     import hashlib
 
     return hashlib.sha256(raw.strip().encode()).hexdigest()
+
+
+# All ORM writers (including CLI maintenance) must invalidate retrieval indexes.
+from .services.search_queue import register_queue_hooks
+
+register_queue_hooks()
+
+from .services.taxonomy_hooks import register_taxonomy_hooks
+
+register_taxonomy_hooks()

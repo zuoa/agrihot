@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     cors_origins: str = "*"
     # ingest rate limit per API key (slowapi format)
     ingest_rate_limit: str = "60/minute"
+    agent_rate_limit: str = "60/minute"
+    # Agent semantic retrieval: independent of the editorial scoring model.
+    embedding_api_key: str = ""
+    embedding_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    embedding_model: str = "embedding-3"
+    embedding_dimensions: int = 1024
+    embedding_timeout: float = 15
+    search_index_enabled: bool = True
     # DeepSeek scoring for auto 精选; empty key disables scoring entirely
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"

@@ -27,6 +27,7 @@ JOB_LABELS = {
     "rescore_unscored": "补评未评分条目",
     "translate_abstracts": "补译外文摘要",
     "retag": "重切标签",
+    "taxonomy_backfill": "回填主题分类",
     "fetch_content": "批量抓取全文",
 }
 
@@ -331,11 +332,21 @@ async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
     return {"requested": len(ids), "fetched": fetched, "skipped": skipped, "failed": failed}
 
 
+async def _taxonomy_backfill(params: dict[str, Any]) -> dict[str, Any]:
+    from .taxonomy_jobs import backfill
+
+    async def progress(done, total):
+        await set_progress("taxonomy_backfill", done=done, total=total)
+
+    return await backfill(SessionLocal, force=bool(params.get("force")), progress=progress)
+
+
 HANDLERS: dict[str, Handler] = {
     "literature_fetch": _literature_fetch,
     "daily_generate": _daily_generate,
     "rescore_unscored": _rescore_unscored,
     "translate_abstracts": _translate_abstracts,
     "retag": _retag,
+    "taxonomy_backfill": _taxonomy_backfill,
     "fetch_content": _fetch_content,
 }

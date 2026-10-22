@@ -12,16 +12,14 @@ from __future__ import annotations
 import asyncio
 import sys
 
-from app.database import SessionLocal, engine
-from app.models import Base
+from app.database import SessionLocal, ensure_schema
 from app.services.ingest_service import retag_all_items
 
 
 async def main() -> None:
     dry_run = "--dry-run" in sys.argv
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await ensure_schema()
 
     async with SessionLocal() as session:
         stats = await retag_all_items(session, dry_run=dry_run)

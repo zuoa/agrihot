@@ -295,13 +295,13 @@ async def test_ingest_splits_concatenated_tags(client):
 
     detail = await client.get(f"/api/v1/items/{item_id}")
     assert set(detail.json()["tags"]) == {
-        "黑龙江农科院", "寒地龙果", "成果转化", "智慧农业",
+        "黑龙江省农科院", "寒地龙果", "成果转化", "智慧农业",
     }
 
     listed = await client.get("/api/v1/tags")
     names = {t["name"] for t in listed.json()}
     assert "黑龙江农科院 寒地龙果 成果转化" not in names
-    assert {"黑龙江农科院", "寒地龙果", "成果转化", "智慧农业"} <= names
+    assert {"黑龙江省农科院", "寒地龙果", "成果转化", "智慧农业"} <= names
 
 
 @pytest.mark.asyncio
@@ -341,7 +341,7 @@ async def test_retag_all_items_splits_existing_blobs_and_drops_orphans():
         assert stats["changed"] == 1
         assert stats["orphans"] >= 1
         item = await s.get(Item, item_id)
-        assert {t.name for t in item.tags} == {"黑龙江农科院", "寒地龙果", "成果转化"}
+        assert {t.name for t in item.tags} == {"黑龙江省农科院", "寒地龙果", "成果转化"}
         leftover = (
             await s.execute(
                 select(Tag).where(Tag.name == "黑龙江农科院 寒地龙果 成果转化")

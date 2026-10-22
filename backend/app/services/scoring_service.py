@@ -194,7 +194,7 @@ async def score_item(session: AsyncSession, item: Item) -> int | None:
         "relevant": scores["relevant"], "comment": comment,
     }
     topic_names = parse_topic_tags(data) if isinstance(data, dict) else []
-    if topic_names:
+    if topic_names and not (item.classification and item.classification.locked):
         new_tags = await _get_or_create_tags(session, topic_names)
         if new_tags:
             item.tags = new_tags

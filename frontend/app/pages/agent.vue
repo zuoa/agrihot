@@ -1,236 +1,129 @@
 <template>
-  <div class="space-y-8">
-    <header>
-      <h1 class="text-2xl font-bold text-stone-900">Agent 接入说明</h1>
-      <p class="mt-2 text-sm text-stone-500 leading-6">
-        AgriHot 面向爬虫 / 资讯聚合 Agent 开放推送接口。推送的内容经服务层自动去重后<strong class="text-leaf-700">直接上线</strong>，
-        无需人工审核。新条目会由 AI 先做相关性门槛判断，再按影响力 / 信息增量 / 专业深度 / 信源权威 / 时效性多维度打分，
-        每天达阈值且评分最高的前 5 篇进入首页「精选」。本页包含全部接入细节，也适合作为 LLM Agent 的上下文直接阅读。
-      </p>
-      <div class="mt-3 flex gap-2 text-xs">
-        <a href="/docs" target="_blank" class="px-3 py-1.5 rounded-full bg-leaf-600 text-white hover:bg-leaf-700">OpenAPI 交互文档 ↗</a>
-        <a href="#dedup" class="px-3 py-1.5 rounded-full border border-leaf-200 text-leaf-700 hover:bg-leaf-50">去重规则</a>
-        <a href="#examples" class="px-3 py-1.5 rounded-full border border-leaf-200 text-leaf-700 hover:bg-leaf-50">代码示例</a>
+  <div class="space-y-8 pb-6">
+    <header class="agent-hero overflow-hidden rounded-2xl border border-leaf-200 bg-white">
+      <div class="px-6 py-8 sm:p-10">
+        <p class="text-xs font-mono tracking-widest text-leaf-600">AGRIHOT / AGENT</p>
+        <h1 class="mt-4 max-w-xl text-3xl sm:text-4xl font-bold leading-tight text-leaf-950">让你的 Agent<br />读懂农业正在发生什么</h1>
+        <p class="mt-4 max-w-xl text-sm leading-7 text-stone-600">政策、行业动态、学术论文与每日要点。接入 AgriHot，用自然语言查找资料，沿着来源阅读全文。</p>
+        <div class="mt-6 flex flex-wrap gap-3 text-sm">
+          <a href="#apply" class="rounded-lg bg-leaf-700 px-5 py-2.5 font-medium text-white hover:bg-leaf-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">申请读取 Key</a>
+          <a href="#connect" class="rounded-lg border border-leaf-200 px-5 py-2.5 text-leaf-800 hover:bg-leaf-50">查看接入方式 ↓</a>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-3 border-t border-leaf-100 bg-leaf-50/60 text-sm">
+        <div v-for="(step, i) in steps" :key="step.title" class="flex items-start gap-3 px-6 py-4 sm:border-r border-leaf-100 last:border-r-0">
+          <span class="font-mono text-leaf-500 mt-0.5">0{{ i + 1 }}</span>
+          <div><p class="font-medium text-leaf-900">{{ step.title }}</p><p class="mt-1 text-xs text-stone-500 leading-5">{{ step.detail }}</p></div>
+        </div>
       </div>
     </header>
 
-    <!-- 快速开始 -->
-    <AgentSection title="① 快速开始" id="quickstart">
-      <ol class="text-sm text-stone-700 space-y-2 list-decimal list-inside leading-6">
-        <li>向站点管理员申请 API Key（形如 <AgentCode>agri_xxxxxxxx</AgentCode>）。</li>
-        <li>每次请求在 HTTP 头携带：<AgentCode>X-API-Key: &lt;你的Key&gt;</AgentCode>。</li>
-        <li>向 <AgentCode>POST {{ base }}/api/v1/ingest/items</AgentCode> 提交 JSON，收到 <AgentCode>created</AgentCode> 即上线。</li>
-      </ol>
-      <AgentCodeBlock lang="bash" :code="quickstart" />
-    </AgentSection>
+    <section id="connect" class="scroll-mt-6">
+      <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div><h2 class="text-xl font-bold text-stone-900">选择你的接入方式</h2><p class="mt-1 text-sm text-stone-500">同一份内容，适配不同的 Agent。</p></div>
+        <span class="rounded-full bg-leaf-100 px-3 py-1 text-xs text-leaf-800">只读接入 · 需要读取 Key</span>
+      </div>
+      <div role="tablist" aria-label="接入方式" class="flex gap-2 border-b border-leaf-200">
+        <button v-for="option in tabs" :id="`tab-${option.id}`" :key="option.id" type="button" role="tab" :aria-selected="tab === option.id" aria-controls="connect-panel" :tabindex="tab === option.id ? 0 : -1"
+          class="px-5 py-3 text-sm border-b-2 -mb-px rounded-t-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-leaf-600"
+          :class="tab === option.id ? 'border-leaf-700 text-leaf-800 font-bold bg-white' : 'border-transparent text-stone-500 hover:text-leaf-700'"
+          @click="tab = option.id" @keydown="tabKeydown">{{ option.label }}</button>
+      </div>
+      <div id="connect-panel" role="tabpanel" :aria-labelledby="`tab-${tab}`" class="rounded-b-xl border border-t-0 border-leaf-200 bg-white p-5 sm:p-7">
+        <template v-if="tab === 'skill'">
+          <h3 class="text-lg font-bold text-leaf-900">把安装提示词发给你的 Agent</h3>
+          <p class="mt-2 text-sm text-stone-600 leading-6">适用于 Claude Code、Codex 等支持 Agent Skills 的工具。先申请读取 Key，再让 Agent 安装 Skill。</p>
+          <AgentCodeBlock lang="提示词" :code="installPrompt" />
+          <button class="mt-3 text-sm font-medium text-leaf-700 hover:underline" @click="copy(installPrompt, 'skill')">{{ copied === 'skill' ? '已复制' : '复制安装提示词' }}</button>
+          <ol class="mt-5 space-y-2 list-decimal pl-5 text-sm leading-6 text-stone-600">
+            <li>将读取 Key 配置为 Agent 运行环境的 <AgentCode>AGRIHOT_API_KEY</AgentCode>，不要写进 Skill 文件。</li>
+            <li>安装后开启新会话，确保工具能发现 AgriHot Skill。</li>
+            <li>试着问：“过去一周，农业遥感领域有哪些值得关注的进展？”</li>
+          </ol>
+          <a :href="`${base}/agrihot-skill/README.md`" class="mt-4 inline-block text-xs text-leaf-700 underline underline-offset-4">完整安装说明 ↗</a>
+        </template>
+        <template v-else>
+          <h3 class="text-lg font-bold text-leaf-900">为 MCP 客户端配置地址与认证头</h3>
+          <p class="mt-2 text-sm text-stone-600 leading-6">使用 Streamable HTTP，适用于支持自定义认证头的远程 MCP 客户端。将下面的 Key 占位符替换为管理员交付的读取 Key。</p>
+          <AgentCodeBlock lang="JSON" :code="mcpConfig" />
+          <button class="mt-3 text-sm font-medium text-leaf-700 hover:underline" @click="copy(mcpConfig, 'mcp')">{{ copied === 'mcp' ? '已复制' : '复制 MCP 配置' }}</button>
+          <p class="mt-4 text-xs text-stone-500 leading-6">连接后可使用内容检索、最新与精选列表、单篇详情、日报列表和完整日报五个工具。不同客户端的配置文件格式可能不同，服务地址和认证头保持一致即可。</p>
+        </template>
+        <p v-if="copyError" role="status" class="mt-2 text-xs text-amber-800">{{ copyError }}</p>
+      </div>
+    </section>
 
-    <!-- 认证 -->
-    <AgentSection title="② 认证方式" id="auth">
-      <table class="w-full text-sm">
-        <tbody class="divide-y divide-leaf-100">
-          <tr><td class="py-2 pr-4 font-medium text-stone-600 w-32">请求头</td><td><AgentCode>X-API-Key: &lt;key&gt;</AgentCode></td></tr>
-          <tr><td class="py-2 pr-4 font-medium text-stone-600">缺失 / 无效</td><td class="text-stone-700">返回 <AgentCode>401</AgentCode>（Problem JSON）</td></tr>
-          <tr><td class="py-2 pr-4 font-medium text-stone-600">频率限制</td><td class="text-stone-700">每个 Key 60 次/分钟，超限返回 <AgentCode>429</AgentCode>，请指数退避重试</td></tr>
-          <tr><td class="py-2 pr-4 font-medium text-stone-600">Key 管理</td><td class="text-stone-700">服务端只存 SHA-256 哈希；不同爬虫建议各用一个 Key 以便溯源</td></tr>
-        </tbody>
-      </table>
-    </AgentSection>
-
-    <!-- 接口 -->
-    <AgentSection title="③ 推送接口" id="endpoints">
-      <div class="space-y-3 text-sm">
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="px-2 py-0.5 rounded bg-leaf-600 text-white text-xs font-bold">POST</span>
-          <AgentCode>/api/v1/ingest/items</AgentCode>
-          <span class="text-stone-500">推送单条</span>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="px-2 py-0.5 rounded bg-leaf-600 text-white text-xs font-bold">POST</span>
-          <AgentCode>/api/v1/ingest/items/batch</AgentCode>
-          <span class="text-stone-500">批量推送，body 为 <AgentCode>{"items": [...]}</AgentCode>，一次 ≤ 50 条</span>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
-          <span class="px-2 py-0.5 rounded bg-red-600 text-white text-xs font-bold">DELETE</span>
-          <AgentCode>/api/v1/ingest/items/{id}</AgentCode>
-          <span class="text-stone-500">删除条目（下架测试/违规内容），需同一个 API Key</span>
+    <section class="grid sm:grid-cols-2 gap-5">
+      <div class="rounded-xl border border-leaf-100 bg-white p-6">
+        <h2 class="font-bold text-stone-900">从一个问题开始</h2>
+        <div class="mt-4 divide-y divide-leaf-100">
+          <button v-for="prompt in prompts" :key="prompt" class="flex w-full items-start justify-between gap-4 py-3 text-left text-sm leading-6 text-stone-600 hover:text-leaf-700" @click="copy(prompt, prompt)">
+            <span>{{ prompt }}</span><span class="shrink-0 text-xs text-leaf-600">{{ copied === prompt ? '已复制' : '复制 ↗' }}</span>
+          </button>
         </div>
       </div>
-
-      <h3 class="font-bold text-stone-800 mt-5 mb-2 text-sm">字段说明</h3>
-      <div class="overflow-x-auto">
-        <table class="w-full text-xs border border-leaf-100 rounded-lg overflow-hidden">
-          <thead class="bg-leaf-50 text-leaf-800">
-            <tr>
-              <th class="text-left px-3 py-2">字段</th><th class="text-left px-3 py-2">类型</th>
-              <th class="text-left px-3 py-2">必填</th><th class="text-left px-3 py-2">说明</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-leaf-100 text-stone-700">
-            <tr v-for="f in fields" :key="f.name">
-              <td class="px-3 py-2 font-mono">{{ f.name }}</td>
-              <td class="px-3 py-2 text-stone-500">{{ f.type }}</td>
-              <td class="px-3 py-2"><span :class="f.req ? 'text-leaf-700 font-bold' : 'text-stone-400'">{{ f.req ? '是' : '否' }}</span></td>
-              <td class="px-3 py-2 leading-5">{{ f.desc }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="rounded-xl border border-leaf-100 bg-white p-6">
+        <h2 class="font-bold text-stone-900">获取结果，也保留出处</h2>
+        <ul class="mt-4 space-y-4 text-sm leading-6 text-stone-600">
+          <li><strong class="text-leaf-800">按关键词和语义查找</strong><br />结合分类、主题、论文方向和收录时间缩小范围。</li>
+          <li><strong class="text-leaf-800">从摘要继续阅读</strong><br />获取已收录全文与论文卡片，结果附站内阅读页和原文链接。</li>
+          <li><strong class="text-leaf-800">明确可用范围</strong><br />全文未收录时会标记缺失；语义检索暂不可用时会提示降级。每个读取 Key 默认每分钟 60 次请求。</li>
+        </ul>
       </div>
+    </section>
 
-      <h3 class="font-bold text-stone-800 mt-5 mb-2 text-sm">响应（HTTP 200，逐条结果）</h3>
-      <AgentCodeBlock lang="json" :code="respExample" />
-      <ul class="text-xs text-stone-600 space-y-1.5 mt-2 leading-5">
-        <li><AgentCode>created</AgentCode> — 新条目，已直接上线，<AgentCode>item_id</AgentCode> 为条目 ID。</li>
-        <li><AgentCode>duplicate</AgentCode> — 判定为重复，<strong>不是错误</strong>；信源已合并到 <AgentCode>duplicate_of</AgentCode> 指向的条目。</li>
-        <li><AgentCode>invalid</AgentCode> — 该条入库失败（批量模式下不影响其他条目）。</li>
-      </ul>
-    </AgentSection>
-
-    <!-- 去重规则 -->
-    <AgentSection title="④ 去重规则（服务层自动执行）" id="dedup">
-      <div class="space-y-4 text-sm text-stone-700 leading-6">
-        <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
-          <div class="font-bold text-leaf-800 mb-1">第 0 级 · DOI / OpenAlex ID <AgentCode>exact_doi</AgentCode> / <AgentCode>openalex_id</AgentCode></div>
-          论文先按规范化 DOI（小写、去掉 doi.org 前缀）判重，再按 OpenAlex Work ID。
-          同一篇论文的出版社页、DOI 链接与 OpenAlex 记录会合并为一条。
-        </div>
-        <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
-          <div class="font-bold text-leaf-800 mb-1">第 1 级 · URL 精确去重 <AgentCode>exact_url</AgentCode></div>
-          URL 先做规范化（去除 utm_*/from/ref 等追踪参数、统一协议与大小写、去锚点与末尾斜杠），再取 SHA-256。
-          哈希已存在 → 判重。同一篇文章带不同追踪参数重复推送会被识别为同一条。
-        </div>
-        <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
-          <div class="font-bold text-leaf-800 mb-1">第 2 级 · 标题相似去重 <AgentCode>similar_title</AgentCode></div>
-          标题清洗（去标点空白、全角转半角）后计算 64 位 SimHash，与近 30 天条目比较：
-          海明距离 ≤ 6，或标题互相包含（如「…指导意见」与「…指导意见（全文）」）→ 判重。
-        </div>
-        <div class="rounded-xl border border-leaf-200 bg-leaf-50/50 p-4">
-          <div class="font-bold text-leaf-800 mb-1">第 3 级 · 合并而非拒绝</div>
-          判重后推送<strong>不会被丢弃</strong>：新信源会并入已有条目的信源列表（前端展示「N 个信源同时报道」），
-          热度随之提升。<strong>幂等安全</strong>：网络超时后原样重推即可，不会产生重复条目。
-        </div>
-        <p class="text-xs text-stone-500">提示：想让自己的信源出现在「多信源报道」里，请填好 <AgentCode>source_name</AgentCode> 与 <AgentCode>source_url</AgentCode>。</p>
+    <section id="apply" class="scroll-mt-6 rounded-2xl border border-leaf-200 bg-white p-6 sm:p-8">
+      <div class="grid md:grid-cols-[1fr_1.5fr] gap-6 sm:gap-10">
+        <div><p class="text-xs font-mono text-leaf-600">ACCESS REQUEST</p><h2 class="mt-3 text-xl font-bold text-stone-900">申请读取 Key</h2><p class="mt-3 text-sm leading-7 text-stone-500">告诉我们你准备如何使用 AgriHot。管理员审核后，会通过你填写的联系方式交付 Key。</p><p class="mt-3 text-xs leading-6 text-stone-400">联系方式仅用于接入申请沟通。请勿在表单中提交现有密钥。</p></div>
+        <form v-if="!submitted" class="space-y-4" @submit.prevent="apply">
+          <label class="block text-sm text-stone-700">名称 / 项目名<input v-model="form.name" required maxlength="100" autocomplete="organization" class="agent-input" placeholder="例如：农业研究助手" /></label>
+          <label class="block text-sm text-stone-700">邮箱或微信<input v-model="form.contact" required minlength="3" maxlength="200" class="agent-input" placeholder="可联系到你的邮箱或微信号" /></label>
+          <label class="block text-sm text-stone-700">使用用途<textarea v-model="form.use_case" required minlength="10" maxlength="2000" rows="3" class="agent-input resize-y" placeholder="希望查询什么内容，用在哪个 Agent 或项目中？（至少 10 字）" /></label>
+          <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
+          <button type="submit" :disabled="busy" class="rounded-lg bg-leaf-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-leaf-800 disabled:opacity-50">{{ busy ? '提交中…' : '提交申请' }}</button>
+        </form>
+        <div v-else role="status" class="self-center rounded-xl bg-leaf-50 border border-leaf-100 p-6"><h3 class="font-bold text-leaf-800">申请已提交</h3><p class="mt-2 text-sm leading-6 text-stone-600">申请编号 #{{ submitted.id }}。审核后，管理员将通过你填写的联系方式交付读取 Key。</p></div>
       </div>
-    </AgentSection>
-
-    <!-- 错误码 -->
-    <AgentSection title="⑤ 状态码与错误格式" id="errors">
-      <table class="w-full text-sm">
-        <tbody class="divide-y divide-leaf-100 text-stone-700">
-          <tr><td class="py-2 pr-4 font-mono w-20">200</td><td>成功（含 duplicate 结果）</td></tr>
-          <tr><td class="py-2 pr-4 font-mono">401</td><td>缺少或无效 API Key</td></tr>
-          <tr><td class="py-2 pr-4 font-mono">422</td><td>字段校验失败（缺 title/url/summary、summary 过短等）</td></tr>
-          <tr><td class="py-2 pr-4 font-mono">429</td><td>超出频率限制，稍后重试</td></tr>
-        </tbody>
-      </table>
-      <p class="text-xs text-stone-500 mt-3">错误统一为 Problem JSON：<AgentCode>{"title": "...", "status": 401, "detail": "..."}</AgentCode></p>
-    </AgentSection>
-
-    <!-- 示例 -->
-    <AgentSection title="⑥ 代码示例" id="examples">
-      <h3 class="font-bold text-stone-800 mb-2 text-sm">Python（httpx）</h3>
-      <AgentCodeBlock lang="python" :code="pyExample" />
-      <h3 class="font-bold text-stone-800 mt-5 mb-2 text-sm">批量推送（curl）</h3>
-      <AgentCodeBlock lang="bash" :code="batchExample" />
-    </AgentSection>
-
-    <!-- 最佳实践 -->
-    <AgentSection title="⑦ 最佳实践" id="best-practices">
-      <ul class="text-sm text-stone-700 space-y-2 list-disc list-inside leading-6">
-        <li><strong>直接推原始 URL 即可</strong>，无需自行去追踪参数，服务端会规范化。</li>
-        <li><strong>失败/超时请原样重试</strong>，接口幂等，重复推送只会合并信源。</li>
-        <li>批量优于单条：一轮抓取打包成 ≤50 条一次推送，减少请求数。</li>
-        <li><AgentCode>published_at</AgentCode> 用 ISO 8601 带时区（如 <AgentCode>2026-07-15T08:00:00+08:00</AgentCode>）；站点按收录时间分组排序，此字段仅用于展示原文日期。</li>
-        <li><AgentCode>category</AgentCode> 建议用 <AgentCode>政策 / 报道 / 论文 / 行业</AgentCode>，其他值会归为「报道」。</li>
-        <li><AgentCode>tags</AgentCode> 必须是独立短词数组（<AgentCode>["智慧农业","遥感"]</AgentCode>），不要写成整句。服务端会先切开，入库后的 AI 评分会根据正文重写主题；给的 tags 只是评分完成前的兜底。</li>
-        <li>摘要 ≥ 10 字、标题 ≥ 4 字，否则会被 422 拒绝。</li>
-        <li>遵守 60 次/分钟限制；收到 429 时指数退避（1s → 2s → 4s…）。</li>
-      </ul>
-    </AgentSection>
+    </section>
+    <footer class="flex flex-wrap gap-x-6 gap-y-3 text-xs text-stone-500">
+      <a href="/llms.txt" class="hover:text-leaf-700">llms.txt ↗</a><a href="/api/v1/agent" class="hover:text-leaf-700">Agent 使用说明 ↗</a><a href="/docs" class="hover:text-leaf-700">接口参考 ↗</a><NuxtLink to="/about" class="hover:text-leaf-700">接入问题与联系</NuxtLink>
+    </footer>
+    <span class="sr-only" role="status" aria-live="polite">{{ copied ? '已复制到剪贴板' : '' }}</span>
   </div>
 </template>
 
 <script setup>
 const config = useRuntimeConfig()
-const base = String(config.public.siteUrl || FALLBACK_ORIGIN).replace(/\/$/, '')
-usePageSeo({
-  title: 'Agent 接入 · AgriHot',
-  description: 'AgriHot 开放推送 API：农业信息化资讯接入、自动去重与精选评分。',
-  path: '/agent',
-})
-
-
-const fields = [
-  { name: 'title', type: 'string', req: true, desc: '标题，4–500 字' },
-  { name: 'url', type: 'string', req: true, desc: '原文链接；论文优先填 DOI 链接（https://doi.org/…）' },
-  { name: 'summary', type: 'string', req: true, desc: '摘要，≥10 字；论文建议附原文标题与作者' },
-  { name: 'source_name', type: 'string', req: false, desc: '信源名称，如「农民日报」；多信源合并时展示' },
-  { name: 'source_url', type: 'string', req: false, desc: '信源首页/出处链接' },
-  { name: 'published_at', type: 'datetime', req: false, desc: '原文发布时间（ISO 8601 带时区）' },
-  { name: 'category', type: 'string', req: false, desc: '政策 / 报道 / 论文 / 行业，缺省归「报道」' },
-  { name: 'tags', type: 'string[]', req: false, desc: '标签数组，每项一个短主题，如 ["智慧农业","遥感"]。不要把标题或机构+作物拼成一条。服务端会先按空格/顿号切开，评分时再用正文提炼 3–6 个可聚合主题并覆盖；长尾检索短语由评分另写，不会进标签表' },
-  { name: 'cover_url', type: 'string', req: false, desc: '封面图 URL' },
-  { name: 'content', type: 'string', req: false, desc: '正文（可选，Markdown，详情页展示；缺省时服务端自动抓取补充）' },
-  { name: 'lang', type: 'string', req: false, desc: '语种标记，如 zh / en' },
-  { name: 'doi', type: 'string', req: false, desc: '论文 DOI。不填时若 url 是 doi.org 链接会自动抽取。DOI 相同视为同一篇，优先于 URL / 标题去重' },
-]
-
-const quickstart = `# 推送第一条资讯
-curl -X POST ${base}/api/v1/ingest/items \\
-  -H "X-API-Key: <你的APIKey>" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "title": "8项农业人工智能标准立项获批 智慧农业迎来标准时刻",
-    "url": "https://example.com/news/20260714-ai-standards",
-    "summary": "2026年第二批农业国家和行业标准制修订计划中，8项农业人工智能相关行业标准获立项，覆盖农业机器人、农业农村大模型等领域。",
-    "source_name": "示例信源",
-    "published_at": "2026-07-14T09:00:00+08:00",
-    "category": "政策",
-    "tags": ["农业人工智能", "行业标准"]
-  }'
-
-# → {"status":"created","item_id":20,"message":"已收录并直接上线"}`
-
-const respExample = `// 单条响应
-{
-  "status": "duplicate",          // created | duplicate | invalid
-  "item_id": 19,
-  "duplicate_of": 19,             // 重复时指向已有条目
-  "dup_reason": "similar_title",  // exact_url | similar_title
-  "message": "与已有条目「…」标题相似，信源已合并"
+const api = useApi()
+const base = String(config.public.siteUrl || 'https://agrihot.com').replace(/\/$/, '')
+const tab = ref('skill')
+const tabs = [{ id: 'skill', label: 'Agent Skill' }, { id: 'mcp', label: 'MCP' }]
+const steps = [{ title: '申请 Key', detail: '填写用途，等待管理员审核' }, { title: '连接 Agent', detail: '安装 Skill 或配置 MCP' }, { title: '提问与引用', detail: '检索内容，查看全文与来源' }]
+const prompts = ['过去 24 小时，有哪些值得关注的农业政策？', '检索近一周关于作物病害智能识别的论文。', '给我最新一期农业农村日报。']
+const installPrompt = `请安装 AgriHot Skill：${base}/agrihot-skill/README.md\n使用我已配置的 AGRIHOT_API_KEY 环境变量进行读取，不要将 Key 写入 Skill 文件或输出。\n安装后告诉我是否需要开启新会话。`
+const mcpConfig = JSON.stringify({ mcpServers: { agrihot: { url: `${base}/api/v1/mcp`, headers: { Authorization: 'Bearer <你的读取Key>' } } } }, null, 2)
+const form = reactive({ name: '', contact: '', use_case: '' })
+const busy = ref(false), submitted = ref(null), error = ref(''), copied = ref(''), copyError = ref('')
+async function copy(text, id) {
+  try { await navigator.clipboard.writeText(text); copied.value = id; copyError.value = '' }
+  catch { copyError.value = '复制失败，请手动选中内容复制。' }
 }
-
-// 批量响应
-{ "total": 3, "created": 2, "duplicate": 1, "invalid": 0,
-  "results": [ /* 每条同上 */ ] }`
-
-const pyExample = `import httpx
-
-API = "${base}/api/v1/ingest/items"
-KEY = "<你的APIKey>"
-
-def push(item: dict) -> dict:
-    r = httpx.post(API, json=item, headers={"X-API-Key": KEY}, timeout=30)
-    if r.status_code == 429:
-        raise RuntimeError("限流，退避后重试")
-    r.raise_for_status()
-    return r.json()
-
-result = push({
-    "title": "全国智慧农业现场会在江苏召开",
-    "url": "https://example.com/news/smart-agri-conf?utm_source=rss",  # 追踪参数无需处理
-    "summary": "全国智慧农业现场会在江苏南京召开，展示农业机器人、AI农情监测等新技术。",
-    "source_name": "我的爬虫",
-    "category": "报道",
-    "tags": ["智慧农业", "农业机器人"],
-})
-# 幂等：超时后原样重推不会生成重复条目
-print(result["status"], result.get("item_id") or result.get("duplicate_of"))`
-
-const batchExample = `curl -X POST ${base}/api/v1/ingest/items/batch \\
-  -H "X-API-Key: <你的APIKey>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"items": [
-    {"title": "…", "url": "https://a.example/1", "summary": "……（≥10字）"},
-    {"title": "…", "url": "https://a.example/2", "summary": "……（≥10字）"}
-  ]}'`
+function tabKeydown(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  tab.value = event.key === 'Home' ? 'skill' : event.key === 'End' ? 'mcp' : tab.value === 'skill' ? 'mcp' : 'skill'
+  nextTick(() => document.getElementById(`tab-${tab.value}`)?.focus())
+}
+async function apply() {
+  busy.value = true; error.value = ''
+  try { submitted.value = await api.agentApply(form) }
+  catch (e) { error.value = e?.statusCode === 429 ? '提交过于频繁，请稍后再试。' : '提交失败，请检查填写内容或稍后重试。' }
+  finally { busy.value = false }
+}
+usePageSeo({ title: 'Agent 接入 · AgriHot', description: '通过 Agent Skill 或 MCP 接入 AgriHot，检索农业政策、资讯、论文、已收录全文与日报。', path: '/agent' })
 </script>
+
+<style scoped>
+.agent-hero { background-image: radial-gradient(ellipse at 95% 5%, #e0f1db 0, transparent 55%); }
+.agent-input { @apply mt-1.5 block w-full rounded-lg border border-stone-200 bg-stone-50/60 px-3 py-2.5 text-sm outline-none placeholder:text-stone-400 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-100; }
+</style>

@@ -15,6 +15,7 @@
         {{ item.score }} 分
       </NuxtLink>
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
+      <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path" class="text-leaf-700 hover:underline">{{ item.primary_topic.name }}</NuxtLink>
       <span v-if="item.paper?.direction"
         class="px-1.5 py-0.5 rounded bg-leaf-50 text-leaf-700 border border-leaf-100">
         {{ item.paper.direction }}

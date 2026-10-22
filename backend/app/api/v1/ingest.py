@@ -18,7 +18,7 @@ def _key_func(request: Request) -> str:
 
 limiter = Limiter(key_func=_key_func)
 
-router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
+router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"], include_in_schema=False)
 
 
 @router.post("/items", response_model=IngestResultOut, status_code=200)

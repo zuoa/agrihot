@@ -49,6 +49,8 @@ const links = [
   { to: '/admin/settings', label: '配置' },
   { to: '/admin/watchlist', label: '关注面' },
   { to: '/admin/keys', label: 'API Key' },
+  { to: '/admin/agent', label: 'Agent 读取接入', exact: true },
+  { to: '/admin/agent-push', label: 'Agent 推送接入' },
 ]
 
 const title = computed(() => route.meta.title || '后台')

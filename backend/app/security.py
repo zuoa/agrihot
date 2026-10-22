@@ -32,6 +32,8 @@ async def require_api_key(
     ).scalar_one_or_none()
     if key is None or not key.is_active:
         raise problem(401, "Unauthorized", "API Key 无效或已停用")
+    if key.purpose != "push":
+        raise problem(403, "Forbidden", "此 Key 没有推送权限")
     key.last_used_at = datetime.now(timezone.utc)
     await session.commit()
     return key

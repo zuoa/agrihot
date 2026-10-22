@@ -33,6 +33,8 @@ export default defineNuxtConfig({
     '/items/**': { swr: 300 },
     '/n/**': { swr: 300 },
     '/tags': { swr: 300 },
+    '/topic': { swr: 60 },
+    '/topic/**': { swr: 60 },
     '/tags/**': { swr: 300 },
     '/about': { swr: 3600 },
     '/agent': { swr: 3600 },

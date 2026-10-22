@@ -125,11 +125,14 @@ def _normalize_category(cat: str | None) -> str:
 
 
 async def _get_or_create_tags(session: AsyncSession, names: list[str]) -> list[Tag]:
+    from .taxonomy_catalog import canonical_name, tag_properties
+
     tags: list[Tag] = []
-    for name in normalize_tags(names):
+    for name in dict.fromkeys(canonical_name(n) for n in normalize_tags(names)):
         tag = (await session.execute(select(Tag).where(Tag.name == name))).scalar_one_or_none()
         if tag is None:
-            tag = Tag(name=name)
+            kind, status = tag_properties(name)
+            tag = Tag(name=name, kind=kind, status=status)
             session.add(tag)
             await session.flush()
         tags.append(tag)
@@ -141,6 +144,7 @@ async def retag_all_items(session: AsyncSession, *, dry_run: bool = False) -> di
 
     Returns counts plus ``diffs`` of ``(item_id, old_names, new_names)``.
     """
+    from .taxonomy_catalog import canonical_name
     items = (await session.execute(select(Item).order_by(Item.id))).scalars().all()
     changed = 0
     before: set[str] = set()
@@ -148,7 +152,7 @@ async def retag_all_items(session: AsyncSession, *, dry_run: bool = False) -> di
     diffs: list[tuple[int, list[str], list[str]]] = []
     for item in items:
         old = [t.name for t in item.tags]
-        new = normalize_tags(old)
+        new = list(dict.fromkeys(canonical_name(n) for n in normalize_tags(old)))
         before.update(old)
         after.update(new)
         if old == new:
@@ -397,6 +401,7 @@ async def ingest_item(
         hotness=10,
         doi=doi,
         sources=[{"name": payload.source_name.strip(), "url": payload.source_url or payload.url}],
+        paper=None,
     )
     item.tags = await _get_or_create_tags(session, payload.tags)
     _apply_paper_meta(item, paper_draft, doi)

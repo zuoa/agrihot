@@ -7,7 +7,7 @@
 
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16-bookworm
     environment:
       POSTGRES_DB: agrihot
       POSTGRES_USER: agrihot
@@ -28,6 +28,13 @@ services:
       SITE_URL: ${SITE_URL:-https://agrihot.com}
       CORS_ORIGINS: "*"
       INGEST_RATE_LIMIT: 60/minute
+      AGENT_RATE_LIMIT: ${AGENT_RATE_LIMIT:-60/minute}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embedding-3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      EMBEDDING_TIMEOUT: ${EMBEDDING_TIMEOUT:-15}
+      SEARCH_INDEX_ENABLED: ${SEARCH_INDEX_ENABLED:-true}
       # 自动精选评分（DeepSeek）；不设置 DEEPSEEK_API_KEY 则新条目一律不进精选
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       SELECTION_THRESHOLD: ${SELECTION_THRESHOLD:-70}

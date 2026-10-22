@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h1 class="text-xl font-bold text-leaf-800 mb-5">主题</h1>
+    <div class="flex justify-between gap-3 items-center mb-5">
+      <h1 class="text-xl font-bold text-leaf-800">全部标签</h1>
+      <NuxtLink to="/topic" class="text-sm text-leaf-700 hover:underline">按主题浏览 →</NuxtLink>
+    </div>
     <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
     <div v-else class="flex flex-wrap gap-2.5">
       <NuxtLink v-for="t in tags" :key="t.name" :to="`/tags/${encodeURIComponent(t.name)}`"

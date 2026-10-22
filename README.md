@@ -1,7 +1,7 @@
 # AgriHot · 农业信息化动态聚合
 
 参考 aihot 形态的绿色主题农业信息化资讯站：政策 / 报道 / 学术论文聚合 + 每日《农业农村日报》，
-爬虫 Agent 通过开放 API 推送内容，服务层自动去重（URL 精确 + 标题 SimHash 相似）后直接上线。
+通过 Agent Skill / MCP 检索内容；内部爬虫通过推送专用 Key 提交内容，服务层自动去重后上线。
 
 ## 结构
 
@@ -15,7 +15,7 @@
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-createdb agrihot                     # 需要本地 PostgreSQL
+createdb agrihot                     # 需要 PostgreSQL 16 与 pgvector 扩展
 .venv/bin/uvicorn app.main:app --port 8100
 ```
 
@@ -38,7 +38,56 @@ cd frontend
 npm install && npm run dev
 ```
 
-## Agent 推送（摘要）
+## Agent 读取接入
+
+公开 `/agent` 提供 Skill 与远程 MCP 配置，以及读取 Key 申请表。管理员在 `/admin/agent`
+查看申请、审批并复制一次性明文 Key，人工交付给申请人；已有 Key 可在 `/admin/keys` 停用。
+读取与推送权限隔离，历史 Key 自动迁移为推送用途。网页原有匿名接口继续兼容。
+
+- Skill 安装：`/agrihot-skill/README.md`；独立文件 `/agrihot-skill/SKILL.md`
+- 使用说明：`/api/v1/agent`；站点索引：`/llms.txt`
+- MCP：`/api/v1/mcp`，Streamable HTTP，支持自定义认证头的客户端
+- 业务认证：`Authorization: Bearer <读取Key>`；默认每 Key 每分钟 60 次（单进程共享预算）
+- MCP 工具：`search_content`、`list_items`、`get_item`、`list_dailies`、`get_daily`
+- REST：`POST /api/v1/agent/search`、`POST /api/v1/agent/items`、`GET /api/v1/agent/items/{id}`、
+  `GET /api/v1/agent/dailies`、`GET /api/v1/agent/dailies/{date|latest}`
+
+```bash
+curl http://localhost:8100/api/v1/agent/search \
+  -H "Authorization: Bearer $AGRIHOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"q":"农业遥感","category":"论文","limit":5}'
+# 管理员也可用 CLI 签发读取 Key（明文只输出一次）：
+.venv/bin/python -m scripts.create_api_key research-assistant --purpose read
+```
+
+检索支持 `q`、`category`、`tags`（全部匹配）、`direction`、`since`、`until`、`limit`（1–50）。
+时间范围按收录时间，建议传带时区 ISO 8601。最新/精选列表以 `before_id` 游标翻页；
+日报以 `before` 日期翻页。检索只返回摘要和片段，详情另含已收录正文、论文卡片、
+`site_url`、`original_url`、`has_fulltext`。站点不为 Agent 额外抓取缺失正文。
+
+### GLM 混合召回与索引
+
+配置 `EMBEDDING_API_KEY`，默认使用智谱 `embedding-3`、1024 维，接口基址
+`https://open.bigmodel.cn/api/paas/v4`。支持独立的 `EMBEDDING_BASE_URL`、`EMBEDDING_MODEL`、
+`EMBEDDING_DIMENSIONS`、`EMBEDDING_TIMEOUT`，与 DeepSeek 评分配置无关。
+
+中文分词全文检索 + pgvector 余弦召回，经 RRF 融合并按文章去重。PostgreSQL 使用 GIN
+全文索引与精确向量距离排序；本期不引入近似向量索引。标题、摘要、标签与正文分段建索引。
+内容变更在同一数据库事务中排入持久化队列，后台每 5 秒检查；失败按指数退避重试，
+进程中断后可续跑。更换模型或维度自动回填，未完成时不会混用旧模型向量。
+
+无凭据、API 异常或索引不全时返回关键词结果及 `degraded` / `degradation_reasons`。
+后台 `/admin/agent` 展示覆盖率与错误；可点击补建，或运行：
+
+```bash
+.venv/bin/python -m scripts.reindex --run
+.venv/bin/python -m scripts.reindex --force --run  # 重查哈希、重试失败，复用未变化的成功向量
+```
+
+`SEARCH_INDEX_ENABLED=false` 暂停自动索引，不影响查询现有索引。生产使用 PostgreSQL，
+SQLite 仅供业务测试。GLM 凭据留空时仍可建立关键词索引，页面明确显示语义召回未启用。
+
+## Agent 推送接入（内部维护）
 
 ```bash
 curl -X POST http://localhost:8100/api/v1/ingest/items \
@@ -52,7 +101,7 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 - 去重：`exact_url`（URL 规范化 + SHA-256）、`similar_title`（SimHash 海明距离 ≤6 或标题互相包含）；重复不报错，信源合并进已有条目（幂等，可安全重试）
 - 限流：60 次/分钟/Key
 - 删除：`DELETE /api/v1/ingest/items/{id}`（下架测试/违规内容，同时清理日报引用）
-- 完整说明见站点 `/agent` 页或 `/docs`（OpenAPI）
+- 完整说明仅在管理员登录后的 `/admin/agent-push`；公共 OpenAPI 不包含推送或管理接口。
 
 ## 自动精选评分
 
@@ -66,6 +115,49 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 
 环境变量：`DEEPSEEK_API_KEY`（留空则关闭评分）、`DEEPSEEK_BASE_URL`、
 `DEEPSEEK_MODEL`（默认 `deepseek-chat`）、`SELECTION_THRESHOLD`、`DAILY_TOP_N`。
+
+## 两级主题与分类
+
+`/topic` 提供 10 个一级频道与 62 个二级方向，支持内容类型、技术多选、主题内搜索和分页。
+父级频道按文章去重聚合子主题的主辅归属；`/tags` 和已有标签/组合检索地址继续可用。
+机构规范词支持标签与关键词搜索中的别名查询，遥感等上下位技术词保持独立。目录、规则、技术词和机构别名维护在
+`backend/app/taxonomy.yaml`，`code` / `slug` 保持稳定。
+
+新文章及标题、摘要、正文、标签变更自动执行规则分类，不依赖评分和 DeepSeek。
+证据不足进入待分类或待复核；可在后台内容页按状态筛选、编辑主辅主题，或点击「重分主题」。
+人工选择默认锁定，重评分、补抓正文、历史回填均保留锁定归属。后台「任务 → 回填主题分类」
+可运行独立回填，不修改分数和精选。区域与机构已区分标签类型，本期主题页面先开放技术筛选。
+
+升级后先同步结构和字典，再预览历史分类（Docker 可在 `docker compose exec backend` 后执行同样命令）：
+
+```bash
+cd backend
+.venv/bin/python -m scripts.taxonomy sync
+.venv/bin/python -m scripts.taxonomy backfill --dry-run --report /tmp/taxonomy-preview.json
+.venv/bin/python -m scripts.taxonomy backfill --batch-id initial-taxonomy --report /tmp/taxonomy-result.json
+# 中断后传相同 batch-id 续跑；可用 --limit 先跑少量、--batch-size 控制读取批量。
+.venv/bin/python -m scripts.taxonomy backfill --batch-id initial-taxonomy
+# 配置 DEEPSEEK_API_KEY 后，按需对规则待复核项调用模型，产生 API 用量：
+.venv/bin/python -m scripts.taxonomy backfill --use-model --batch-id taxonomy-model-review
+# 仅撤回该批次且之后未改动、未人工锁定的归属；保留审计记录：
+.venv/bin/python -m scripts.taxonomy rollback initial-taxonomy
+```
+
+默认启动只创建新增结构并同步目录，不自动回填历史文章。回填记录规则版本、输入哈希、
+逐篇结果和断点；跨版本续跑须使用新批次。`--force` 重算相同版本，仍不会覆盖人工锁定。
+`--dry-run` 只读取规则预览，不调用模型或写入分类与断点；须先完成结构同步。
+
+公开接口：`GET /api/v1/taxonomy`、`GET /api/v1/taxonomy/{slug}`、
+`GET /api/v1/taxonomy/facets?topic=rice`，文章查询增加 `topic` 和重复的 `technologies` 参数。
+Agent REST 和 MCP 使用相同筛选规则；MCP 新增 `list_topics`。
+
+功能范围、全量公开元数据回放和验证结果见 [主题系统实现与验收记录](docs/taxonomy-implementation-2026-10-22.md)。
+
+```bash
+# 专用测试库，会清空其中的应用表；使用真实 PostgreSQL + pgvector：
+AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxonomy_test \
+  .venv/bin/python -m pytest tests/test_taxonomy.py -q
+```
 
 ## 文献雷达（OpenAlex）
 
@@ -139,10 +231,28 @@ docker compose exec backend python -m scripts.create_api_key my-crawler   # 签�
 docker compose exec backend python -m scripts.seed_from_pdf               # 可选：导入演示日报
 ```
 
-升级到新版本：`docker compose pull && docker compose up -d`。
+### 从原 PostgreSQL 镜像升级
+
+本版本数据库镜像改为 `pgvector/pgvector:pg16-bookworm`，保持 PostgreSQL 16。
+原版使用 Alpine，不能直接假定其数据目录与 Bookworm 的区域设置兼容。
+升级前用旧镜像执行 `pg_dump -Fc` 保存完整备份并验证可读取；停止业务写入后，
+保留旧卷，使用新卷初始化 pgvector 镜像，再用 `pg_restore` 恢复数据。
+确认表、条目数量及旧 Key 均保留后启动新版后端。不要执行 `docker compose down -v`。
+
+后端首次启动自动启用 vector 扩展、迁移历史 Key 用途并创建索引表；数据库账号需要创建扩展权限，
+托管数据库可由管理员预先执行 `CREATE EXTENSION IF NOT EXISTS vector`。
+配置 `EMBEDDING_API_KEY` 后，历史内容在后台逐步回填。
+回滚时恢复旧应用、原数据库镜像和保留的旧卷；回滚前导出上线期间新增数据，避免丢失。
+
+完成首次数据库迁移后，日常升级：`docker compose pull && docker compose up -d`。
 
 ## 测试
 
 ```bash
 cd backend && .venv/bin/python -m pytest tests/ -q
+# 对专用测试数据库运行真实 PostgreSQL + pgvector 接入测试（会清空该库的应用表）：
+AGRIHOT_TEST_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_agent_test \
+  .venv/bin/python -m pytest tests/test_agent_access.py -q
+# 同时配置 AGRIHOT_LIVE_EMBEDDING_API_KEY 时，还会执行真实 GLM 向量化与召回测试（产生 API 用量）。
+# 凭据未配置时自动跳过；不会以替代服务冒充 GLM 联调成功。
 ```
