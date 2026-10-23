@@ -45,20 +45,20 @@ export function useApi() {
   }
 
   return {
-    items: (params) => get('/items', params),
+    items: (params) => get('/items', { compact: true, ...params }),
     item: (id) => get(`/items/${id}`),
-    related: (id) => get(`/items/${id}/related`),
+    related: (id) => get(`/items/${id}/related`, { compact: true }),
     recordView: (id) => post(`/items/${id}/view`),
     tags: () => get('/tags'),
     taxonomy: () => get('/taxonomy'),
     taxonomyNode: (slug) => get(`/taxonomy/${encodeURIComponent(slug)}`),
     taxonomyFacets: (params) => get('/taxonomy/facets', params),
-    topic: (name, params = {}) => get('/topics', { name, ...params }),
+    topic: (name, params = {}) => get('/topics', { compact: true, name, ...params }),
     paperDirections: () => get('/paper-directions'),
     stats: () => get('/stats'),
     dailies: (params) => get('/dailies', params),
-    latestDaily: () => get('/dailies/latest'),
-    daily: (date) => get(`/dailies/${date}`),
+    latestDaily: () => get('/dailies/latest', { compact: true }),
+    daily: (date) => get(`/dailies/${date}`, { compact: true }),
     adminLogin: async (password) => {
       try {
         const data = await $fetch(`${prefix()}/api/v1/admin/login`, {

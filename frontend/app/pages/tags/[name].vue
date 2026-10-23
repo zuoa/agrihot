@@ -24,6 +24,7 @@
     <div v-else class="space-y-3">
       <ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
     </div>
+    <ContentPagination v-if="!pending && !error" :page="page" :total="total" :page-size="pageSize" />
   </div>
 </template>
 
@@ -31,18 +32,20 @@
 const route = useRoute()
 const api = useApi()
 const name = computed(() => decodeTagName(route.params.name))
+const pageSize = 20
+const page = computed(() => Math.max(1, parseInt(route.query.page, 10) || 1))
 
 if (import.meta.server && name.value) {
   const reqUrl = useRequestURL()
   if (/%25[0-9A-Fa-f]{2}/.test(reqUrl.pathname)) {
-    await navigateTo(tagPath(name.value), { redirectCode: 301, replace: true })
+    await navigateTo({ path: tagPath(name.value), query: route.query }, { redirectCode: 301, replace: true })
   }
 }
 
 const { data, pending, error, refresh } = await useLazyAsyncData(
-  () => `topic-${name.value}`,
-  () => api.topic(name.value, { page_size: 100 }),
-  { watch: [name] },
+  () => `topic-${name.value}-${page.value}`,
+  () => api.topic(name.value, { page: page.value, page_size: pageSize }),
+  { watch: [name, page] },
 )
 
 const items = computed(() => data.value?.items || [])
@@ -58,7 +61,7 @@ usePageSeo(() => ({
   description: isPhrase.value
     ? `与「${tokens.value.join('、')}」同时相关的农业资讯，共 ${total.value} 条。`
     : `农业信息化主题「${name.value}」相关资讯与论文，共 ${total.value} 条。`,
-  path: tagPath(name.value),
+  path: `${tagPath(name.value)}${page.value > 1 ? `?page=${page.value}` : ''}`,
   noindex: items.value.length === 0,
   keywords: uniqueKeywords([name.value, tokens.value, '农业信息化', '主题']),
   jsonLd: (origin) => (data.value ? topicJsonLd(data.value, origin) : null),

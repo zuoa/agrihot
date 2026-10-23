@@ -245,6 +245,10 @@ AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxono
 `GET /api/v1/items`（mode=selected|all、window=24h|7d、category、tag、q、page）
 `GET /api/v1/items/{id}`、`GET /api/v1/dailies[/latest|/{date}]`、`GET /api/v1/tags`、`GET /api/v1/stats`
 
+网页列表使用 `compact=true`：文章列表、主题检索、相关文章及日报内的文章省略正文、
+评分明细与分类审计信息，数据库查询也跳过这些字段。原接口默认返回完整格式；文章详情始终保留全文。
+首页与标签页每页 20 条，可翻页查看历史内容；从卡片编辑时先读取完整详情。API 在客户端支持时启用 gzip 压缩。
+
 ## Docker 构建与部署
 
 ### GitHub Actions 自动构建（推送到 GHCR）

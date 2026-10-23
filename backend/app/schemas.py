@@ -322,13 +322,12 @@ class ClassificationOut(BaseModel):
     evidence: dict = Field(default_factory=dict)
 
 
-class ItemOut(BaseModel):
+class ItemSummaryOut(BaseModel):
     id: int
     title: str
     url: str
     summary: str
     summary_zh: str | None = None
-    content: str | None
     source_name: str
     source_url: str | None
     published_at: datetime | None
@@ -338,18 +337,22 @@ class ItemOut(BaseModel):
     is_selected: bool
     embedding_ready: bool = False
     score: int | None = None
-    score_detail: dict | None = None
     sources: list[SourceOut]
     tags: list[str]
     primary_topic: TopicRefOut | None = None
     secondary_topics: list[TopicRefOut] = Field(default_factory=list)
-    classification: ClassificationOut = Field(default_factory=ClassificationOut)
     search_phrases: list[str] = Field(default_factory=list)
     slug: str = ""
     view_count: int = 0
     doi: str | None = None
     paper: PaperMetaOut | None = None
     created_at: datetime
+
+
+class ItemOut(ItemSummaryOut):
+    content: str | None
+    score_detail: dict | None = None
+    classification: ClassificationOut = Field(default_factory=ClassificationOut)
 
 
 class ViewOut(BaseModel):
@@ -363,6 +366,10 @@ class ItemListOut(BaseModel):
     items: list[ItemOut]
 
 
+class ItemSummaryListOut(ItemListOut):
+    items: list[ItemSummaryOut]
+
+
 class TopicOut(BaseModel):
     name: str
     kind: str  # tag | phrase
@@ -373,12 +380,20 @@ class TopicOut(BaseModel):
     items: list[ItemOut]
 
 
+class TopicSummaryOut(TopicOut):
+    items: list[ItemSummaryOut]
+
+
 class DailyOut(BaseModel):
     date: date_type
     title: str
     highlights: list[str]
     content: str
     items: list[ItemOut] = []
+
+
+class DailySummaryOut(DailyOut):
+    items: list[ItemSummaryOut] = Field(default_factory=list)
 
 
 class DailyListItem(BaseModel):

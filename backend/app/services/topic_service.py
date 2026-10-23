@@ -205,12 +205,12 @@ async def _existing_names(session: AsyncSession, names: list[str]) -> list[str]:
 
 
 async def _paginate_items(
-    session: AsyncSession, stmt, count_stmt, page: int, page_size: int
+    session: AsyncSession, stmt, count_stmt, page: int, page_size: int, *, load_options=()
 ) -> tuple[int, list[Item]]:
     total = (await session.execute(count_stmt)).scalar_one()
     rows = (
         await session.execute(
-            stmt.order_by(Item.created_at.desc(), Item.id.desc())
+            stmt.options(*load_options).order_by(Item.created_at.desc(), Item.id.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -224,14 +224,15 @@ async def query_by_tags(
     match: str,
     page: int,
     page_size: int,
+    *, load_options=(),
 ) -> tuple[int, list[Item]]:
     stmt = apply_tag_match(select(Item), names, match)
     count_stmt = apply_tag_match(select(func.count(Item.id)), names, match)
-    return await _paginate_items(session, stmt, count_stmt, page, page_size)
+    return await _paginate_items(session, stmt, count_stmt, page, page_size, load_options=load_options)
 
 
 async def query_by_text_tokens(
-    session: AsyncSession, tokens: list[str], page: int, page_size: int
+    session: AsyncSession, tokens: list[str], page: int, page_size: int, *, load_options=()
 ) -> tuple[int, list[Item]]:
     likes = [_like_token(t) for t in tokens]
     likes = [t for t in likes if t]
@@ -252,7 +253,7 @@ async def query_by_text_tokens(
         where = where & extra
     stmt = select(Item).where(where)
     count_stmt = select(func.count(Item.id)).where(where)
-    return await _paginate_items(session, stmt, count_stmt, page, page_size)
+    return await _paginate_items(session, stmt, count_stmt, page, page_size, load_options=load_options)
 
 
 async def resolve_topic(
@@ -260,34 +261,35 @@ async def resolve_topic(
     name: str,
     page: int = 1,
     page_size: int = 20,
+    *, load_options=(),
 ) -> TopicResult:
     name = _clean_name(name)
     tokens = tokens_of(name)
 
     if name and (await _tag_exists(session, name) or await _tag_exists(session, canonical_name(name))):
-        total, items = await query_by_tags(session, [name], "all", page, page_size)
+        total, items = await query_by_tags(session, [name], "all", page, page_size, load_options=load_options)
         return TopicResult(name, "tag", [name], total, items)
 
     if len(tokens) <= 1:
         token = tokens[0] if tokens else name
         names = [token] if token else []
         total, items = (
-            await query_by_tags(session, names, "all", page, page_size) if names else (0, [])
+            await query_by_tags(session, names, "all", page, page_size, load_options=load_options) if names else (0, [])
         )
         return TopicResult(name, "tag", names, total, items)
 
-    total, items = await query_by_tags(session, tokens, "all", page, page_size)
+    total, items = await query_by_tags(session, tokens, "all", page, page_size, load_options=load_options)
     if total == 0:
         known = await _existing_names(session, tokens)
         if len(known) >= 2:
-            total, items = await query_by_tags(session, known, "all", page, page_size)
+            total, items = await query_by_tags(session, known, "all", page, page_size, load_options=load_options)
     if total == 0:
-        total, items = await query_by_text_tokens(session, tokens, page, page_size)
+        total, items = await query_by_text_tokens(session, tokens, page, page_size, load_options=load_options)
     return TopicResult(name, "phrase", tokens, total, items)
 
 
 async def related_items(
-    session: AsyncSession, item: Item, limit: int = RELATED_LIMIT
+    session: AsyncSession, item: Item, limit: int = RELATED_LIMIT, *, load_options=()
 ) -> list[Item]:
     tag_ids = [t.id for t in (item.tags or []) if t.name not in GENERIC_TAGS]
     codes = [link.topic_code for link in item.topic_links]
@@ -305,6 +307,7 @@ async def related_items(
     rows = (
         await session.execute(
             select(Item)
+            .options(*load_options)
             .join(overlap, overlap.c.item_id == Item.id)
             .order_by(overlap.c.n.desc(), Item.created_at.desc(), Item.id.desc())
             .limit(limit)

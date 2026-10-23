@@ -45,16 +45,17 @@
     </div>
 
     <div v-if="showAdmin" class="mt-3 pt-3 border-t border-dashed border-stone-200 flex gap-2 justify-end">
-      <button @click="showEdit = true"
-        class="px-3 py-1 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50">编辑</button>
+      <button @click="openEditor" :disabled="editing"
+        class="px-3 py-1 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50 disabled:opacity-50">{{ editing ? '加载中…' : '编辑' }}</button>
       <button @click="remove" :disabled="deleting"
         class="px-3 py-1 text-xs rounded-full border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
         {{ deleting ? '删除中…' : '删除' }}
       </button>
     </div>
 
-    <ItemEditModal v-if="showEdit" :item="item"
-      @close="showEdit = false" @saved="(it) => $emit('updated', it)" />
+    <p v-if="editError" role="alert" class="mt-2 text-xs text-red-600">{{ editError }}</p>
+    <LazyItemEditModal v-if="editItem" :item="editItem"
+      @close="editItem = null" @saved="(it) => $emit('updated', it)" />
   </article>
 </template>
 
@@ -67,9 +68,23 @@ const emit = defineEmits(['updated', 'deleted'])
 const api = useApi()
 const showAdmin = useClientAdmin()
 
-const showEdit = ref(false)
+const editItem = ref(null)
+const editing = ref(false)
+const editError = ref('')
 const deleting = ref(false)
 const blurb = computed(() => props.item.paper?.card?.tldr || props.item.summary_zh || props.item.summary)
+
+async function openEditor() {
+  editing.value = true
+  editError.value = ''
+  try {
+    editItem.value = await api.item(props.item.id)
+  } catch {
+    editError.value = '条目加载失败，请重试。'
+  } finally {
+    editing.value = false
+  }
+}
 
 async function remove() {
   if (!confirm(`确定删除「${props.item.title.slice(0, 30)}」？此操作不可恢复。`)) return

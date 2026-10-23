@@ -31,9 +31,13 @@
     </div>
 
     <PageSkeleton v-if="pending" />
+    <div v-else-if="error" class="text-center text-stone-500 py-16">
+      <p>精选加载失败，请稍后重试。</p>
+      <button type="button" class="mt-4 text-sm text-leaf-700 hover:underline" @click="refresh()">重新加载</button>
+    </div>
     <div v-else-if="!groups.length" class="text-center text-stone-400 py-16">暂无内容</div>
 
-    <template v-if="!pending">
+    <template v-if="!pending && !error">
     <section v-for="g in groups" :key="g.key" class="mb-8">
       <div class="flex items-baseline gap-3 mb-3">
         <h2 class="text-lg font-bold text-leaf-800">{{ g.label }}</h2>
@@ -44,6 +48,7 @@
         <ItemCard v-for="it in g.items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
       </div>
     </section>
+    <ContentPagination :page="page" :total="data?.total || 0" :page-size="pageSize" />
     </template>
   </div>
 </template>
@@ -53,8 +58,10 @@ const CATEGORIES = ['政策', '报道', '论文', '行业']
 const categories = ['全部', ...CATEGORIES]
 const route = useRoute()
 const api = useApi()
+const pageSize = 20
 
 const category = computed(() => (CATEGORIES.includes(route.query.category) ? route.query.category : ''))
+const page = computed(() => Math.max(1, parseInt(route.query.page, 10) || 1))
 const heading = computed(() => (category.value ? `${category.value}精选` : '农业科技情报 · 每日精选'))
 const lede = computed(() => (
   category.value
@@ -62,15 +69,15 @@ const lede = computed(() => (
     : '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。'
 ))
 
-const { data, pending, refresh } = await useLazyAsyncData(
-  () => `home-${category.value || 'all'}`,
-  () => api.items({ mode: 'selected', category: category.value, page_size: 100 }),
-  { watch: [category] },
+const { data, pending, error, refresh } = await useLazyAsyncData(
+  () => `home-${category.value || 'all'}-${page.value}`,
+  () => api.items({ mode: 'selected', category: category.value, page: page.value, page_size: pageSize }),
+  { watch: [category, page] },
 )
 
 const items = computed(() => data.value?.items || [])
 const topItem = computed(() => {
-  if (category.value || !items.value.length) return null
+  if (category.value || page.value > 1 || !items.value.length) return null
   return [...items.value].sort((a, b) => b.hotness - a.hotness)[0]
 })
 const groups = computed(() => {
@@ -78,7 +85,12 @@ const groups = computed(() => {
   return groupByDay(rest)
 })
 
-const path = computed(() => (category.value ? `/?category=${encodeURIComponent(category.value)}` : '/'))
+const path = computed(() => {
+  const query = new URLSearchParams()
+  if (category.value) query.set('category', category.value)
+  if (page.value > 1) query.set('page', String(page.value))
+  return query.size ? `/?${query}` : '/'
+})
 usePageSeo(() => ({
   title: category.value ? `${heading.value} · AgriHot` : DEFAULT_TITLE,
   description: category.value ? `${lede.value}。${DEFAULT_DESC}` : DEFAULT_DESC,
