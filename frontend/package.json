@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nuxt dev --port 3000",
     "build": "nuxt build",
-    "preview": "nuxt preview --port 3000"
+    "preview": "nuxt preview --port 3000",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",

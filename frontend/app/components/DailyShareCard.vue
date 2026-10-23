@@ -5,7 +5,7 @@
     <!-- 报头 -->
     <div class="bg-gradient-to-br from-leaf-700 to-leaf-900 px-12 pt-10 pb-8 text-white">
       <div class="flex items-center gap-3 text-leaf-200 text-xl tracking-wide">
-        <BrandMark class="w-8 h-8" /><span>AgriHot · 农业信息化动态聚合</span>
+        <BrandMark class="w-8 h-8" /><span>{{ DEFAULT_TITLE }}</span>
       </div>
       <h1 class="mt-4 text-[44px] leading-tight font-bold">农业农村日报</h1>
       <div class="mt-2 text-2xl text-leaf-100">{{ dateLabel }}</div>

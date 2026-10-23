@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" fill="none">
+  <rect width="600" height="600" rx="48" fill="#f4f8f1"/>
+  <g transform="translate(200 104) scale(5)">
+    <rect width="40" height="40" rx="10" fill="#20543c"/>
+    <path d="M9 29 18.5 10h5L33 29h-6l-6-12-6 12H9Z" fill="#f4f9ed"/>
+    <path d="m17 25 6-3 2 4-6 3-2-4Z" fill="#b8db6b"/>
+  </g>
+  <g text-anchor="middle" font-family="Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+    <text x="300" y="398" font-size="72" font-weight="700" letter-spacing="-3" fill="#20543c">AgriHot<tspan fill="#44963c">.</tspan></text>
+    <text x="300" y="459" font-size="32" font-weight="600" fill="#173b2b">农业科技情报</text>
+    <text x="300" y="505" font-size="23" fill="#54705e">前沿洞察 · 每日精选</text>
+  </g>
+</svg>

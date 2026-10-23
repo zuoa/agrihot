@@ -1,6 +1,6 @@
-# AgriHot · 农业信息化动态聚合
+# AgriHot · 农业科技情报与前沿洞察
 
-参考 aihot 形态的绿色主题农业信息化资讯站：政策 / 报道 / 学术论文聚合 + 每日《农业农村日报》，
+追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。绿色主题农业科技情报站：政策 / 报道 / 学术论文聚合 + 每日《农业农村日报》，
 通过 Agent Skill / MCP 检索内容；内部爬虫通过推送专用 Key 提交内容，服务层自动去重后上线。
 
 ## 结构
@@ -37,6 +37,28 @@ createdb agrihot                     # 需要 PostgreSQL 16 与 pgvector 扩展
 cd frontend
 npm install && npm run dev
 ```
+
+## 微信分享
+
+公开页面在服务端输出分享标题、简介与图片，通用预览使用 `/og-image.png`（1200×630），
+微信默认使用 `/share-icon.png`（600×600 方形缩略图）；有封面的文章优先使用文章封面。
+首页、文章、日报与主题页的分享内容随页面切换更新。
+
+微信朋友圈 / 好友的自定义缩略图通过[微信 JS-SDK](https://developers.weixin.qq.com/doc/offiaccount/OA_Web_Apps/JS-SDK.html)设置，
+仅配置 Open Graph 元信息不能保证微信采用指定图片。启用方式：
+
+1. 准备具有 `updateAppMessageShareData` / `updateTimelineShareData` 权限的公众号，在公众号后台配置网站的 **JS 接口安全域名**、域名验证文件及服务器出口 **IP 白名单**。
+2. Docker 部署时在 `deploy/.env` 填入 `WECHAT_APP_ID`、`WECHAT_APP_SECRET`，重新创建前端容器。
+   本地前端可设置 `NUXT_WECHAT_APP_ID`、`NUXT_WECHAT_APP_SECRET`；`NUXT_PUBLIC_SITE_URL` 必须与实际访问的网站源站一致。
+3. 用真实手机微信打开首页、文章或日报，再从右上角菜单分享给好友或朋友圈，检查标题与图片。
+
+签名接口 `/wechat/signature` 只签署配置的本站 URL，密钥与 ticket 留在服务端。
+access token 与 ticket 按有效期提前 5 分钟刷新，同进程合并并发刷新；失败后冷却 60 秒。
+缓存按 Nuxt 进程隔离，当前单前端容器可直接使用；多实例部署需共享凭据缓存。
+未配置公众号时自动停用 SDK，页面继续提供通用分享元信息与日报分享长图。
+
+修改分享图源文件后，可用 `rsvg-convert frontend/public/og-image.svg -o frontend/public/og-image.png`
+及 `rsvg-convert frontend/public/share-icon.svg -o frontend/public/share-icon.png` 重新生成 PNG。
 
 ## Agent 读取接入
 
@@ -194,7 +216,7 @@ AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxono
 
 ## 管理控制台
 
-公开站右上角「管理」进入 `/admin`（独立宽布局，不混在阅读栏里）。密码来自环境变量
+公开站页脚「管理」进入 `/admin`（独立宽布局，不混在阅读栏里）。密码来自环境变量
 `ADMIN_PASSWORD`（留空则管理接口整体关闭）。令牌为带 7 天过期的 HMAC，请求头
 `X-Admin-Token`；公开页登录后仍可在卡片上快捷编辑 / 删除。
 

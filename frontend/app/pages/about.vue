@@ -2,7 +2,8 @@
   <div class="bg-white rounded-2xl border border-leaf-100 p-6 sm:p-8 space-y-6">
     <h1 class="text-2xl font-bold text-stone-900">关于 AgriHot</h1>
     <p class="text-sm text-stone-600 leading-7">
-      AgriHot 是一个农业信息化资讯聚合站：聚合农业农村政策、行业报道与农业信息化学术论文，
+      AgriHot 专注农业科技情报与前沿洞察，追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。
+      汇集农业农村政策、行业报道与农业科技学术论文，
       每日生成《农业农村日报》。内容自动收录与去重，多信源报道合并呈现。
       通过 <NuxtLink to="/agent" class="text-leaf-700 hover:underline">Agent Skill 或 MCP</NuxtLink>
       接入，可按主题与语义检索资讯、论文和日报。
@@ -120,7 +121,7 @@ const cards = computed(() => {
 
 usePageSeo({
   title: '关于 · AgriHot',
-  description: '关于 AgriHot：农业信息化资讯聚合、农业农村日报与学术论文雷达。',
+  description: `关于 AgriHot：${DEFAULT_DESC}`,
   path: '/about',
 })
 </script>

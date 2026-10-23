@@ -53,11 +53,11 @@ const route = useRoute()
 const api = useApi()
 
 const category = computed(() => (CATEGORIES.includes(route.query.category) ? route.query.category : ''))
-const heading = computed(() => (category.value ? `${category.value}精选` : '农业信息化每日精选'))
+const heading = computed(() => (category.value ? `${category.value}精选` : '农业科技情报 · 每日精选'))
 const lede = computed(() => (
   category.value
     ? `首页精选中的${category.value}资讯`
-    : '政策、报道与学术论文聚合，每日更新'
+    : '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。'
 ))
 
 const { data, pending, refresh } = await useAsyncData(

@@ -23,6 +23,9 @@ export default defineNuxtConfig({
   },
   runtimeConfig: {
     apiBase,
+    // Server-only credentials; set NUXT_WECHAT_APP_ID / NUXT_WECHAT_APP_SECRET at runtime.
+    wechatAppId: '',
+    wechatAppSecret: '',
     public: {
       siteUrl: 'https://agrihot.com',
     },

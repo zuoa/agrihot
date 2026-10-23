@@ -73,6 +73,8 @@ services:
     environment:
       NUXT_API_BASE: http://backend:8000
       NUXT_PUBLIC_SITE_URL: ${SITE_URL:-https://agrihot.com}
+      NUXT_WECHAT_APP_ID: ${WECHAT_APP_ID:-}
+      NUXT_WECHAT_APP_SECRET: ${WECHAT_APP_SECRET:-}
     ports:
       - "5820:80"
     depends_on:

@@ -1,8 +1,9 @@
 export const SITE_NAME = 'AgriHot'
-export const DEFAULT_TITLE = 'AgriHot · 农业信息化动态聚合'
+export const DEFAULT_TITLE = 'AgriHot · 农业科技情报与前沿洞察'
+export const SITE_TAGLINE = '农业科技情报 · 每日精选'
 export const DEFAULT_DESC =
-  '农业信息化资讯聚合：政策、报道、学术论文每日精选与农业农村日报。覆盖智慧农业、数字乡村与农业农村政策。'
-export const DEFAULT_KEYWORDS = ['农业信息化', '智慧农业', '数字乡村', '农业农村日报', '农业政策', '农业论文']
+  '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。汇集政策、报道、学术论文与农业农村日报，每日精选。'
+export const DEFAULT_KEYWORDS = ['农业科技情报', '农业科技', '农业信息化', '智慧农业', '数字乡村', '农业农村日报', '农业政策', '农业论文']
 export const FALLBACK_ORIGIN = 'https://agrihot.com'
 
 export function siteOrigin(origin) {
@@ -18,6 +19,10 @@ export function absUrl(path = '/', origin) {
 
 export function defaultImage(origin) {
   return `${siteOrigin(origin)}/og-image.png`
+}
+
+export function defaultShareImage(origin) {
+  return `${siteOrigin(origin)}/share-icon.png`
 }
 
 export function clip(text, n = 160) {
