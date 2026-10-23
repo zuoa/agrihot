@@ -32,7 +32,6 @@ async def test_successful_https_fetch_does_not_retry(reader_server):
 @pytest.mark.parametrize('url', [
     'https://other.example/article.shtml',
     'https://nynct.gxzf.gov.cn.other.example/article.shtml',
-    'https://account:password@nynct.gxzf.gov.cn/article.shtml',
 ])
 async def test_other_sources_and_authenticated_urls_do_not_downgrade(url, reader_server):
     reader_server.responses.append((422, TLS_ERROR))
@@ -43,11 +42,21 @@ async def test_other_sources_and_authenticated_urls_do_not_downgrade(url, reader
 
 
 @pytest.mark.asyncio
+async def test_authenticated_source_url_is_rejected_before_any_request(reader_server):
+    with pytest.raises(content_service.FulltextFetchError) as exc:
+        await content_service.fetch_fulltext('https://account:password@nynct.gxzf.gov.cn/article.shtml', raise_errors=True)
+    assert exc.value.reason == 'invalid_url'
+    assert not reader_server.requests
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('status,body,reason', [
     (422, TLS_ERROR, 'source_tls_error'),
     (429, 'private-provider-detail', 'reader_rate_limited'),
     (451, 'private-provider-detail', 'reader_blocked'),
     (401, 'private-provider-detail', 'reader_auth_error'),
+    (403, {'status': 40305, 'name': 'AbuseAlleviationError'}, 'reader_domain_blocked'),
+    (403, 'private-provider-detail', 'reader_forbidden'),
     (500, 'private-provider-detail', 'reader_http_error'),
     (200, 'too short', 'content_too_short'),
 ])

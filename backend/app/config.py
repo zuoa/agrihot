@@ -24,9 +24,11 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-chat"
-    # full-text backfill via Jina Reader for items pushed without content;
-    # api key optional (anonymous tier is rate-limited but works)
+    # Full-text strategies prefer direct HTML / publisher XML / PDF; Jina is a fallback.
+    # The Reader API key is optional (anonymous access may be rate-limited).
     content_fetch_enabled: bool = True
+    content_fetch_timeout: float = Field(default=60, ge=5, le=180, allow_inf_nan=False)
+    content_max_chars: int = Field(default=100000, ge=200, le=1000000)
     jina_api_key: str = ""
     jina_reader_base_url: str = "https://r.jina.ai"
     # total score (0-100) at or above which an item becomes 精选

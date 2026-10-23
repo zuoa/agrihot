@@ -98,6 +98,8 @@ def reader_server(monkeypatch):
     from types import SimpleNamespace
 
     from app.config import settings
+    from app.services import content_service
+    from app.services.fulltext import FulltextEngine, JinaFetcher
 
     reader = SimpleNamespace(responses=deque(), requests=[])
 
@@ -121,6 +123,10 @@ def reader_server(monkeypatch):
     monkeypatch.setattr(settings, 'content_fetch_enabled', True)
     monkeypatch.setattr(settings, 'jina_api_key', '')
     monkeypatch.setattr(settings, 'jina_reader_base_url', f'http://127.0.0.1:{server.server_port}')
+    create_engine = content_service.create_fulltext_engine
+    monkeypatch.setattr(content_service, 'create_fulltext_engine', lambda: FulltextEngine(
+        [JinaFetcher()], options=create_engine().options,
+    ))
     try:
         yield reader
     finally:

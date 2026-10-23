@@ -323,7 +323,7 @@ async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
             if item.content and item.content.strip() and not force:
                 skipped += 1
                 continue
-            text = await content_service.fetch_fulltext(item.url)
+            text = await content_service.fetch_item_fulltext(item)
             if text is None:
                 failed += 1
             else:

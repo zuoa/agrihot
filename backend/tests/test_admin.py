@@ -312,6 +312,56 @@ async def test_fetch_content_recovers_guangxi_body_and_persists_it(client, reade
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('resolve_doi', [True, False])
+async def test_fetch_paper_uses_publisher_or_open_access_and_persists_full_body(client, monkeypatch, resolve_doi):
+    import httpx
+
+    from app.models import Item, PaperMeta
+    from app.services import content_service
+    from app.services.fulltext import FulltextEngine
+
+    doi_url = 'https://doi.org/10.3389/test.12345'
+    publisher = 'https://www.frontiersin.org/articles/test/full'
+    oa_url = 'https://repository.example/paper.xml'
+    result = await client.post('/api/v1/ingest/items', json=sample_item(url=doi_url, category='论文'), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+    async with TestSession() as session:
+        item = await session.get(Item, item_id)
+        item.paper = PaperMeta(oa_url=oa_url)
+        await session.commit()
+
+    requests = []
+
+    def handler(request):
+        requests.append(str(request.url))
+        if request.url.host == 'doi.org':
+            return httpx.Response(302, headers={'Location': publisher}) if resolve_doi else httpx.Response(404)
+        if request.url.host == 'api.crossref.org':
+            return httpx.Response(404)
+        if str(request.url) == publisher:
+            return httpx.Response(200, headers={'Content-Type': 'text/html'}, text='<meta name="citation_xml_url" content="./xml">')
+        if request.url.path.endswith('/xml') or str(request.url) == oa_url:
+            return httpx.Response(200, headers={'Content-Type': 'application/xml'}, content=(
+                '<article><body><sec><title>Methods</title><p>' + FAKE_FULLTEXT + '</p></sec></body></article>').encode())
+        pytest.fail(f'Unexpected request: {request.url}')
+
+    async def allow_test_url(url):
+        pass
+
+    monkeypatch.setattr(settings, 'content_fetch_enabled', True)
+    monkeypatch.setattr(content_service, 'create_fulltext_engine', lambda: FulltextEngine(
+        transport=httpx.MockTransport(handler), validator=allow_test_url,
+    ))
+    result = await client.post(f'/api/v1/admin/items/{item_id}/fetch-content', headers=await login(client))
+    assert result.status_code == 200, result.text
+    stored = (await client.get(f'/api/v1/items/{item_id}')).json()
+    assert ' '.join(FAKE_FULLTEXT.split()) in stored['content'] and '## Methods' in stored['content']
+    assert stored['url'] == doi_url and stored['summary'] == sample_item()['summary']
+    assert stored['paper']['oa_url'] == oa_url
+    assert (oa_url in requests) == (not resolve_doi)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('status,provider_body,reason,message', [
     (422, {'message': 'net::ERR_CERT_AUTHORITY_INVALID'}, 'source_tls_error', '证书'),
     (451, {'message': 'private-provider-detail'}, 'reader_blocked', '限制访问'),

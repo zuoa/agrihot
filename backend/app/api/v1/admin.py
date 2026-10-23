@@ -297,7 +297,7 @@ async def fetch_item_content(
     _: None = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> ItemOut:
-    """手动触发全文抓取（Jina Reader）：成功后保存并重新评分。
+    """手动触发多策略正文获取：成功后保存并重新评分。
 
     已有全文时调用会覆盖重抓（前端负责确认）；抓取失败不改库、不重评分。
     """
@@ -307,7 +307,7 @@ async def fetch_item_content(
     if not runtime_settings.get("content_fetch_enabled"):
         raise problem(503, "Service Unavailable", "全文抓取功能未启用")
     try:
-        text = await content_service.fetch_fulltext(item.url, raise_errors=True)
+        text = await content_service.fetch_item_fulltext(item, raise_errors=True)
     except content_service.FulltextFetchError as exc:
         error = problem(502, "Bad Gateway", str(exc))
         error.detail.update(reason=exc.reason, upstream_status=exc.upstream_status)

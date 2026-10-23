@@ -115,6 +115,7 @@ curl -X POST http://localhost:8100/api/v1/ingest/items \
 - 长尾检索：`/tags/花生` 仍是原子主题；`/tags/四川省农科院%20花生%20大豆` 按词 AND 查询（必要时回退到标题/摘要），**不写进标签表**。评分会另给 `search_phrases`，详情页「相关检索」内链这些地址；`/n/{slug}-{id}` 301 到 `/items/{id}`
 - 去重：`exact_url`（URL 规范化 + SHA-256）、`similar_title`（SimHash 海明距离 ≤6 或标题互相包含）；重复不报错，信源合并进已有条目（幂等，可安全重试）
 - 重复推送携带正文时，会补入已有文章的空正文，不覆盖已保存的原文。服务端补抓正文逐篇提交，评分失败或后续任务中断不会撤回已保存内容；自动回补轮流处理缺正文记录，避免反复失败的文章阻塞队列。
+- 原文获取采用可扩展的 `FulltextFetcher` 接口：DOI 解析、Frontiers XML、PDF、政务网页和通用网页分别处理，失败后使用 Jina 兜底，也会尝试已知的开放获取链接。接入与扩展方法见 [原文获取工具](docs/fulltext-fetchers.md)。
 - 手动抓取失败会返回可读原因及 `reason`、`upstream_status`，区分原站证书异常、抓取服务限流、访问限制和超时。广西农业农村厅公共站点 `nynct.gxzf.gov.cn` 的 HTTPS 原文遇到证书错误时，会重试已验证可用的同路径 HTTP 文章；原文链接保持不变。
 - 限流：60 次/分钟/Key
 - 删除：`DELETE /api/v1/ingest/items/{id}`（下架测试/违规内容，同时清理日报引用）
@@ -181,7 +182,7 @@ AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxono
 每天 `07:30`（`DAILY_TIMEZONE`）按 `backend/app/watchlist.yaml` 订阅的方向 / 期刊 / 学者，
 从 [OpenAlex](https://openalex.org/) 增量拉取论文元数据。抓取不调用 AI；入库后走现有评分，
 并对论文生成中文结构化卡片（速览 / 方法 / 发现 / 方向 / 机会点）。去重优先 DOI，
-再 OpenAlex ID、URL、标题相似。论文不经 Jina 抓全文。
+再 OpenAlex ID、URL、标题相似。自动文献流程使用摘要与卡片；论文支持在后台手动或显式批量获取全文。
 
 - 关注面：改 `watchlist.yaml`（ISSN、检索式、学者 OpenAlex ID）
 - 手动跑一轮：`python -m scripts.fetch_literature`
