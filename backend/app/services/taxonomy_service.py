@@ -5,7 +5,7 @@ import hashlib
 import json
 from collections import defaultdict
 
-from sqlalchemy import inspect, or_, select, update
+from sqlalchemy import func, inspect, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm.attributes import set_committed_value
@@ -292,15 +292,22 @@ async def tree(session):
 
 
 async def facets(session, topic=None, category=None, technologies=None):
+    # Count in the database. Loading every item-tag pair times out the CDN origin.
     conditions = filter_conditions(topic, technologies)
     if category:
         conditions.append(Item.category == category)
-    rows = (await session.execute(select(Tag.name, Item.id).join(item_tags, item_tags.c.tag_id == Tag.id)
-            .join(Item, Item.id == item_tags.c.item_id).where(*conditions))).all()
-    groups = defaultdict(set)
-    for name, item_id in rows:
-        groups[canonical_name(name)].add(item_id)
-    ordered = sorted(({"name": name, "count": len(ids)} for name, ids in groups.items()), key=lambda r: (-r["count"], r["name"]))
+    rows = (await session.execute(
+        select(Tag.name, func.count(func.distinct(Item.id)))
+        .join(item_tags, item_tags.c.tag_id == Tag.id)
+        .join(Item, Item.id == item_tags.c.item_id)
+        .where(*conditions)
+        .group_by(Tag.name)
+    )).all()
+    groups = defaultdict(int)
+    for name, count in rows:
+        groups[canonical_name(name)] += count
+    ordered = sorted(({"name": name, "count": count} for name, count in groups.items()),
+                     key=lambda r: (-r["count"], r["name"]))
     return {"technologies": [r for r in ordered if tag_properties(r["name"])[0] == "technology"],
             "keywords": [r for r in ordered if tag_properties(r["name"]) == ("keyword", "active")][:12]}
 
