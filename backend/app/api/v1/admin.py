@@ -306,7 +306,12 @@ async def fetch_item_content(
         raise problem(404, "Not Found", "条目不存在")
     if not runtime_settings.get("content_fetch_enabled"):
         raise problem(503, "Service Unavailable", "全文抓取功能未启用")
-    text = await content_service.fetch_fulltext(item.url)
+    try:
+        text = await content_service.fetch_fulltext(item.url, raise_errors=True)
+    except content_service.FulltextFetchError as exc:
+        error = problem(502, "Bad Gateway", str(exc))
+        error.detail.update(reason=exc.reason, upstream_status=exc.upstream_status)
+        raise error from None
     if text is None:
         raise problem(502, "Bad Gateway", "全文抓取失败，请检查原文链接或稍后重试")
     await content_service.save_and_score_content(session, item, text)

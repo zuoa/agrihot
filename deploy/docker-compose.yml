@@ -72,7 +72,7 @@ services:
       NUXT_API_BASE: http://backend:8000
       NUXT_PUBLIC_SITE_URL: ${SITE_URL:-https://agrihot.com}
     ports:
-      - "80:80"
+      - "5820:80"
     depends_on:
       backend:
         condition: service_healthy

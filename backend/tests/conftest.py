@@ -86,3 +86,44 @@ def embedding_provider(monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.fixture
+def reader_server(monkeypatch):
+    """Exercise Reader requests over real local HTTP, with prescribed responses."""
+    import json
+    import threading
+    from collections import deque
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from types import SimpleNamespace
+
+    from app.config import settings
+
+    reader = SimpleNamespace(responses=deque(), requests=[])
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            reader.requests.append(self.path)
+            status, body = reader.responses.popleft() if reader.responses else (500, 'Unexpected request')
+            data = json.dumps(body).encode() if isinstance(body, dict) else body.encode()
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json' if isinstance(body, dict) else 'text/plain; charset=utf-8')
+            self.send_header('Content-Length', str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
+    thread.start()
+    monkeypatch.setattr(settings, 'content_fetch_enabled', True)
+    monkeypatch.setattr(settings, 'jina_api_key', '')
+    monkeypatch.setattr(settings, 'jina_reader_base_url', f'http://127.0.0.1:{server.server_port}')
+    try:
+        yield reader
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

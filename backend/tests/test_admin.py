@@ -229,7 +229,7 @@ async def test_fetch_content_saves_and_rescores(client, monkeypatch):
     r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
     item_id = r.json()["item_id"]
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, **kwargs):
         return FAKE_FULLTEXT
 
     async def fake_deepseek(item):
@@ -258,7 +258,7 @@ async def test_fetch_content_failure_keeps_item_untouched(client, monkeypatch):
     r = await client.post("/api/v1/ingest/items", json=sample_item(), headers=headers)
     item_id = r.json()["item_id"]
 
-    async def fake_fetch(url):
+    async def fake_fetch(url, **kwargs):
         return None
 
     monkeypatch.setattr(settings, "content_fetch_enabled", True)
@@ -279,7 +279,7 @@ async def test_fetch_content_succeeds_even_if_rescoring_raises(client, monkeypat
     result = await client.post('/api/v1/ingest/items', json=sample_item(), headers={'X-API-Key': TEST_KEY})
     item_id = result.json()['item_id']
 
-    async def fetch(url):
+    async def fetch(url, **kwargs):
         return FAKE_FULLTEXT
 
     async def fail_score(session, item):
@@ -293,6 +293,39 @@ async def test_fetch_content_succeeds_even_if_rescoring_raises(client, monkeypat
     assert result.status_code == 200, result.text
     assert result.json()['content'] == FAKE_FULLTEXT
     assert (await client.get(f'/api/v1/items/{item_id}')).json()['content'] == FAKE_FULLTEXT
+
+
+@pytest.mark.asyncio
+async def test_fetch_content_recovers_guangxi_body_and_persists_it(client, reader_server):
+    url = 'https://nynct.gxzf.gov.cn/xwdt/ywkb/t28253108.shtml'
+    result = await client.post('/api/v1/ingest/items', json=sample_item(url=url, content='此前保存的正文'), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+    reader_server.responses.extend([
+        (422, {'message': 'page.goto: net::ERR_CERT_AUTHORITY_INVALID'}),
+        (200, 'Title: 正文\n\nMarkdown Content:\n\n' + FAKE_FULLTEXT),
+    ])
+    result = await client.post(f'/api/v1/admin/items/{item_id}/fetch-content', headers=await login(client))
+    assert result.status_code == 200, result.text
+    assert result.json()['content'] == FAKE_FULLTEXT and result.json()['url'] == url
+    assert (await client.get(f'/api/v1/items/{item_id}')).json()['content'] == FAKE_FULLTEXT
+    assert reader_server.requests == ['/' + url, '/' + url.replace('https://', 'http://', 1)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status,provider_body,reason,message', [
+    (422, {'message': 'net::ERR_CERT_AUTHORITY_INVALID'}, 'source_tls_error', '证书'),
+    (451, {'message': 'private-provider-detail'}, 'reader_blocked', '限制访问'),
+])
+async def test_fetch_content_explains_failure_and_keeps_saved_body(client, reader_server, status, provider_body, reason, message):
+    result = await client.post('/api/v1/ingest/items', json=sample_item(content='已经保存的原文'), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+    reader_server.responses.append((status, provider_body))
+    result = await client.post(f'/api/v1/admin/items/{item_id}/fetch-content', headers=await login(client))
+    assert result.status_code == 502
+    error = result.json()['detail']
+    assert error['reason'] == reason and error['upstream_status'] == status
+    assert message in error['detail'] and 'private-provider-detail' not in result.text
+    assert (await client.get(f'/api/v1/items/{item_id}')).json()['content'] == '已经保存的原文'
 
 
 @pytest.mark.asyncio
