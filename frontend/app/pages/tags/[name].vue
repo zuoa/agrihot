@@ -12,7 +12,7 @@
       </template>
       的农业资讯，共 {{ total }} 条。
     </p>
-    <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+    <PageSkeleton v-if="pending" />
     <div v-else-if="error" class="text-center text-stone-500 py-16">
       <p>主题加载失败，请稍后重试。</p>
       <button type="button" class="mt-4 text-sm text-leaf-700 hover:underline" @click="refresh()">重新加载</button>
@@ -39,7 +39,7 @@ if (import.meta.server && name.value) {
   }
 }
 
-const { data, pending, error, refresh } = await useAsyncData(
+const { data, pending, error, refresh } = await useLazyAsyncData(
   () => `topic-${name.value}`,
   () => api.topic(name.value, { page_size: 100 }),
   { watch: [name] },

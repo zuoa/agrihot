@@ -27,7 +27,7 @@
       </NuxtLink>
     </div>
 
-    <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+    <PageSkeleton v-if="pending" />
     <template v-else>
       <section v-for="g in groups" :key="g.key" class="mb-8">
         <div class="flex items-baseline gap-3 mb-3">
@@ -77,7 +77,7 @@ const heading = computed(() => {
   return bits.join(' · ')
 })
 
-const { data, pending, refresh } = await useAsyncData(
+const { data, pending, refresh } = await useLazyAsyncData(
   () => `feed-${category.value}-${direction.value}-${q.value}-${page.value}`,
   async () => {
     const [list, dirs] = await Promise.all([

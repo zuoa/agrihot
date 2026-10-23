@@ -1,5 +1,5 @@
 <template>
-  <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+  <PageSkeleton v-if="pending" variant="article" label="正在加载日报…" />
   <div v-else-if="daily">
     <header class="mb-6">
       <div class="text-sm text-leaf-600 font-medium mb-1">{{ dateLabel }}</div>
@@ -85,7 +85,7 @@ const shareCard = ref(null)
 const generating = ref(false)
 const generateMsg = ref('')
 
-const { data, pending, error, refresh } = await useAsyncData(
+const { data, pending, error, refresh } = await useLazyAsyncData(
   () => `daily-${route.params.date}`,
   () => api.daily(route.params.date),
   { watch: [() => route.params.date] },
@@ -117,7 +117,7 @@ usePageSeo(() => {
   const d = daily.value
   if (!d) {
     return {
-      title: '该日期暂无日报 · AgriHot',
+      title: '日报加载中 · AgriHot',
       description: DEFAULT_DESC,
       path: `/dailies/${route.params.date}`,
       noindex: true,

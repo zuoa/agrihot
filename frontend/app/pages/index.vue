@@ -5,7 +5,7 @@
       <p class="text-sm text-stone-500 mt-1">{{ lede }}</p>
     </header>
 
-    <section v-if="topItem" class="mb-6">
+    <section v-if="!pending && topItem" class="mb-6">
       <NuxtLink :to="`/items/${topItem.id}`"
         class="block rounded-2xl bg-gradient-to-br from-leaf-700 to-leaf-900 text-white p-6 sm:p-8 shadow-lg shadow-leaf-200 hover:from-leaf-600 hover:to-leaf-800 transition-all">
         <div class="flex items-center gap-2 text-xs text-leaf-200 mb-3">
@@ -30,9 +30,10 @@
       </NuxtLink>
     </div>
 
-    <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+    <PageSkeleton v-if="pending" />
     <div v-else-if="!groups.length" class="text-center text-stone-400 py-16">暂无内容</div>
 
+    <template v-if="!pending">
     <section v-for="g in groups" :key="g.key" class="mb-8">
       <div class="flex items-baseline gap-3 mb-3">
         <h2 class="text-lg font-bold text-leaf-800">{{ g.label }}</h2>
@@ -43,6 +44,7 @@
         <ItemCard v-for="it in g.items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
       </div>
     </section>
+    </template>
   </div>
 </template>
 
@@ -60,7 +62,7 @@ const lede = computed(() => (
     : '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。'
 ))
 
-const { data, pending, refresh } = await useAsyncData(
+const { data, pending, refresh } = await useLazyAsyncData(
   () => `home-${category.value || 'all'}`,
   () => api.items({ mode: 'selected', category: category.value, page_size: 100 }),
   { watch: [category] },

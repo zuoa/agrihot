@@ -14,7 +14,7 @@
       </label>
     </header>
 
-    <div v-if="pending" class="py-16 text-center text-stone-500" role="status">正在整理主题…</div>
+    <PageSkeleton v-if="pending" variant="grid" label="正在加载主题…" />
     <div v-else-if="error" class="py-12 text-center text-stone-500" role="alert">
       <p>主题暂时加载失败，请稍后重试。</p>
       <button class="mt-4 text-leaf-700 underline" @click="refresh">重新加载</button>
@@ -47,7 +47,7 @@
 <script setup>
 const api = useApi()
 const query = ref('')
-const { data, pending, error, refresh } = await useAsyncData('taxonomy', () => api.taxonomy())
+const { data, pending, error, refresh } = await useLazyAsyncData('taxonomy', () => api.taxonomy())
 const topics = computed(() => {
   const q = query.value.trim().toLowerCase()
   return (data.value?.topics || []).filter(t => !q || [t.name, t.description, ...t.children.map(c => c.name)].some(s => s.toLowerCase().includes(q)))

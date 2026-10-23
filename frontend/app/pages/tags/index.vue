@@ -4,7 +4,7 @@
       <h1 class="text-xl font-bold text-leaf-800">全部标签</h1>
       <NuxtLink to="/topic" class="text-sm text-leaf-700 hover:underline">按主题浏览 →</NuxtLink>
     </div>
-    <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+    <PageSkeleton v-if="pending" variant="tags" label="正在加载标签…" />
     <div v-else class="flex flex-wrap gap-2.5">
       <NuxtLink v-for="t in tags" :key="t.name" :to="`/tags/${encodeURIComponent(t.name)}`"
         class="px-4 py-2 rounded-full bg-white border border-leaf-200 text-sm text-stone-700 hover:border-leaf-500 hover:text-leaf-700 transition-colors">
@@ -17,7 +17,7 @@
 
 <script setup>
 const api = useApi()
-const { data, pending } = await useAsyncData('tags', () => api.tags())
+const { data, pending } = await useLazyAsyncData('tags', () => api.tags())
 const tags = computed(() => data.value || [])
 
 usePageSeo({

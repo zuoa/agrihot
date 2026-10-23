@@ -1,5 +1,5 @@
 <template>
-  <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+  <PageSkeleton v-if="pending" variant="article" label="正在加载文章…" />
   <div v-else-if="item">
   <nav v-if="item.primary_topic" aria-label="主题路径" class="flex flex-wrap gap-2 mb-4 text-xs text-stone-500">
     <NuxtLink to="/topic" class="hover:text-leaf-700">主题</NuxtLink><span aria-hidden="true">/</span>
@@ -133,13 +133,13 @@ const showEdit = ref(false)
 const deleting = ref(false)
 const fetching = ref(false)
 
-const { data, pending, error, refresh } = await useAsyncData(
+const { data, pending, error, refresh } = await useLazyAsyncData(
   () => `item-${route.params.id}`,
   () => api.item(route.params.id),
   { watch: [() => route.params.id] },
 )
 
-const { data: relatedData } = await useAsyncData(
+const { data: relatedData } = await useLazyAsyncData(
   () => `related-${route.params.id}`,
   async () => {
     try {
@@ -186,7 +186,7 @@ const authorLine = computed(() => {
 usePageSeo(() => {
   const it = item.value
   if (!it) {
-    return { title: '条目不存在 · AgriHot', description: DEFAULT_DESC, path: route.path, noindex: true }
+    return { title: '文章加载中 · AgriHot', description: DEFAULT_DESC, path: route.path, noindex: true }
   }
   return {
     title: `${it.title} · AgriHot`,
@@ -215,6 +215,7 @@ function stopDwell() {
 function startDwell() {
   stopDwell()
   if (viewRecorded || !item.value || !import.meta.client) return
+  if (String(item.value.id) !== String(route.params.id)) return
   if (document.visibilityState !== 'visible') return
   dwellTimer = setTimeout(recordView, VIEW_DWELL_MS)
 }
@@ -251,6 +252,7 @@ watch(() => route.params.id, () => {
   viewRecorded = false
   startDwell()
 })
+watch(() => item.value?.id, startDwell)
 
 function onSaved(it) {
   data.value = it

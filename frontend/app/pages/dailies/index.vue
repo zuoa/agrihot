@@ -10,7 +10,7 @@
         <span v-if="generateMsg" class="text-xs text-stone-400">{{ generateMsg }}</span>
       </div>
     </div>
-    <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
+    <PageSkeleton v-if="pending" label="正在加载日报…" />
     <div v-else-if="!dailies.length" class="text-center text-stone-400 py-16">暂无日报</div>
     <div v-else class="space-y-3">
       <NuxtLink v-for="d in dailies" :key="d.date" :to="`/dailies/${d.date}`"
@@ -37,7 +37,7 @@ const showAdmin = useClientAdmin()
 const generating = ref(false)
 const generateMsg = ref('')
 
-const { data, pending, refresh } = await useAsyncData(
+const { data, pending, refresh } = await useLazyAsyncData(
   'dailies',
   () => api.dailies({ page_size: 60 }),
 )

@@ -86,7 +86,7 @@
 import wechatQr from '~/assets/wechat-qr.png'
 
 const api = useApi()
-const { data: stats } = await useAsyncData('stats', () => api.stats().catch(() => null))
+const { data: stats } = await useLazyAsyncData('stats', () => api.stats().catch(() => null))
 
 function cat(name) {
   return stats.value?.by_category?.[name] ?? 0
