@@ -118,10 +118,39 @@ app.include_router(agent_admin_router)
 app.add_route("/api/v1/mcp", mcp_app, methods=["GET", "POST", "DELETE"])
 
 
+# Shared public reads. The edge keeps a warm copy; origin revalidates after max-age.
+_PUBLIC_CACHE = {
+    "/api/v1/taxonomy": "public, max-age=300, stale-while-revalidate=3600",
+    "/api/v1/tags": "public, max-age=300, stale-while-revalidate=3600",
+    "/api/v1/stats": "public, max-age=60, stale-while-revalidate=600",
+    "/api/v1/paper-directions": "public, max-age=300, stale-while-revalidate=3600",
+}
+
+
+def _public_cache_control(path: str) -> str | None:
+    exact = _PUBLIC_CACHE.get(path)
+    if exact:
+        return exact
+    # Lists and directories only. Item detail stays fresh because it shows view_count.
+    if path in {"/api/v1/items", "/api/v1/topics"} or path.startswith((
+        "/api/v1/dailies", "/api/v1/taxonomy/",
+    )):
+        return "public, max-age=60, stale-while-revalidate=600"
+    if path.startswith("/api/v1/items/") and path.endswith("/related"):
+        return "public, max-age=120, stale-while-revalidate=600"
+    return None
+
+
 @app.middleware("http")
 async def private_cache_headers(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/api/v1/agent/", "/api/v1/mcp", "/api/v1/admin/")):
+    path = request.url.path
+    if request.method == "GET":
+        cache = _public_cache_control(path)
+        if cache and response.status_code == 200:
+            response.headers["Cache-Control"] = cache
+            return response
+    if path.startswith(("/api/v1/agent/", "/api/v1/mcp", "/api/v1/admin/")):
         response.headers["Cache-Control"] = "no-store"
     return response
 

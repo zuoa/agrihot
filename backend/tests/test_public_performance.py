@@ -142,3 +142,25 @@ async def test_api_compresses_large_responses_when_supported(public_client):
         raw = b"".join([chunk async for chunk in response.aiter_raw()])
     assert gzip.decompress(raw) == plain.content
     assert len(raw) < len(plain.content) / 10
+
+
+@pytest.mark.asyncio
+async def test_public_reads_are_edge_cacheable_without_freezing_counts(public_client):
+    cached = {
+        "/api/v1/items": "public, max-age=60, stale-while-revalidate=600",
+        "/api/v1/items?compact=true&mode=selected": "public, max-age=60, stale-while-revalidate=600",
+        "/api/v1/dailies": "public, max-age=60, stale-while-revalidate=600",
+        "/api/v1/taxonomy": "public, max-age=300, stale-while-revalidate=3600",
+        "/api/v1/tags": "public, max-age=300, stale-while-revalidate=3600",
+        "/api/v1/stats": "public, max-age=60, stale-while-revalidate=600",
+        "/api/v1/items/1/related": "public, max-age=120, stale-while-revalidate=600",
+    }
+    for path, expected in cached.items():
+        response = await public_client.get(path)
+        assert response.status_code == 200, response.text
+        assert response.headers["cache-control"] == expected
+    detail = await public_client.get("/api/v1/items/1")
+    assert "cache-control" not in detail.headers
+    posted = await public_client.post("/api/v1/items/1/view")
+    assert posted.status_code == 200
+    assert "cache-control" not in posted.headers
