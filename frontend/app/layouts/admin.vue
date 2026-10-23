@@ -2,7 +2,7 @@
   <div class="min-h-screen flex flex-col lg:flex-row bg-stone-100 text-stone-800">
     <aside class="lg:w-52 shrink-0 bg-leaf-950 text-leaf-50 lg:min-h-screen">
       <div class="flex items-center gap-2 px-4 py-4 border-b border-white/10">
-        <span class="w-8 h-8 rounded-md bg-leaf-600 text-white grid place-items-center text-sm">🌾</span>
+        <BrandMark class="w-8 h-8" />
         <div class="leading-tight">
           <div class="font-bold text-sm">AgriHot</div>
           <div class="text-[10px] text-leaf-300 tracking-wide">运营控制台</div>

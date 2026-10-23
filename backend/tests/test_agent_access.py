@@ -303,6 +303,67 @@ async def test_provider_connection_failure_returns_degradation(client, db, monke
 
 
 @pytest.mark.asyncio
+async def test_embedding_marker_tracks_success_model_and_content_changes(client, db, embedding_provider, monkeypatch):
+    monkeypatch.setattr(settings, 'embedding_api_key', 'local-test-not-a-real-key')
+    item_id = await add_item(db)
+    assert not (await client.get(f'/api/v1/items/{item_id}')).json()['embedding_ready']
+    assert await search_index_service.process_one(db)
+    assert (await client.get(f'/api/v1/items/{item_id}')).json()['embedding_ready']
+    listing = (await client.get('/api/v1/items')).json()
+    assert listing['items'][0]['embedding_ready']
+    admin = (await client.get('/api/v1/admin/items', headers=admin_headers())).json()
+    assert admin['items'][0]['embedding_ready']
+    with monkeypatch.context() as changed_model:
+        changed_model.setattr(settings, 'embedding_model', 'new-model')
+        assert not (await client.get(f'/api/v1/items/{item_id}')).json()['embedding_ready']
+    updated = await client.patch(f'/api/v1/admin/items/{item_id}', headers=admin_headers(),
+                                 json={'content': '原文已更新，需要重新建立向量索引。'})
+    assert updated.status_code == 200, updated.text
+    assert not updated.json()['embedding_ready']
+    assert not (await client.get(f'/api/v1/items/{item_id}')).json()['embedding_ready']
+
+
+@pytest.mark.asyncio
+async def test_provider_rate_limit_pauses_queue_and_preserves_keyword_search(client, db, embedding_provider, monkeypatch):
+    import time
+
+    monkeypatch.setattr(settings, 'embedding_api_key', 'local-test-not-a-real-key')
+    first = await add_item(db)
+    second = await add_item(db, title='农业灌溉传感器技术')
+    embedding_provider.responses.append((429, {'Retry-After': '180'}, {'error': {'code': '1302'}}))
+    started = utcnow()
+    assert await search_index_service.process_one(db)
+    assert not await search_index_service.process_one(db)
+    assert len(embedding_provider.requests) == 1
+    async with db() as session:
+        job = await session.get(SearchJob, first)
+        assert job.status == 'lexical' and job.error == 'provider_http_429_1302'
+        assert job.retry_at.replace(tzinfo=started.tzinfo) >= started + timedelta(seconds=180)
+        pending = await session.get(SearchJob, second)
+        assert pending.status == 'pending' and pending.attempts == 0
+        report = await search_index_service.status(session)
+        assert report['errors'] == [{'item_id': first, 'error': 'provider_http_429_1302'}]
+    response = await client.post('/api/v1/agent/search', json={'q': '农业'}, headers=READ_HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body['degraded'] and body['mode'] == 'keyword' and len(body['items']) == 2
+    assert 'provider_http_429_1302' in body['degradation_reasons']
+    assert len(embedding_provider.requests) == 1
+
+    # Advance past the cooldown without making a test wait three minutes.
+    embedding_service._gate.cooldown_until = time.monotonic() - 1
+    async with db() as session:
+        (await session.get(SearchJob, first)).retry_at = utcnow() - timedelta(seconds=1)
+        await session.commit()
+    while await search_index_service.process_one(db):
+        pass
+    async with db() as session:
+        report = await search_index_service.status(session)
+        assert report['indexed'] == 2 and not report['errors']
+    assert len(embedding_provider.requests) == 3
+
+
+@pytest.mark.asyncio
 async def test_mcp_initialize_tools_and_calls(client, db, monkeypatch):
     from app.mcp_server import create_mcp, mcp_app
     mcp, fresh_app = create_mcp()

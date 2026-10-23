@@ -70,6 +70,26 @@ def sample_item(**over):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('reason', ['exact_url', 'similar_title', 'doi'])
+async def test_duplicate_push_fills_missing_body_without_overwriting_it(client, reason):
+    original = sample_item(doi='10.1234/content-later' if reason == 'doi' else None)
+    headers = {'X-API-Key': TEST_KEY}
+    first = (await client.post('/api/v1/ingest/items', json=original, headers=headers)).json()
+    incoming = {**original, 'content': '爬虫稍后补交的完整原文。' * 30}
+    if reason != 'exact_url':
+        incoming['url'] = 'https://example.org/another-source'
+    if reason == 'doi':
+        incoming['title'] = 'A separate publisher title for the same DOI'
+    result = (await client.post('/api/v1/ingest/items', json=incoming, headers=headers)).json()
+    assert result['status'] == 'duplicate' and result['dup_reason'] == ('exact_doi' if reason == 'doi' else reason)
+    item_id = first['item_id']
+    detail = (await client.get(f'/api/v1/items/{item_id}')).json()
+    assert detail['content'] == incoming['content'] and not detail['embedding_ready']
+    await client.post('/api/v1/ingest/items', json={**incoming, 'content': '另一份正文不应覆盖已保存原文'}, headers=headers)
+    assert (await client.get(f'/api/v1/items/{item_id}')).json()['content'] == incoming['content']
+
+
+@pytest.mark.asyncio
 async def test_push_requires_api_key(client):
     r = await client.post("/api/v1/ingest/items", json=sample_item())
     assert r.status_code in (401, 403)

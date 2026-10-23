@@ -11,6 +11,7 @@
         <div class="flex items-center gap-2 text-xs text-leaf-200 mb-3">
           <span class="px-2 py-0.5 rounded-full bg-white/15 font-medium">今日热点 TOP 1</span>
           <span>{{ topItem.source_name }}</span>
+          <EmbeddingBadge v-if="topItem.embedding_ready" inverse />
           <span v-if="topItem.sources?.length > 1">· {{ topItem.sources.length }} 个信源同时报道</span>
         </div>
         <h2 class="text-xl sm:text-2xl font-bold leading-snug">{{ topItem.title }}</h2>

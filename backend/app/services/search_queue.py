@@ -24,7 +24,6 @@ def register_queue_hooks():
             if isinstance(obj, Item):
                 deleted.add(obj.id)
                 session.connection().execute(delete(SearchChunk).where(SearchChunk.item_id == obj.id))
-                session.connection().execute(delete(SearchJob).where(SearchJob.item_id == obj.id))
 
     @event.listens_for(Session, "after_flush_postexec")
     def queue_changes(session, flush_context):

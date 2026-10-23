@@ -1,4 +1,5 @@
 """Application settings, loaded from environment / .env file."""
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -16,6 +17,8 @@ class Settings(BaseSettings):
     embedding_model: str = "embedding-3"
     embedding_dimensions: int = 1024
     embedding_timeout: float = 15
+    embedding_min_interval: float = Field(default=1, ge=0, allow_inf_nan=False)
+    embedding_rate_limit_cooldown: float = Field(default=60, ge=1, le=3600)
     search_index_enabled: bool = True
     # DeepSeek scoring for auto 精选; empty key disables scoring entirely
     deepseek_api_key: str = ""

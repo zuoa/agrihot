@@ -227,6 +227,9 @@ async def maybe_retag_existing(session: AsyncSession) -> dict | None:
 
 def _merge_source(item: Item, payload: IngestItemIn) -> bool:
     """Fold the duplicate's source into the existing item. Returns True if new."""
+    # Crawlers may send metadata first and the fetched body on a later push.
+    if payload.content and payload.content.strip() and not (item.content or "").strip():
+        item.content = payload.content
     sources = list(item.sources or [])
     incoming_url = payload.source_url or payload.url
     if not any(s.get("url") == incoming_url for s in sources):

@@ -13,7 +13,14 @@
       的农业资讯，共 {{ total }} 条。
     </p>
     <div v-if="pending" class="text-center text-stone-400 py-16">加载中…</div>
-    <div v-else-if="!items.length" class="text-center text-stone-400 py-16">该主题下暂无内容</div>
+    <div v-else-if="error" class="text-center text-stone-500 py-16">
+      <p>主题加载失败，请稍后重试。</p>
+      <button type="button" class="mt-4 text-sm text-leaf-700 hover:underline" @click="refresh()">重新加载</button>
+    </div>
+    <div v-else-if="!items.length" class="text-center text-stone-500 py-16">
+      <p>暂未找到「{{ name }}」相关内容</p>
+      <NuxtLink to="/topic" class="inline-block mt-4 text-sm text-leaf-700 hover:underline">浏览农业主题 →</NuxtLink>
+    </div>
     <div v-else class="space-y-3">
       <ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
     </div>
@@ -32,7 +39,7 @@ if (import.meta.server && name.value) {
   }
 }
 
-const { data, pending, status, refresh } = await useAsyncData(
+const { data, pending, error, refresh } = await useAsyncData(
   () => `topic-${name.value}`,
   () => api.topic(name.value, { page_size: 100 }),
   { watch: [name] },
@@ -43,21 +50,6 @@ const total = computed(() => data.value?.total ?? items.value.length)
 const tokens = computed(() => data.value?.tokens || [])
 const isPhrase = computed(() => data.value?.kind === 'phrase')
 const heading = computed(() => (isPhrase.value ? name.value : `#${name.value}`))
-
-function missingTopic() {
-  return createError({ statusCode: 404, statusMessage: '主题不存在', fatal: true })
-}
-
-// pending=false with empty data happens during hydration before payload restore;
-// only 404 after the request actually succeeded with zero hits.
-if (import.meta.server && status.value === 'success' && !items.value.length) {
-  throw missingTopic()
-}
-watch(status, (s) => {
-  if (s === 'success' && !items.value.length) {
-    showError(missingTopic())
-  }
-})
 
 usePageSeo(() => ({
   title: isPhrase.value

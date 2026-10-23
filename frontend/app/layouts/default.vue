@@ -4,9 +4,9 @@
       <div class="max-w-3xl mx-auto px-4">
         <div class="flex items-center gap-2 py-3">
           <NuxtLink to="/" class="flex items-center gap-2 mr-4">
-            <span class="w-8 h-8 rounded-lg bg-leaf-600 text-white grid place-items-center text-lg">🌾</span>
+            <BrandMark class="w-8 h-8" />
             <div class="leading-tight">
-              <div class="font-bold text-leaf-800 text-lg">AgriHot</div>
+              <div class="font-bold text-leaf-900 text-lg tracking-tight">AgriHot<span class="text-leaf-500">.</span></div>
               <div class="text-[11px] text-stone-400 hidden sm:block">农业信息化动态聚合 · 每日精选</div>
             </div>
           </NuxtLink>

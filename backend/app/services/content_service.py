@@ -88,16 +88,40 @@ async def enrich_and_score(item_id: int) -> None:
     """
     async with SessionLocal() as session:
         item = await session.get(Item, item_id)
-        if item is None or item.is_selected:
+        if item is None:
             return
         # 论文已有摘要 / DOI 落地页，不跑 Jina（易 403 且无必要）
         is_paper = item.category == "论文" or item.paper is not None
         if not is_paper:
             await enrich_item(session, item)
-        if settings.deepseek_api_key:
+            # The fetched source must survive scoring errors and cancellation.
+            await session.commit()
+        if item.is_selected:
+            return
+        try:
+            if settings.deepseek_api_key:
+                if await scoring_service.score_item(session, item) is not None:
+                    await scoring_service.refresh_day_selection(session, item.created_at)
+                if is_paper:
+                    await paper_card_service.fill_card(session, item)
+                    await abstract_translate_service.fill_summary_zh(session, item)
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            log.warning("Item %s enrichment scoring failed: %s", item_id, type(exc).__name__)
+
+
+async def save_and_score_content(session: AsyncSession, item: Item, text: str) -> None:
+    """Persist each fetched body before attempting optional, best-effort scoring."""
+    item_id = item.id
+    item.content = text
+    await session.commit()
+    if settings.deepseek_api_key:
+        try:
             if await scoring_service.score_item(session, item) is not None:
                 await scoring_service.refresh_day_selection(session, item.created_at)
-            if is_paper:
-                await paper_card_service.fill_card(session, item)
-                await abstract_translate_service.fill_summary_zh(session, item)
-        await session.commit()
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            log.warning("Full text saved for item %s; rescoring failed: %s", item_id, type(exc).__name__)
+    await session.refresh(item)

@@ -67,13 +67,13 @@ const api = useApi()
 const route = useRoute()
 const router = useRouter()
 const { data: directory, error: directoryError } = await useAsyncData('taxonomy', () => api.taxonomy())
-if (directoryError.value) throw createError({ statusCode: 503, statusMessage: '主题加载失败，请稍后重试' })
+if (directoryError.value) throw createError({ statusCode: 503, message: '主题加载失败，请稍后重试' })
 const slugs = computed(() => Array.isArray(route.params.slugs) ? route.params.slugs : [route.params.slugs])
 const parent = computed(() => slugs.value.length === 2 ? directory.value?.topics.find(t => t.slug === slugs.value[0]) : null)
 const node = computed(() => slugs.value.length === 1
   ? directory.value?.topics.find(t => t.slug === slugs.value[0])
   : parent.value?.children.find(t => t.slug === slugs.value[1]))
-function validateNode() { if (!node.value || slugs.value.length > 2) throw createError({ statusCode: 404, statusMessage: '主题不存在', fatal: true }) }
+function validateNode() { if (!node.value || slugs.value.length > 2) throw createError({ statusCode: 404, message: '主题不存在', fatal: true }) }
 validateNode()
 watch(node, validateNode)
 const siblings = computed(() => parent.value?.children || node.value?.children || [])

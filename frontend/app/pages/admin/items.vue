@@ -70,7 +70,7 @@
             <td class="px-3 py-2"><input type="checkbox" :value="it.id" v-model="selected" /></td>
             <td class="px-3 py-2">
               <router-link :to="`/items/${it.id}`" class="font-medium text-stone-900 hover:text-leaf-700 line-clamp-2">{{ it.title }}</router-link>
-              <div class="text-[11px] text-stone-400 mt-0.5">{{ it.source_name }} · {{ fmtDate(it.created_at) }}</div>
+              <div class="flex items-center gap-1.5 text-[11px] text-stone-400 mt-0.5">{{ it.source_name }} · {{ fmtDate(it.created_at) }}<EmbeddingBadge v-if="it.embedding_ready" /></div>
               <div class="text-[11px] text-leaf-700 mt-1">{{ it.primary_topic?.name || '待分类' }}<span v-if="it.classification?.locked"> · 已锁定</span><span v-else-if="it.classification?.status === 'needs_review'"> · 待复核</span></div>
             </td>
             <td class="px-3 py-2 text-xs text-stone-500">{{ it.category }}</td>

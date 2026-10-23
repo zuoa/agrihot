@@ -278,35 +278,40 @@ async def _retag(_params: dict[str, Any]) -> dict[str, Any]:
 
 
 FETCH_CONTENT_BATCH = 20
+FETCH_CONTENT_CURSOR = "content_fetch:last_item_id"
 
 
-async def missing_content_ids(session, *, limit: int = FETCH_CONTENT_BATCH) -> list[int]:
+async def missing_content_ids(session, *, limit: int = FETCH_CONTENT_BATCH, after_id: int = 0) -> list[int]:
     """政策/报道/行业且无正文。论文有摘要，不进自动回补。"""
-    rows = await session.execute(
-        select(Item.id)
+    stmt = (select(Item.id)
         .where(
             or_(Item.content.is_(None), Item.content == ""),
             Item.category != "论文",
             ~Item.paper.has(),
         )
-        .order_by(Item.id)
-        .limit(limit)
-    )
-    return list(rows.scalars().all())
+        .order_by(Item.id))
+    rows = await session.execute(stmt.where(Item.id > after_id).limit(limit))
+    ids = list(rows.scalars().all())
+    if after_id and len(ids) < limit:
+        rows = await session.execute(stmt.where(Item.id <= after_id).limit(limit - len(ids)))
+        ids.extend(rows.scalars().all())
+    return ids
 
 
 async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
-    from ..config import settings
-    from . import content_service, runtime_settings, scoring_service
+    from . import content_service, runtime_settings
 
     ids = [int(i) for i in (params.get("item_ids") or [])]
+    automatic = not ids
     force = bool(params.get("force"))
     if not runtime_settings.get("content_fetch_enabled"):
         raise RuntimeError("全文抓取功能未启用")
     fetched = skipped = failed = 0
     async with SessionLocal() as session:
         if not ids:
-            ids = await missing_content_ids(session)
+            cursor = await session.get(PipelineState, FETCH_CONTENT_CURSOR)
+            after_id = int(cursor.value) if cursor and cursor.value.isdecimal() else 0
+            ids = await missing_content_ids(session, after_id=after_id)
             force = False
         if not ids:
             return {"requested": 0, "fetched": 0, "skipped": 0, "failed": 0}
@@ -322,11 +327,16 @@ async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
             if text is None:
                 failed += 1
             else:
-                item.content = text
+                await content_service.save_and_score_content(session, item, text)
                 fetched += 1
-                if settings.deepseek_api_key:
-                    if await scoring_service.score_item(session, item) is not None:
-                        await scoring_service.refresh_day_selection(session, item.created_at)
+            if automatic:
+                cursor = await session.get(PipelineState, FETCH_CONTENT_CURSOR)
+                if cursor is None:
+                    cursor = PipelineState(key=FETCH_CONTENT_CURSOR)
+                    session.add(cursor)
+                cursor.value, cursor.updated_at = str(item_id), utcnow()
+            # Persist progress even if a later fetch fails or the process stops.
+            await session.commit()
             await set_progress("fetch_content", done=i, total=len(ids))
         await session.commit()
     return {"requested": len(ids), "fetched": fetched, "skipped": skipped, "failed": failed}

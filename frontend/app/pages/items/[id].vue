@@ -14,6 +14,7 @@
       <span>·</span>
       <span>{{ dateLabel }}</span>
       <span class="px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{{ item.category }}</span>
+      <EmbeddingBadge v-if="item.embedding_ready" />
       <span v-if="item.paper?.direction"
         class="px-1.5 py-0.5 rounded bg-leaf-50 text-leaf-700 border border-leaf-100">
         {{ item.paper.direction }}
@@ -151,11 +152,11 @@ const { data: relatedData } = await useAsyncData(
 )
 
 if (error.value) {
-  throw createError({ statusCode: 404, statusMessage: '条目不存在', fatal: true })
+  throw createError({ statusCode: 404, message: '条目不存在', fatal: true })
 }
 
 watch(error, (e) => {
-  if (e) showError({ statusCode: 404, statusMessage: '条目不存在' })
+  if (e) showError({ statusCode: 404, message: '条目不存在' })
 })
 
 const item = computed(() => data.value)

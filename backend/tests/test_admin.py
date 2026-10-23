@@ -273,6 +273,29 @@ async def test_fetch_content_failure_keeps_item_untouched(client, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_fetch_content_succeeds_even_if_rescoring_raises(client, monkeypatch):
+    from app.services import content_service, scoring_service
+
+    result = await client.post('/api/v1/ingest/items', json=sample_item(), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+
+    async def fetch(url):
+        return FAKE_FULLTEXT
+
+    async def fail_score(session, item):
+        raise RuntimeError('scoring failed')
+
+    monkeypatch.setattr(settings, 'content_fetch_enabled', True)
+    monkeypatch.setattr(settings, 'deepseek_api_key', 'test-not-sent')
+    monkeypatch.setattr(content_service, 'fetch_fulltext', fetch)
+    monkeypatch.setattr(scoring_service, 'score_item', fail_score)
+    result = await client.post(f'/api/v1/admin/items/{item_id}/fetch-content', headers=await login(client))
+    assert result.status_code == 200, result.text
+    assert result.json()['content'] == FAKE_FULLTEXT
+    assert (await client.get(f'/api/v1/items/{item_id}')).json()['content'] == FAKE_FULLTEXT
+
+
+@pytest.mark.asyncio
 async def test_rescore_item(client, monkeypatch):
     from app.services import scoring_service
 

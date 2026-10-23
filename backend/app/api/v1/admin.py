@@ -309,12 +309,7 @@ async def fetch_item_content(
     text = await content_service.fetch_fulltext(item.url)
     if text is None:
         raise problem(502, "Bad Gateway", "全文抓取失败，请检查原文链接或稍后重试")
-    item.content = text
-    if settings.deepseek_api_key:
-        if await scoring_service.score_item(session, item) is not None:
-            await scoring_service.refresh_day_selection(session, item.created_at)
-    await session.commit()
-    await session.refresh(item)
+    await content_service.save_and_score_content(session, item, text)
     return _to_item_out(item)
 
 

@@ -92,10 +92,10 @@ const { data, pending, error, refresh } = await useAsyncData(
 )
 
 if (error.value) {
-  throw createError({ statusCode: 404, statusMessage: '该日期暂无日报', fatal: true })
+  throw createError({ statusCode: 404, message: '该日期暂无日报', fatal: true })
 }
 watch(error, (e) => {
-  if (e) showError({ statusCode: 404, statusMessage: '该日期暂无日报' })
+  if (e) showError({ statusCode: 404, message: '该日期暂无日报' })
 })
 
 const daily = computed(() => data.value)

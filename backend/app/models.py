@@ -75,6 +75,9 @@ class Item(Base):
     classification: Mapped["ItemClassification | None"] = relationship(
         back_populates="item", cascade="all, delete-orphan", uselist=False, lazy="selectin",
     )
+    search_job: Mapped["SearchJob | None"] = relationship(
+        uselist=False, lazy="selectin", cascade="all, delete-orphan",
+    )
 
 
 class PaperMeta(Base):
@@ -248,7 +251,7 @@ class SearchChunk(Base):
     lexemes: Mapped[str] = mapped_column(Text)
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     # No fixed typmod: model/dimension changes create a new fingerprint.
-    embedding: Mapped[list | None] = mapped_column(Vector().with_variant(JSON(), "sqlite"), nullable=True)
+    embedding: Mapped[list | None] = mapped_column(Vector().with_variant(JSON(none_as_null=True), "sqlite"), nullable=True)
 
 
 def hash_api_key(raw: str) -> str:

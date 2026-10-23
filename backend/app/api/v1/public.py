@@ -15,7 +15,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DirectionOut,
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, parse_tag_query,
                                        related_items, resolve_topic)
-from ...services import taxonomy_service
+from ...services import embedding_service, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
@@ -72,6 +72,8 @@ def _to_item_out(item: Item) -> ItemOut:
         cover_url=item.cover_url,
         hotness=item.hotness,
         is_selected=item.is_selected,
+        embedding_ready=bool(item.search_job and item.search_job.status == "ready"
+                             and item.search_job.fingerprint == embedding_service.fingerprint()),
         score=item.score,
         score_detail=item.score_detail,
         sources=[SourceOut(**s) for s in (item.sources or [])],

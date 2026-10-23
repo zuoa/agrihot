@@ -1,5 +1,6 @@
 """Admin console: settings, jobs, watchlist, keys, overview, item list."""
 import asyncio
+import hashlib
 import os
 import sys
 
@@ -267,6 +268,60 @@ async def test_fetch_content_job_auto_selects_non_papers(client, monkeypatch):
     assert status["stats"]["fetched"] >= 1
     assert (await client.get(f"/api/v1/items/{news_id}")).json()["content"]
     assert (await client.get(f"/api/v1/items/{paper_id}")).json()["content"] is None
+
+
+@pytest.mark.asyncio
+async def test_content_backfill_rotates_past_failed_articles(monkeypatch):
+    from app.models import Item
+    from app.services import content_service
+
+    monkeypatch.setattr(settings, 'content_fetch_enabled', True)
+    monkeypatch.setattr(job_runner, 'SessionLocal', TestSession)
+    async with TestSession() as session:
+        for number in range(21):
+            url = f'https://example.org/backfill/{number}'
+            session.add(Item(title=f'农业回补队列文章{number}', summary='验证失败文章不会阻塞之后的正文回补。',
+                             url=url, url_hash=hashlib.sha256(url.encode()).hexdigest(), title_simhash=0))
+        await session.commit()
+    calls = []
+
+    async def fetch(url):
+        calls.append(url)
+        return None
+
+    monkeypatch.setattr(content_service, 'fetch_fulltext', fetch)
+    assert (await job_runner._fetch_content({}))['failed'] == 20
+    assert 'https://example.org/backfill/20' not in calls
+    calls.clear()
+    await job_runner._fetch_content({})
+    assert calls[0] == 'https://example.org/backfill/20'
+
+
+@pytest.mark.asyncio
+async def test_batch_saves_each_body_before_later_cancellation(client, monkeypatch):
+    from app.services import content_service
+
+    first = (await client.post('/api/v1/ingest/items', json=sample_item(), headers={'X-API-Key': TEST_KEY})).json()['item_id']
+    second = (await client.post('/api/v1/ingest/items', json=sample_item(
+        title='数字乡村传感器部署的新技术与管理实践', url='https://example.org/batch-cancel',
+    ), headers={'X-API-Key': TEST_KEY})).json()['item_id']
+    monkeypatch.setattr(settings, 'content_fetch_enabled', True)
+    monkeypatch.setattr(job_runner, 'SessionLocal', TestSession)
+    body = '成功抓取并应立即保存的第一篇正文。' * 30
+    calls = 0
+
+    async def fetch(url):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise asyncio.CancelledError
+        return body
+
+    monkeypatch.setattr(content_service, 'fetch_fulltext', fetch)
+    with pytest.raises(asyncio.CancelledError):
+        await job_runner._fetch_content({'item_ids': [first, second]})
+    assert (await client.get(f'/api/v1/items/{first}')).json()['content'] == body
+    assert (await client.get(f'/api/v1/items/{second}')).json()['content'] is None
 
 
 # ---------- watchlist ----------

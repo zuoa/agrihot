@@ -2,6 +2,8 @@ const apiBase = process.env.NUXT_API_BASE || 'http://localhost:8100'
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
+  // Keep SSR data inline: encoded tag paths otherwise double-encode payload URLs.
+  experimental: { payloadExtraction: false },
   css: ['~/assets/css/main.css'],
   app: {
     head: {

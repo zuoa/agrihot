@@ -2,7 +2,7 @@
   <div class="min-h-screen grid place-items-center px-4 py-12 bg-stone-100">
     <div class="w-full max-w-sm">
       <div class="flex items-center gap-3 mb-8">
-        <span class="w-10 h-10 rounded-lg bg-leaf-800 text-white grid place-items-center text-lg">🌾</span>
+        <BrandMark class="w-10 h-10" />
         <div>
           <div class="font-bold text-leaf-900">AgriHot 后台</div>
           <div class="text-xs text-stone-400">运营控制台</div>

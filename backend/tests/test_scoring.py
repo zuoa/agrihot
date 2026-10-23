@@ -362,6 +362,47 @@ FAKE_FULLTEXT = "# 指导意见全文\n\n" + "正文段落。" * 100  # > MIN_CO
 
 
 @pytest.mark.asyncio
+async def test_fetched_body_survives_unexpected_scoring_failure(client, monkeypatch):
+    monkeypatch.setattr(settings, 'deepseek_api_key', '')
+    result = await client.post('/api/v1/ingest/items', json=sample_item(), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+
+    async def fetch(url):
+        return FAKE_FULLTEXT
+
+    async def fail_score(session, item):
+        item.summary = '评分事务中的临时修改'
+        raise RuntimeError('scoring failed')
+
+    monkeypatch.setattr(content_service, 'fetch_fulltext', fetch)
+    monkeypatch.setattr(scoring_service, 'score_item', fail_score)
+    monkeypatch.setattr(settings, 'deepseek_api_key', 'test-not-sent')
+    await content_service.enrich_and_score(item_id)
+    detail = (await client.get(f'/api/v1/items/{item_id}')).json()
+    assert detail['content'] == FAKE_FULLTEXT
+    assert detail['summary'] == sample_item()['summary'] and detail['score'] is None
+
+
+@pytest.mark.asyncio
+async def test_selected_article_can_still_receive_missing_fulltext(client, monkeypatch):
+    from app.models import Item
+
+    result = await client.post('/api/v1/ingest/items', json=sample_item(), headers={'X-API-Key': TEST_KEY})
+    item_id = result.json()['item_id']
+    async with TestSession() as session:
+        (await session.get(Item, item_id)).is_selected = True
+        await session.commit()
+
+    async def fetch(url):
+        return FAKE_FULLTEXT
+
+    monkeypatch.setattr(content_service, 'fetch_fulltext', fetch)
+    await content_service.enrich_and_score(item_id)
+    detail = (await client.get(f'/api/v1/items/{item_id}')).json()
+    assert detail['content'] == FAKE_FULLTEXT and detail['is_selected']
+
+
+@pytest.mark.asyncio
 async def test_enrich_backfills_fulltext_before_scoring(client, monkeypatch):
     """No content pushed -> Jina fetch fills it in, and scoring sees the body."""
     async def fake_fetch(url):

@@ -64,6 +64,9 @@ async def enqueue_backfill(session, force: bool = False) -> int:
 
 
 async def process_one(session_factory=SessionLocal) -> bool:
+    # A provider limit applies to every job, not just the item that got a 429.
+    if settings.embedding_api_key and embedding_service.cooldown_remaining() > 0:
+        return False
     now = utcnow()
     async with session_factory() as session:
         job = (await session.execute(select(SearchJob).where(or_(
@@ -83,7 +86,7 @@ async def process_one(session_factory=SessionLocal) -> bool:
         vector_count = (await session.execute(select(func.count()).select_from(SearchChunk).where(
             SearchChunk.item_id == job.item_id, SearchChunk.fingerprint == fp, SearchChunk.embedding.is_not(None)
         ))).scalar_one()
-        if job.content_hash == digest and job.fingerprint == fp and vector_count == len(texts):
+        if job.content_hash == digest and job.fingerprint == fp and vector_count == len(texts) and not job.error:
             job.status = "ready"
             job.error, job.retry_at = None, None
             await session.commit()
@@ -91,11 +94,12 @@ async def process_one(session_factory=SessionLocal) -> bool:
         item_id, revision, attempts = job.item_id, job.revision, job.attempts + 1
         job.status, job.updated_at = "working", now
         await session.commit()
-    error = None
+    error, retry_after = None, 0
     try:
         vectors = await embedding_service.embed(texts)
     except embedding_service.EmbeddingUnavailable as exc:
         error = str(exc)
+        retry_after = exc.retry_after
         vectors = [None] * len(texts)
     async with session_factory() as session:
         job = (await session.execute(select(SearchJob).where(SearchJob.item_id == item_id).with_for_update())).scalar_one_or_none()
@@ -108,7 +112,7 @@ async def process_one(session_factory=SessionLocal) -> bool:
             job.content_hash, job.fingerprint = digest, fp
         job.status = "lexical" if error else "ready"
         job.error, job.attempts, job.updated_at = error, attempts, utcnow()
-        job.retry_at = utcnow() + timedelta(seconds=min(3600, 30 * 2 ** min(attempts, 7))) if error else None
+        job.retry_at = utcnow() + timedelta(seconds=max(retry_after, min(3600, 30 * 2 ** min(attempts, 7)))) if error else None
         await session.commit()
     return True
 
