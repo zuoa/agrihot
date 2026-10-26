@@ -37,7 +37,7 @@ const showAdmin = useClientAdmin()
 const generating = ref(false)
 const generateMsg = ref('')
 
-const { data, pending, refresh } = await useLazyAsyncData(
+const { data, pending, refresh } = await useAsyncData(
   'dailies',
   () => api.dailies({ page_size: 60 }),
 )

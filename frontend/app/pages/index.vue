@@ -69,8 +69,8 @@ const lede = computed(() => (
     : '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。'
 ))
 
-const { data, pending, error, refresh } = await useLazyAsyncData(
-  () => `home-${category.value || 'all'}-${page.value}`,
+const { data, pending, error, refresh } = await useAsyncData(
+  () => `home:${category.value || 'all'}:${page.value}`,
   () => api.items({ mode: 'selected', category: category.value, page: page.value, page_size: pageSize }),
   { watch: [category, page] },
 )

@@ -42,7 +42,7 @@ if (import.meta.server && name.value) {
   }
 }
 
-const { data, pending, error, refresh } = await useLazyAsyncData(
+const { data, pending, error, refresh } = await useAsyncData(
   () => `topic-${name.value}-${page.value}`,
   () => api.topic(name.value, { page: page.value, page_size: pageSize }),
   { watch: [name, page] },

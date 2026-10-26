@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 from urllib.parse import quote
 
 from fastapi.responses import PlainTextResponse, Response
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
@@ -87,46 +87,45 @@ async def sitemap_xml(session: AsyncSession) -> Response:
     for day, created in dailies:
         add(f"/dailies/{day.isoformat()}", _lastmod(created) or day.isoformat(), "weekly", "0.8")
 
-    items = (
+    rows = (
         await session.execute(
-            select(Item.id, Item.created_at, Item.published_at, Item.is_selected).order_by(Item.id.desc())
+            select(Item.id, Item.created_at, Item.published_at, Item.is_selected, Item.search_phrases)
+            .order_by(Item.id.desc())
         )
     ).all()
-    for iid, created, published, selected in items:
-        add(
-            f"/items/{iid}",
-            _lastmod(published or created),
-            "weekly",
-            "0.8" if selected else "0.5",
-        )
+    item_last: dict[int, str | None] = {}
+    stored_by_id: dict[int, list | None] = {}
+    for iid, created, published, selected, phrases in rows:
+        last = _lastmod(published or created)
+        item_last[iid] = last
+        stored_by_id[iid] = phrases
+        add(f"/items/{iid}", last, "weekly", "0.8" if selected else "0.5")
 
-    tags = (
-        await session.execute(
-            select(Tag.name)
-            .join(Tag.items)
-            .group_by(Tag.name)
-            .having(func.count(Item.id) > 0)
-        )
-    ).all()
-    atomic = {name for (name,) in tags}
-    for name in atomic:
-        add(tag_path(name), None, "weekly", "0.5")
+    def newer(current: str | None, candidate: str | None) -> str | None:
+        if candidate and (current is None or candidate > current):
+            return candidate
+        return current
 
-    tag_map: dict[int, list[str]] = defaultdict(list)
+    tag_names: dict[int, list[str]] = defaultdict(list)
+    tag_last: dict[str, str | None] = {}
     for iid, tname in (
         await session.execute(
             select(item_tags.c.item_id, Tag.name).join(Tag, Tag.id == item_tags.c.tag_id)
         )
     ).all():
-        tag_map[iid].append(tname)
-    stored_rows = (await session.execute(select(Item.id, Item.search_phrases))).all()
-    seen_phrases: set[str] = set()
-    for iid, stored in stored_rows:
-        for phrase in effective_phrases(tag_map.get(iid, []), stored):
-            if phrase in atomic or phrase in seen_phrases:
+        tag_names[iid].append(tname)
+        tag_last[tname] = newer(tag_last.get(tname), item_last.get(iid))
+    for name, last in tag_last.items():
+        add(tag_path(name), last, "weekly", "0.5")
+
+    phrase_last: dict[str, str | None] = {}
+    for iid, stored in stored_by_id.items():
+        for phrase in effective_phrases(tag_names.get(iid, []), stored):
+            if phrase in tag_last:
                 continue
-            seen_phrases.add(phrase)
-            add(tag_path(phrase), None, "weekly", "0.4")
+            phrase_last[phrase] = newer(phrase_last.get(phrase), item_last.get(iid))
+    for phrase, last in phrase_last.items():
+        add(tag_path(phrase), last, "weekly", "0.4")
 
     parts = [
         '<?xml version="1.0" encoding="UTF-8"?>',

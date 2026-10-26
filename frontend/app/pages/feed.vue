@@ -77,7 +77,7 @@ const heading = computed(() => {
   return bits.join(' · ')
 })
 
-const { data, pending, refresh } = await useLazyAsyncData(
+const { data, pending, refresh } = await useAsyncData(
   () => `feed-${category.value}-${direction.value}-${q.value}-${page.value}`,
   async () => {
     const [list, dirs] = await Promise.all([
@@ -132,12 +132,22 @@ function search() {
   router.replace({ path: '/feed', query })
 }
 
+const path = computed(() => {
+  const query = new URLSearchParams()
+  if (category.value) query.set('category', category.value)
+  if (direction.value) query.set('direction', direction.value)
+  if (q.value.trim()) query.set('q', q.value.trim())
+  if (page.value > 1) query.set('page', String(page.value))
+  const qs = query.toString()
+  return qs ? `/feed?${qs}` : '/feed'
+})
+
 usePageSeo(() => ({
   title: `${heading.value} · AgriHot`,
   description: q.value
     ? `搜索「${q.value}」的农业信息化资讯`
     : `${heading.value}：政策、报道、学术论文与行业动态。`,
-  path: route.fullPath,
+  path: path.value,
   noindex: Boolean(q.value),
   keywords: uniqueKeywords([category.value, direction.value, q.value, DEFAULT_KEYWORDS]),
 }))

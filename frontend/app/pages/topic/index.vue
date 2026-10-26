@@ -47,7 +47,7 @@
 <script setup>
 const api = useApi()
 const query = ref('')
-const { data, pending, error, refresh } = await useLazyAsyncData('taxonomy', () => api.taxonomy())
+const { data, pending, error, refresh } = await useAsyncData('taxonomy', () => api.taxonomy())
 const topics = computed(() => {
   const q = query.value.trim().toLowerCase()
   return (data.value?.topics || []).filter(t => !q || [t.name, t.description, ...t.children.map(c => c.name)].some(s => s.toLowerCase().includes(q)))

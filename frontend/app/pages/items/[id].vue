@@ -1,9 +1,17 @@
 <template>
   <PageSkeleton v-if="pending" variant="article" label="正在加载文章…" />
   <div v-else-if="item">
-  <nav v-if="item.primary_topic" aria-label="主题路径" class="flex flex-wrap gap-2 mb-4 text-xs text-stone-500">
-    <NuxtLink to="/topic" class="hover:text-leaf-700">主题</NuxtLink><span aria-hidden="true">/</span>
-    <NuxtLink :to="item.primary_topic.path" class="text-leaf-700 hover:underline">{{ item.primary_topic.name }}</NuxtLink>
+  <nav aria-label="面包屑" class="mb-4 text-xs text-stone-500 leading-6">
+    <ol class="flex flex-wrap items-center gap-x-2">
+      <li><NuxtLink to="/" class="hover:text-leaf-700">首页</NuxtLink></li>
+      <li aria-hidden="true">/</li>
+      <li>
+        <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path" class="hover:text-leaf-700">{{ item.primary_topic.name }}</NuxtLink>
+        <NuxtLink v-else :to="item.category ? { path: '/feed', query: { category: item.category } } : '/feed'" class="hover:text-leaf-700">{{ item.category || '资讯' }}</NuxtLink>
+      </li>
+      <li aria-hidden="true">/</li>
+      <li class="text-leaf-800 min-w-0 break-all" aria-current="page">{{ item.title }}</li>
+    </ol>
   </nav>
   <div v-if="item.secondary_topics?.length" class="flex flex-wrap gap-3 text-xs text-stone-500 mb-4">
     <span>相关方向</span><NuxtLink v-for="topic in item.secondary_topics" :key="topic.code" :to="topic.path" class="text-leaf-700 hover:underline">{{ topic.name }}</NuxtLink>
@@ -133,7 +141,7 @@ const showEdit = ref(false)
 const deleting = ref(false)
 const fetching = ref(false)
 
-const { data, pending, error, refresh } = await useLazyAsyncData(
+const { data, pending, error, refresh } = await useAsyncData(
   () => `item-${route.params.id}`,
   () => api.item(route.params.id),
   { watch: [() => route.params.id] },
@@ -185,9 +193,7 @@ const authorLine = computed(() => {
 
 usePageSeo(() => {
   const it = item.value
-  if (!it) {
-    return { title: '文章加载中 · AgriHot', description: DEFAULT_DESC, path: route.path, noindex: true }
-  }
+  if (!it) return null
   return {
     title: `${it.title} · AgriHot`,
     description: it.summary_zh || it.summary,

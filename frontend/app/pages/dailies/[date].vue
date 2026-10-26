@@ -85,7 +85,7 @@ const shareCard = ref(null)
 const generating = ref(false)
 const generateMsg = ref('')
 
-const { data, pending, error, refresh } = await useLazyAsyncData(
+const { data, pending, error, refresh } = await useAsyncData(
   () => `daily-${route.params.date}`,
   () => api.daily(route.params.date),
   { watch: [() => route.params.date] },
@@ -115,14 +115,7 @@ const sections = computed(() => {
 
 usePageSeo(() => {
   const d = daily.value
-  if (!d) {
-    return {
-      title: '日报加载中 · AgriHot',
-      description: DEFAULT_DESC,
-      path: `/dailies/${route.params.date}`,
-      noindex: true,
-    }
-  }
+  if (!d) return null
   const desc = (d.highlights || []).join(' ') || d.content || d.title
   return {
     title: `${d.title}（${d.date}）｜农业农村日报`,

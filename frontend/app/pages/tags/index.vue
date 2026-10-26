@@ -17,7 +17,7 @@
 
 <script setup>
 const api = useApi()
-const { data, pending } = await useLazyAsyncData('tags', () => api.tags())
+const { data, pending } = await useAsyncData('tags', () => api.tags())
 const tags = computed(() => data.value || [])
 
 usePageSeo({

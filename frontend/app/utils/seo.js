@@ -147,6 +147,32 @@ export function websiteJsonLd(origin) {
   }
 }
 
+function crumb(position, name, url) {
+  return { '@type': 'ListItem', position, name, item: url }
+}
+
+function breadcrumb(item, path, origin) {
+  const topic = item.primary_topic
+  const middle = topic
+    ? crumb(2, topic.name, absUrl(topic.path, origin))
+    : crumb(2, item.category || '资讯', item.category
+      ? `${absUrl('/feed', origin)}?category=${encodeURIComponent(item.category)}`
+      : absUrl('/feed', origin))
+  return [
+    crumb(1, '首页', absUrl('/', origin)),
+    middle,
+    crumb(3, item.title, absUrl(path, origin)),
+  ]
+}
+
+function laterThan(published, modified) {
+  if (!published || !modified) return undefined
+  const left = Date.parse(published)
+  const right = Date.parse(modified)
+  if (Number.isNaN(left) || Number.isNaN(right) || right <= left) return undefined
+  return modified
+}
+
 export function itemJsonLd(item, origin) {
   const path = `/items/${item.id}`
   const isPaper = item.category === '论文' || item.paper
@@ -161,7 +187,7 @@ export function itemJsonLd(item, origin) {
     mainEntityOfPage: absUrl(path, origin),
     image: item.cover_url || defaultImage(origin),
     datePublished: item.published_at || item.created_at,
-    dateModified: item.created_at,
+    dateModified: laterThan(item.published_at, item.created_at),
     inLanguage: 'zh-CN',
     isAccessibleForFree: true,
     publisher: {
@@ -188,16 +214,7 @@ export function itemJsonLd(item, origin) {
       article,
       {
         '@type': 'BreadcrumbList',
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: '首页', item: absUrl('/', origin) },
-          {
-            '@type': 'ListItem',
-            position: 2,
-            name: item.category || '资讯',
-            item: item.category ? `${absUrl('/feed', origin)}?category=${encodeURIComponent(item.category)}` : absUrl('/feed', origin),
-          },
-          { '@type': 'ListItem', position: 3, name: item.title, item: absUrl(path, origin) },
-        ],
+        itemListElement: breadcrumb(item, path, origin),
       },
     ],
   }

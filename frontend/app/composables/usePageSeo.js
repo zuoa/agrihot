@@ -3,7 +3,9 @@ export function usePageSeo(source) {
   const origin = computed(() => String(config.public.siteUrl || FALLBACK_ORIGIN).replace(/\/$/, ''))
 
   const state = computed(() => {
-    const s = (typeof source === 'function' ? source() : toValue(source)) || {}
+    const raw = typeof source === 'function' ? source() : toValue(source)
+    if (!raw) return null
+    const s = raw
     const o = origin.value
     const fullTitle = s.title || DEFAULT_TITLE
     const desc = clip(s.description || DEFAULT_DESC)
@@ -39,42 +41,50 @@ export function usePageSeo(source) {
   // The SDK reads the same reactive page data as SEO, including after SPA navigation.
   const share = useState('page-share', () => null)
   watch(state, (s) => {
-    share.value = { title: s.fullTitle, desc: s.desc, link: s.url, imgUrl: s.shareImg }
+    share.value = s
+      ? { title: s.fullTitle, desc: s.desc, link: s.url, imgUrl: s.shareImg }
+      : null
   }, { immediate: true })
 
+  const field = (key) => () => state.value?.[key]
+
   useSeoMeta({
-    title: () => state.value.fullTitle,
-    description: () => state.value.desc,
-    keywords: () => state.value.kw,
-    robots: () => state.value.robots,
-    ogTitle: () => state.value.fullTitle,
-    ogDescription: () => state.value.desc,
-    ogUrl: () => state.value.url,
-    ogType: () => state.value.type,
-    ogImage: () => state.value.img,
-    ogImageAlt: () => state.value.fullTitle,
-    ogImageWidth: () => state.value.defaultImg ? 1200 : undefined,
-    ogImageHeight: () => state.value.defaultImg ? 630 : undefined,
+    title: field('fullTitle'),
+    description: field('desc'),
+    keywords: field('kw'),
+    robots: field('robots'),
+    ogTitle: field('fullTitle'),
+    ogDescription: field('desc'),
+    ogUrl: field('url'),
+    ogType: field('type'),
+    ogImage: field('img'),
+    ogImageAlt: field('fullTitle'),
+    ogImageWidth: () => state.value?.defaultImg ? 1200 : undefined,
+    ogImageHeight: () => state.value?.defaultImg ? 630 : undefined,
     ogSiteName: SITE_NAME,
     ogLocale: 'zh_CN',
     twitterCard: 'summary_large_image',
-    twitterTitle: () => state.value.fullTitle,
-    twitterImage: () => state.value.img,
-    twitterDescription: () => state.value.desc,
+    twitterTitle: field('fullTitle'),
+    twitterImage: field('img'),
+    twitterDescription: field('desc'),
   })
 
-  useHead(() => ({
-    link: [
-      { rel: 'canonical', href: state.value.url },
-      { rel: 'image_src', href: state.value.shareImg },
-    ],
-    meta: state.value.extra,
-    script: state.value.jsonLd
-      ? [{
-          type: 'application/ld+json',
-          innerHTML: JSON.stringify(state.value.jsonLd).replace(/</g, '\\u003c'),
-          tagPriority: 20,
-        }]
-      : [],
-  }))
+  useHead(() => {
+    const s = state.value
+    if (!s) return {}
+    return {
+      link: [
+        { rel: 'canonical', href: s.url },
+        { rel: 'image_src', href: s.shareImg },
+      ],
+      meta: s.extra,
+      script: s.jsonLd
+        ? [{
+            type: 'application/ld+json',
+            innerHTML: JSON.stringify(s.jsonLd).replace(/</g, '\\u003c'),
+            tagPriority: 20,
+          }]
+        : [],
+    }
+  })
 }
