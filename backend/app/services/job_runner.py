@@ -240,21 +240,28 @@ async def _rescore_unscored(_params: dict[str, Any]) -> dict[str, Any]:
     if not settings.deepseek_api_key:
         raise RuntimeError("DEEPSEEK_API_KEY 未配置，无法评分")
     async with SessionLocal() as session:
-        items = (
-            await session.execute(select(Item).where(Item.score.is_(None)).order_by(Item.id))
-        ).scalars().all()
-        total = len(items)
-        scored = failed = 0
-        days: set = set()
-        for i, item in enumerate(items, start=1):
-            result = await scoring_service.score_item(session, item)
-            if result is None:
+        ids = list((await session.execute(
+            select(Item.id).where(Item.score.is_(None)).order_by(Item.id)
+        )).scalars().all())
+    total = len(ids)
+    scored = failed = 0
+    days: set = set()
+    for i, item_id in enumerate(ids, start=1):
+        async with SessionLocal() as session:
+            item = await session.get(Item, item_id)
+            if item is None:
                 failed += 1
             else:
-                scored += 1
-                days.add(item.created_at.replace(hour=0, minute=0, second=0, microsecond=0))
-            if i % 5 == 0 or i == total:
-                await set_progress("rescore_unscored", done=i, total=total)
+                result = await scoring_service.score_item(session, item)
+                if result is None:
+                    failed += 1
+                else:
+                    scored += 1
+                    days.add(item.created_at.replace(hour=0, minute=0, second=0, microsecond=0))
+                    await session.commit()
+        if i % 5 == 0 or i == total:
+            await set_progress("rescore_unscored", done=i, total=total)
+    async with SessionLocal() as session:
         for day in days:
             await scoring_service.refresh_day_selection(session, day)
         await session.commit()
@@ -268,30 +275,29 @@ async def _translate_abstracts(_params: dict[str, Any]) -> dict[str, Any]:
     if not settings.deepseek_api_key:
         raise RuntimeError("DEEPSEEK_API_KEY 未配置，无法翻译")
     async with SessionLocal() as session:
-        items = (
-            await session.execute(
-                select(Item)
-                .where(
-                    Item.summary_zh.is_(None),
-                    or_(Item.category == "论文", Item.paper.has()),
-                )
-                .order_by(Item.id)
-            )
-        ).scalars().all()
-        total = len(items)
-        translated = skipped = failed = 0
-        for i, item in enumerate(items, start=1):
-            if not abstract_translate_service.needs_translation(item):
-                skipped += 1
+        ids = list((await session.execute(
+            select(Item.id).where(
+                Item.summary_zh.is_(None),
+                or_(Item.category == "论文", Item.paper.has()),
+            ).order_by(Item.id)
+        )).scalars().all())
+    total = len(ids)
+    translated = skipped = failed = 0
+    for i, item_id in enumerate(ids, start=1):
+        async with SessionLocal() as session:
+            item = await session.get(Item, item_id)
+            if item is None or not abstract_translate_service.needs_translation(item):
+                skipped += item is not None
+                failed += item is None
             else:
                 result = await abstract_translate_service.fill_summary_zh(session, item)
                 if result:
                     translated += 1
+                    await session.commit()
                 else:
                     failed += 1
-            if i % 5 == 0 or i == total:
-                await set_progress("translate_abstracts", done=i, total=total)
-        await session.commit()
+        if i % 5 == 0 or i == total:
+            await set_progress("translate_abstracts", done=i, total=total)
     return {"total": total, "translated": translated, "skipped": skipped, "failed": failed}
 
 

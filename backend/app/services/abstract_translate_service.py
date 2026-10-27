@@ -102,6 +102,7 @@ async def fill_summary_zh(session: AsyncSession, item: Item) -> str | None:
         return item.summary_zh
     if not settings.deepseek_api_key:
         return None
+    await session.commit()
     raw = await _call_deepseek(item)
     zh = parse_translation(raw)
     if zh is None:

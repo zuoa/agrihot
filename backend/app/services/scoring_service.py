@@ -175,7 +175,12 @@ async def _call_deepseek(item: Item) -> str | None:
 
 
 async def score_item(session: AsyncSession, item: Item) -> int | None:
-    """Score one item and set is_selected. Returns total score, or None if scoring failed."""
+    """Score one item and set is_selected. Returns total score, or None if scoring failed.
+
+    The model call happens after the transaction is closed, so a 30s request
+    does not pin a pooled connection.
+    """
+    await session.commit()
     raw = await _call_deepseek(item)
     if raw is None:
         return None

@@ -60,7 +60,7 @@ async def lifespan(app: FastAPI):
         content = start_content_scheduler()
         indexer = asyncio.create_task(run_worker())
     else:
-        log.info("content worker disabled in this process")
+        log.info("background indexing runs in the worker process")
     try:
         async with mcp.session_manager.run():
             yield

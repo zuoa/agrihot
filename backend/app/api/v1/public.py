@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer, raiseload
+from sqlalchemy.orm import defer, noload, raiseload, selectinload
 
 from ...database import get_session
-from ...models import Daily, Item, PaperMeta, Tag
+from ...models import Daily, Item, ItemClassification, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         DirectionOut, ItemListOut, ItemOut, ItemSummaryListOut,
                         ItemSummaryOut, PaperAuthorOut, PaperCardOut,
@@ -32,7 +32,20 @@ def _list_load_options(compact: bool):
     return (
         defer(Item.content, raiseload=True),
         defer(Item.score_detail, raiseload=True),
-        raiseload(Item.classification),
+        noload(Item.classification),
+    )
+
+
+def _detail_load_options():
+    # One article loads the rows the page renders. The audit blob stays out.
+    return (
+        selectinload(Item.tags),
+        selectinload(Item.paper),
+        selectinload(Item.topic_links),
+        selectinload(Item.search_job),
+        selectinload(Item.classification).load_only(
+            ItemClassification.status, ItemClassification.locked,
+        ),
     )
 
 
@@ -74,9 +87,8 @@ def _to_item_out(item: Item, *, compact: bool = False) -> ItemOut | ItemSummaryO
     detail = {} if compact else {
         "content": item.content,
         "score_detail": item.score_detail,
-        "classification": ({"status": item.classification.status, "locked": item.classification.locked,
-                            "version": item.classification.version, "method": item.classification.method,
-                            "evidence": item.classification.evidence} if item.classification else {}),
+        "classification": ({"status": item.classification.status, "locked": item.classification.locked}
+                            if item.classification else {}),
     }
     model = ItemSummaryOut if compact else ItemOut
     return model(
@@ -206,7 +218,7 @@ def _item_404() -> HTTPException:
 
 @router.get("/items/{item_id}", response_model=ItemOut)
 async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -> ItemOut:
-    item = await session.get(Item, item_id)
+    item = await session.get(Item, item_id, options=_detail_load_options())
     if item is None:
         raise _item_404()
     return _to_item_out(item)

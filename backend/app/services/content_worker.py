@@ -2,13 +2,15 @@
 
 The API writes `job:fetch_content` as queued. This process claims that row
 and runs the handler, so a 60s origin fetch never holds an API connection.
-Search indexing stays in the API process.
+In production the API sets AGRIHOT_PROCESS=api, and embedding indexing runs
+here instead of on the request loop.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import os
 from contextlib import suppress
 
 from sqlalchemy import select
@@ -79,14 +81,23 @@ async def serve() -> None:
         await session.commit()
     await _recover_interrupted()
     from .content_scheduler import start_content_scheduler
+    from .search_index_service import run_worker
+
     scheduler = start_content_scheduler()
+    # The API process keeps this loop unless production disables it.
+    indexer = None if os.environ.get("AGRIHOT_PROCESS") != "worker" else asyncio.create_task(
+        run_worker(), name="search-index",
+    )
     log.info("content worker ready")
     try:
         await _serve_until_stopped()
     finally:
-        scheduler.cancel()
-        with suppress(asyncio.CancelledError):
-            await scheduler
+        tasks = [task for task in (scheduler, indexer) if task is not None]
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 async def _serve_until_stopped() -> None:

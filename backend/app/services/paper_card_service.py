@@ -120,6 +120,7 @@ async def fill_card(session: AsyncSession, item: Item) -> dict | None:
         return None
     if not settings.deepseek_api_key:
         return None
+    await session.commit()
     raw = await _call_deepseek(item)
     if raw is None:
         return None
