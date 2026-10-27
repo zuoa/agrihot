@@ -1,16 +1,41 @@
 """Connection checkout stays off the network, and a busy pool returns 503."""
+import time
 import asyncio
 
 import pytest
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from app.main import pool_timeout_handler
-from app.services import content_service, job_runner
+from app.services import content_service, job_runner, read_cache
 
 
 class _Request:
     method = "GET"
     url = type("U", (), {"path": "/api/v1/items"})()
+
+
+@pytest.mark.asyncio
+async def test_repeated_catalog_reads_share_one_database_session(monkeypatch):
+    opened = []
+
+    class Session:
+        async def __aenter__(self):
+            opened.append(time.monotonic())
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+    async def load(session):
+        assert isinstance(session, Session)
+        return {"topics": 1}
+
+    monkeypatch.setattr(read_cache, "SessionLocal", Session)
+    monkeypatch.setattr(read_cache, "_session_factory", lambda: Session)
+    read_cache.reset()
+    assert await read_cache.get(("taxonomy",), load) == {"topics": 1}
+    assert await read_cache.get(("taxonomy",), load) == {"topics": 1}
+    assert len(opened) == 1
 
 
 @pytest.mark.asyncio

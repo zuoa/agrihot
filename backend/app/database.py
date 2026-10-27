@@ -15,6 +15,12 @@ if settings.database_url.startswith("postgresql"):
     )
 engine = create_async_engine(settings.database_url, **_engine_kwargs)
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+# Article reads stay available while list and taxonomy queries fill the main pool.
+_detail_kwargs = dict(_engine_kwargs)
+if settings.database_url.startswith("postgresql"):
+    _detail_kwargs.update(pool_size=2, max_overflow=2)
+detail_engine = create_async_engine(settings.database_url, **_detail_kwargs)
+DetailSession = async_sessionmaker(detail_engine, class_=AsyncSession, expire_on_commit=False)
 
 # create_all will not ADD columns to an existing table
 _ITEM_COLUMN_PATCHES = (
@@ -60,4 +66,17 @@ async def ensure_schema(target_engine=None) -> None:
 
 async def get_session() -> AsyncSession:  # FastAPI dependency
     async with SessionLocal() as session:
+        yield session
+
+
+async def get_detail_session() -> AsyncSession:
+    # Tests replace get_session with their database. Follow that replacement
+    # so a detail read cannot land on the process-wide empty default.
+    from .main import app
+    override = app.dependency_overrides.get(get_session)
+    if override is not None:
+        async for session in override():
+            yield session
+            return
+    async with DetailSession() as session:
         yield session

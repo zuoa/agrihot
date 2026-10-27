@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, noload, raiseload, selectinload
 
-from ...database import get_session
+from ...database import get_detail_session, get_session
 from ...models import Daily, Item, ItemClassification, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         DirectionOut, ItemListOut, ItemOut, ItemSummaryListOut,
@@ -17,7 +17,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, parse_tag_query,
                                        related_items, resolve_topic)
-from ...services import embedding_service, taxonomy_service
+from ...services import embedding_service, read_cache, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
@@ -136,7 +136,6 @@ async def list_items(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
     compact: bool = False,
-    session: AsyncSession = Depends(get_session),
 ) -> ItemListOut | ItemSummaryListOut:
     stmt = select(Item).options(*_list_load_options(compact))
     count_stmt = select(func.count(Item.id))
@@ -170,31 +169,43 @@ async def list_items(
         stmt = stmt.where(cond)
         count_stmt = count_stmt.where(cond)
 
-    total = (await session.execute(count_stmt)).scalar_one()
-    rows = (
-        await session.execute(
-            stmt.order_by(Item.created_at.desc(), Item.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+    async def load(session):
+        total = (await session.execute(count_stmt)).scalar_one()
+        rows = (
+            await session.execute(
+                stmt.order_by(Item.created_at.desc(), Item.id.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+        ).scalars().all()
+        model = ItemSummaryListOut if compact else ItemListOut
+        return model(
+            total=total, page=page, page_size=page_size,
+            items=[_to_item_out(i, compact=compact) for i in rows],
         )
-    ).scalars().all()
-    model = ItemSummaryListOut if compact else ItemListOut
-    return model(
-        total=total, page=page, page_size=page_size,
-        items=[_to_item_out(i, compact=compact) for i in rows],
+
+    cache_key = (
+        "items", mode, window, category, tag, tags, match, direction, topic,
+        tuple(technologies), q, page, page_size, compact,
     )
+    return await read_cache.get(cache_key, load)
 
 
 @router.get("/taxonomy")
-async def get_taxonomy(session: AsyncSession = Depends(get_session)):
-    return await taxonomy_service.tree(session)
+async def get_taxonomy():
+    return await read_cache.get(("taxonomy",), taxonomy_service.tree)
 
 
 @router.get("/taxonomy/facets")
 async def get_topic_facets(topic: str | None = None, category: str | None = None,
-                           technologies: list[str] = Query(default=[]), session: AsyncSession = Depends(get_session)):
-    try:
+                           technologies: list[str] = Query(default=[])):
+    async def load(session):
         return await taxonomy_service.facets(session, topic, category, technologies)
+
+    try:
+        return await read_cache.get(
+            ("facets", topic, category, tuple(technologies)), load,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -217,7 +228,7 @@ def _item_404() -> HTTPException:
 
 
 @router.get("/items/{item_id}", response_model=ItemOut)
-async def get_item(item_id: int, session: AsyncSession = Depends(get_session)) -> ItemOut:
+async def get_item(item_id: int, session: AsyncSession = Depends(get_detail_session)) -> ItemOut:
     item = await session.get(Item, item_id, options=_detail_load_options())
     if item is None:
         raise _item_404()
@@ -259,7 +270,14 @@ async def record_item_view(
 
 
 @router.get("/stats", response_model=StatsOut)
-async def site_stats(session: AsyncSession = Depends(get_session)) -> StatsOut:
+async def site_stats() -> StatsOut:
+    async def load(session):
+        return await _site_stats(session)
+
+    return await read_cache.get(("stats",), load)
+
+
+async def _site_stats(session) -> StatsOut:
     items, views, since = (
         await session.execute(
             select(
@@ -341,17 +359,20 @@ async def get_topic(
 
 
 @router.get("/tags", response_model=list[TagOut])
-async def list_tags(session: AsyncSession = Depends(get_session)) -> list[TagOut]:
-    rows = (
-        await session.execute(
+async def list_tags() -> list[TagOut]:
+    async def load(session):
+        rows = (
+            await session.execute(
             select(Tag.name, func.count(Item.id))
             .join(Tag.items)
             .group_by(Tag.name)
             .having(func.count(Item.id) > 0)
             .order_by(func.count(Item.id).desc())
         )
-    ).all()
-    return [TagOut(name=name, count=count) for name, count in rows]
+        ).all()
+        return [TagOut(name=name, count=count) for name, count in rows]
+
+    return await read_cache.get(("tags",), load)
 
 
 @router.get("/dailies", response_model=DailyListOut)

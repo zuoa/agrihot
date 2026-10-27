@@ -23,15 +23,17 @@ def disable_rate_limiter():
 
 @pytest.fixture(autouse=True)
 def reset_admin_runtime():
-    from app.services import job_runner, runtime_settings, watchlist_service
+    from app.services import job_runner, read_cache, runtime_settings, watchlist_service
 
     runtime_settings.reset()
     watchlist_service.reset()
     job_runner.reset()
+    read_cache.reset()
     yield
     runtime_settings.reset()
     watchlist_service.reset()
     job_runner.reset()
+    read_cache.reset()
 
 
 @pytest.fixture
