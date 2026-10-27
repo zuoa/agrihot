@@ -5,6 +5,12 @@
 #   docker compose exec backend python -m scripts.create_api_key my-crawler
 #   docker compose exec backend python -m scripts.seed_from_pdf   # 可选：演示数据
 
+x-log: &json-log
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   db:
     image: pgvector/pgvector:pg16-bookworm
@@ -19,11 +25,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *json-log
     restart: unless-stopped
 
   backend:
     image: ghcr.io/zuoa/agrihot-backend:latest
+    logging: *json-log
     environment:
+      AGRIHOT_PROCESS: api
       DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
       SITE_URL: ${SITE_URL:-https://agrihot.com}
       CORS_ORIGINS: "*"
@@ -68,8 +77,39 @@ services:
       retries: 5
     restart: unless-stopped
 
+  worker:
+    image: ghcr.io/zuoa/agrihot-backend:latest
+    logging: *json-log
+    command: ["python", "-m", "app.services.content_worker"]
+    environment:
+      AGRIHOT_PROCESS: worker
+      DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
+      TZ: Asia/Shanghai
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      SELECTION_THRESHOLD: ${SELECTION_THRESHOLD:-70}
+      DAILY_TOP_N: ${DAILY_TOP_N:-5}
+      DAILY_TIMEZONE: ${DAILY_TIMEZONE:-Asia/Shanghai}
+      CONTENT_FETCH_ENABLED: ${CONTENT_FETCH_ENABLED:-true}
+      CONTENT_FETCH_TIMEOUT: ${CONTENT_FETCH_TIMEOUT:-60}
+      CONTENT_MAX_CHARS: ${CONTENT_MAX_CHARS:-100000}
+      JINA_API_KEY: ${JINA_API_KEY:-}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://open.bigmodel.cn/api/paas/v4}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embedding-3}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1024}
+      EMBEDDING_TIMEOUT: ${EMBEDDING_TIMEOUT:-15}
+      EMBEDDING_MIN_INTERVAL: ${EMBEDDING_MIN_INTERVAL:-1}
+      EMBEDDING_RATE_LIMIT_COOLDOWN: ${EMBEDDING_RATE_LIMIT_COOLDOWN:-60}
+      SEARCH_INDEX_ENABLED: ${SEARCH_INDEX_ENABLED:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     image: ghcr.io/zuoa/agrihot-frontend:latest
+    logging: *json-log
     environment:
       NUXT_API_BASE: http://backend:8000
       NUXT_PUBLIC_SITE_URL: ${SITE_URL:-https://agrihot.com}

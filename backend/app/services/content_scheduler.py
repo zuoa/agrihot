@@ -31,7 +31,10 @@ async def _loop() -> None:
     while True:
         if runtime_settings.get("content_fetch_enabled"):
             try:
-                await job_runner.run("fetch_content", {})
+                if job_runner.RUNS_JOBS:
+                    await job_runner.run("fetch_content", {})
+                else:
+                    await job_runner.enqueue("fetch_content", {})
             except job_runner.JobBusy:
                 log.info("content fetch already running, skip this tick")
             except Exception:

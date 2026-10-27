@@ -122,7 +122,7 @@ class AdminSettingsPatch(BaseModel):
 class JobStatusOut(BaseModel):
     name: str
     label: str
-    status: str  # idle | running | ok | error
+    status: str  # idle | queued | running | ok | error
     started_at: datetime | None = None
     finished_at: datetime | None = None
     stats: dict | None = None

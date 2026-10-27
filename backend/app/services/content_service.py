@@ -48,48 +48,58 @@ async def fetch_fulltext(url: str, *, raise_errors: bool = False, alternative_ur
         return None
 
 
-async def fetch_item_fulltext(item: Item, *, raise_errors: bool = False) -> str | None:
-    """Use the item's known source and open-access links when its primary URL fails."""
+def _fetch_targets(item: Item) -> tuple[str, list[str]]:
     alternatives = list(dict.fromkeys(url for url in (
         item.paper.oa_url if item.paper else None, item.source_url,
     ) if url and url != item.url))
+    return item.url, alternatives
+
+
+async def fetch_item_fulltext(item: Item, *, raise_errors: bool = False) -> str | None:
+    """Use the item's known source and open-access links when its primary URL fails."""
+    url, alternatives = _fetch_targets(item)
     kwargs = {}
     if raise_errors:
         kwargs["raise_errors"] = True
     if alternatives:
         kwargs["alternative_urls"] = alternatives
-    return await fetch_fulltext(item.url, **kwargs)
+    return await fetch_fulltext(url, **kwargs)
 
 
-async def enrich_item(session: AsyncSession, item: Item) -> bool:
-    """Backfill item.content if empty. True if content was added. Caller commits."""
-    if item.content and item.content.strip():
-        return False
-    text = await fetch_item_fulltext(item)
-    if text is None:
-        return False
-    item.content = text
-    log.info("item %s backfilled full text (%d chars)", item.id, len(text))
-    return True
+async def _load_fetch_target(item_id: int) -> tuple[str, list[str]] | None:
+    """Read the URLs, then close the session before any outbound HTTP."""
+    async with SessionLocal() as session:
+        item = await session.get(Item, item_id)
+        if item is None:
+            return None
+        if item.content and item.content.strip():
+            return None
+        if item.category == "论文" or item.paper is not None:
+            return None
+        return _fetch_targets(item)
 
 
 async def enrich_and_score(item_id: int) -> None:
     """Background task entry: backfill full text (best effort), then score.
 
-    Opens its own session (the request session is closed by then). Enrichment
-    runs even when scoring is disabled; scoring failures stay fail-closed.
+    The outbound fetch runs with no database connection checked out.
+    Scoring failures stay fail-closed and cannot roll back a saved body.
     """
+    target = await _load_fetch_target(item_id)
+    text = None
+    if target is not None:
+        url, alternatives = target
+        kwargs = {"alternative_urls": alternatives} if alternatives else {}
+        text = await fetch_fulltext(url, **kwargs)
     async with SessionLocal() as session:
         item = await session.get(Item, item_id)
         if item is None:
             return
-        # Automatic enrichment keeps papers on the abstract/card workflow;
-        # manual and explicit batch fetching can retrieve their full text.
         is_paper = item.category == "论文" or item.paper is not None
-        if not is_paper:
-            await enrich_item(session, item)
-            # The fetched source must survive scoring errors and cancellation.
+        if text and not (item.content and item.content.strip()):
+            item.content = text
             await session.commit()
+            log.info("item %s backfilled full text (%d chars)", item.id, len(text))
         if item.is_selected:
             return
         try:

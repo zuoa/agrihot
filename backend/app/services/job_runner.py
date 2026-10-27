@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import date, datetime, timezone
 from typing import Any, Awaitable, Callable
 
@@ -32,6 +33,10 @@ JOB_LABELS = {
 }
 
 JOB_NAMES = tuple(JOB_LABELS)
+# Outbound full-text fetches. The API records them; the worker process runs them.
+WORKER_JOBS = frozenset({"fetch_content"})
+# Unset (local and tests) keeps jobs in this process. Production API sets "api".
+RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
 _running: set[str] = set()
 
@@ -97,7 +102,7 @@ async def _read_status(name: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         return idle
     idle.update({k: data.get(k) for k in ("status", "started_at", "finished_at", "stats", "error", "progress")})
-    if name in _running:
+    if name in _running and idle["status"] != "queued":
         idle["status"] = "running"
     return idle
 
@@ -162,10 +167,33 @@ async def run(name: str, params: dict[str, Any] | None = None) -> dict[str, Any]
     return await _execute(name, params or {})
 
 
-def spawn(name: str, params: dict[str, Any] | None = None) -> bool:
-    """Start a job in the event loop. False if that name is already running."""
+async def enqueue(name: str, params: dict[str, Any] | None = None) -> bool:
+    """Hand a long job to the worker process. False when one is already waiting."""
     if name not in HANDLERS:
         raise KeyError(name)
+    current = await _read_status(name)
+    if current["status"] in ("queued", "running") or name in _running:
+        return False
+    await _write_status(name, {
+        "name": name,
+        "label": JOB_LABELS.get(name, name),
+        "status": "queued",
+        "started_at": None,
+        "finished_at": None,
+        "stats": None,
+        "error": None,
+        "progress": None,
+        "params": params or {},
+    })
+    return True
+
+
+async def spawn(name: str, params: dict[str, Any] | None = None) -> bool:
+    """Start a job here, or leave it queued for the worker process."""
+    if name not in HANDLERS:
+        raise KeyError(name)
+    if name in WORKER_JOBS and not RUNS_JOBS:
+        return await enqueue(name, params)
     if name in _running:
         return False
     _running.add(name)
@@ -298,6 +326,27 @@ async def missing_content_ids(session, *, limit: int = FETCH_CONTENT_BATCH, afte
     return ids
 
 
+async def _prepare_content_fetch(item_id: int, *, force: bool) -> tuple[str, list[str]] | None:
+    """Copy the URLs, then return the connection before the outbound request."""
+    from . import content_service
+
+    async with SessionLocal() as session:
+        item = await session.get(Item, item_id)
+        if item is None or (item.content and item.content.strip() and not force):
+            return None
+        return content_service._fetch_targets(item)
+
+
+async def _save_content_cursor(item_id: int) -> None:
+    async with SessionLocal() as session:
+        cursor = await session.get(PipelineState, FETCH_CONTENT_CURSOR)
+        if cursor is None:
+            cursor = PipelineState(key=FETCH_CONTENT_CURSOR)
+            session.add(cursor)
+        cursor.value, cursor.updated_at = str(item_id), utcnow()
+        await session.commit()
+
+
 async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
     from . import content_service, runtime_settings
 
@@ -306,39 +355,40 @@ async def _fetch_content(params: dict[str, Any]) -> dict[str, Any]:
     force = bool(params.get("force"))
     if not runtime_settings.get("content_fetch_enabled"):
         raise RuntimeError("全文抓取功能未启用")
-    fetched = skipped = failed = 0
     async with SessionLocal() as session:
         if not ids:
             cursor = await session.get(PipelineState, FETCH_CONTENT_CURSOR)
             after_id = int(cursor.value) if cursor and cursor.value.isdecimal() else 0
             ids = await missing_content_ids(session, after_id=after_id)
             force = False
-        if not ids:
-            return {"requested": 0, "fetched": 0, "skipped": 0, "failed": 0}
-        for i, item_id in enumerate(ids, start=1):
-            item = await session.get(Item, item_id)
-            if item is None:
-                failed += 1
-                continue
-            if item.content and item.content.strip() and not force:
-                skipped += 1
-                continue
-            text = await content_service.fetch_item_fulltext(item)
+        await session.commit()
+    if not ids:
+        return {"requested": 0, "fetched": 0, "skipped": 0, "failed": 0}
+    fetched = skipped = failed = 0
+    for i, item_id in enumerate(ids, start=1):
+        target = await _prepare_content_fetch(item_id, force=force)
+        if target is None:
+            async with SessionLocal() as session:
+                exists = await session.get(Item, item_id)
+            failed += exists is None
+            skipped += exists is not None
+        else:
+            url, alternatives = target
+            kwargs = {"alternative_urls": alternatives} if alternatives else {}
+            text = await content_service.fetch_fulltext(url, **kwargs)
             if text is None:
                 failed += 1
             else:
-                await content_service.save_and_score_content(session, item, text)
-                fetched += 1
-            if automatic:
-                cursor = await session.get(PipelineState, FETCH_CONTENT_CURSOR)
-                if cursor is None:
-                    cursor = PipelineState(key=FETCH_CONTENT_CURSOR)
-                    session.add(cursor)
-                cursor.value, cursor.updated_at = str(item_id), utcnow()
-            # Persist progress even if a later fetch fails or the process stops.
-            await session.commit()
-            await set_progress("fetch_content", done=i, total=len(ids))
-        await session.commit()
+                async with SessionLocal() as session:
+                    item = await session.get(Item, item_id)
+                    if item is None:
+                        failed += 1
+                    else:
+                        await content_service.save_and_score_content(session, item, text)
+                        fetched += 1
+        if automatic:
+            await _save_content_cursor(item_id)
+        await set_progress("fetch_content", done=i, total=len(ids))
     return {"requested": len(ids), "fetched": fetched, "skipped": skipped, "failed": failed}
 
 

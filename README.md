@@ -283,6 +283,10 @@ docker compose exec backend python -m scripts.seed_from_pdf               # 可�
 保留旧卷，使用新卷初始化 pgvector 镜像，再用 `pg_restore` 恢复数据。
 确认表、条目数量及旧 Key 均保留后启动新版后端。不要执行 `docker compose down -v`。
 
+全文抓取在独立的 `worker` 容器里运行（`python -m app.services.content_worker`）。
+API 容器设置 `AGRIHOT_PROCESS=api`，只接请求，不再在抓原文时占用数据库连接。
+连接池等满 5 秒返回 503。四个容器的 json 日志限制为单个 20MB、保留 3 个。
+
 后端首次启动自动启用 vector 扩展、迁移历史 Key 用途并创建索引表；数据库账号需要创建扩展权限，
 托管数据库可由管理员预先执行 `CREATE EXTENSION IF NOT EXISTS vector`。
 配置 `EMBEDDING_API_KEY` 后，历史内容在后台逐步回填。

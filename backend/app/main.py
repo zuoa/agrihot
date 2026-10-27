@@ -1,5 +1,7 @@
 """AgriHot backend entrypoint."""
 import asyncio
+import logging
+import os
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
@@ -9,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
 from .api.v1.admin import router as admin_router
 from .api.v1.ingest import limiter, router as ingest_router
@@ -19,6 +22,10 @@ from .api.v1.agent_admin import router as agent_admin_router
 from .mcp_server import mcp, mcp_app
 from .config import settings
 from .database import SessionLocal, ensure_schema
+
+log = logging.getLogger(__name__)
+# Production sets AGRIHOT_PROCESS=api. Local and tests keep the worker loops.
+SERVE_CONTENT_WORKER = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
 
 @asynccontextmanager
@@ -37,24 +44,31 @@ async def lifespan(app: FastAPI):
         await sync_catalog(session)
         await session.commit()
 
-    from .services.content_scheduler import start_content_scheduler
     from .services.daily_scheduler import start_daily_scheduler
     from .services.literature_scheduler import start_literature_scheduler
 
-    # Always start loops; each tick reads the effective enabled flag so the
-    # admin console can toggle schedulers without a process restart.
+    # Daily and literature ticks stay here. Content fetch is the worker's
+    # job: its HTTP calls must not share this process's database pool.
     scheduler = start_daily_scheduler()
     literature = start_literature_scheduler()
-    content = start_content_scheduler()
-    from .services.search_index_service import run_worker
-    indexer = asyncio.create_task(run_worker())
+    content = None
+    indexer = None
+    if SERVE_CONTENT_WORKER:
+        from .services.content_scheduler import start_content_scheduler
+        from .services.search_index_service import run_worker
+
+        content = start_content_scheduler()
+        indexer = asyncio.create_task(run_worker())
+    else:
+        log.info("content worker disabled in this process")
     try:
         async with mcp.session_manager.run():
             yield
     finally:
-        for task in (scheduler, literature, content, indexer):
+        tasks = [task for task in (scheduler, literature, content, indexer) if task is not None]
+        for task in tasks:
             task.cancel()
-        for task in (scheduler, literature, content, indexer):
+        for task in tasks:
             with suppress(asyncio.CancelledError):
                 await task
 
@@ -98,6 +112,12 @@ async def validation_handler(request: Request, exc: RequestValidationError):
         "Unprocessable Entity",
         jsonable_encoder(exc.errors(), custom_encoder={Exception: str}),
     )
+
+
+@app.exception_handler(PoolTimeoutError)
+async def pool_timeout_handler(request: Request, exc: PoolTimeoutError):
+    log.warning("database pool busy for %s %s", request.method, request.url.path)
+    return _problem(503, "Service Unavailable", "服务繁忙，请稍后重试")
 
 
 @app.exception_handler(Exception)

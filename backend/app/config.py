@@ -6,6 +6,12 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # asyncpg DSN; default targets local Homebrew PostgreSQL
     database_url: str = "postgresql+asyncpg://localhost:5432/agrihot"
+    # Fail fast when background work holds every connection. EdgeOne cuts
+    # the origin at about 15s, so waiting the SQLAlchemy default of 30s
+    # only produces a 524 and a full traceback.
+    db_pool_size: int = Field(default=5, ge=1, le=50)
+    db_max_overflow: int = Field(default=10, ge=0, le=50)
+    db_pool_timeout: float = Field(default=5, ge=0.1, le=30, allow_inf_nan=False)
     # comma-separated list; "*" for dev
     cors_origins: str = "*"
     # ingest rate limit per API key (slowapi format)

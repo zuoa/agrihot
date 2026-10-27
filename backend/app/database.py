@@ -4,7 +4,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from .config import settings
 
-engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+_engine_kwargs = {"echo": False, "pool_pre_ping": True}
+if settings.database_url.startswith("postgresql"):
+    # SQLite's default pool rejects these arguments. PostgreSQL needs a short
+    # wait so a busy pool becomes a 503 before the edge times out.
+    _engine_kwargs.update(
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+    )
+engine = create_async_engine(settings.database_url, **_engine_kwargs)
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 # create_all will not ADD columns to an existing table

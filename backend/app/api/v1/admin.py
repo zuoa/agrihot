@@ -371,7 +371,7 @@ async def batch_fetch_content(
     payload: BatchFetchIn,
     _: None = Depends(require_admin),
 ) -> JobStatusOut:
-    if not job_runner.spawn("fetch_content", {
+    if not await job_runner.spawn("fetch_content", {
         "item_ids": payload.ids, "force": payload.force,
     }):
         raise problem(409, "Conflict", "批量抓取正在进行，请稍后再试")
@@ -402,7 +402,7 @@ async def run_job(
         params["item_ids"] = body.item_ids or []
         params["force"] = body.force
     try:
-        started = job_runner.spawn(name, params)
+        started = await job_runner.spawn(name, params)
     except KeyError:
         raise problem(404, "Not Found", "未知任务")
     if not started:
@@ -438,7 +438,7 @@ async def patch_settings(
     except ValueError as exc:
         raise problem(422, "Unprocessable Entity", str(exc))
     if runtime_settings.get("content_fetch_enabled"):
-        job_runner.spawn("fetch_content", {})
+        await job_runner.spawn("fetch_content", {})
     writable = {
         k: SettingValueOut(value=v["value"], source=v["source"])
         for k, v in snap.items()
