@@ -1,73 +1,39 @@
 <template>
   <PageSkeleton v-if="pending" variant="article" label="正在加载日报…" />
   <div v-else-if="daily">
-    <header class="mb-6">
-      <div class="text-sm text-leaf-600 font-medium mb-1">{{ dateLabel }}</div>
-      <div class="flex items-start justify-between gap-3">
-        <h1 class="text-2xl font-bold text-stone-900">{{ daily.title }}</h1>
-        <ClientOnly>
-          <button @click="openShare"
-            class="shrink-0 px-3 py-1.5 rounded-lg bg-leaf-600 text-white text-sm hover:bg-leaf-700 transition-colors">
-            分享
-          </button>
-        </ClientOnly>
+    <nav class="site-breadcrumb" aria-label="面包屑"><NuxtLink to="/dailies"><ArticleIcon name="back" />日报归档</NuxtLink><ArticleIcon name="chevron" /><span aria-current="page">{{ daily.date }}</span></nav>
+    <PageHeading :eyebrow="`${dateLabel} · 农业农村日报`" :title="daily.title" :description="(daily.content || '').replace(/[*-]/g, '').slice(0, 120)">
+      <ClientOnly><button ref="shareTrigger" type="button" class="site-button" @click="openShare">分享本期<ArticleIcon name="external" /></button></ClientOnly>
+    </PageHeading>
+    <div v-if="showAdmin" class="mb-5 flex flex-wrap items-center gap-3"><button type="button" class="site-button site-button-secondary" :disabled="generating" @click="regenerate">{{ generating ? '生成中…' : '重新生成本日日报' }}</button><span v-if="generateMsg" class="text-xs text-stone-500" role="status">{{ generateMsg }}</span></div>
+    <div class="site-columns">
+      <div class="site-column-main">
+        <section v-if="daily.highlights?.length" class="daily-highlights site-surface" aria-labelledby="daily-highlights-title">
+          <div class="daily-highlights-heading"><div><ArticleIcon name="insight" /><h2 id="daily-highlights-title">本期要点</h2></div><span>{{ daily.highlights.length }} 条关注</span></div>
+          <ul><li v-for="(highlight, index) in daily.highlights" :key="index">{{ highlight }}</li></ul>
+        </section>
+        <nav v-if="sections.length" aria-label="本期栏目" class="site-filter-pills daily-mobile-contents"><a v-for="section in sections" :key="section.id" :href="`#daily-${section.id}`">{{ section.name }}<span class="opacity-60">{{ section.items.length }}</span></a></nav>
+        <section v-for="section in sections" :id="`daily-${section.id}`" :key="section.id" class="site-section">
+          <div class="site-section-heading"><h2>{{ section.name }}</h2><span>{{ section.items.length }} 条资讯</span></div>
+          <div class="site-card-list"><ItemCard v-for="it in section.items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" /></div>
+        </section>
+        <p class="site-disclaimer">本日报内容整理自公开来源，学术论文元数据来自 OpenAlex 等开放接口；外文资料已译为中文，翻译与摘要仅供参考；引用与决策请以官方原文与正式出版物为准。</p>
       </div>
-      <p class="text-sm text-stone-400 mt-2">{{ (daily.content || '').replace(/[*-]/g, '').slice(0, 120) }}</p>
-      <div v-if="showAdmin" class="mt-3">
-        <button @click="regenerate" :disabled="generating"
-          class="text-xs px-2.5 py-1 rounded-md border border-dashed border-leaf-300 text-leaf-600 hover:bg-leaf-50 disabled:opacity-50">
-          {{ generating ? '生成中…' : '重新生成本日日报' }}
-        </button>
-        <span v-if="generateMsg" class="ml-2 text-xs text-stone-400">{{ generateMsg }}</span>
-      </div>
-    </header>
-
-    <section class="rounded-2xl bg-gradient-to-br from-leaf-50 to-white border border-leaf-200 p-5 sm:p-6 mb-8">
-      <h2 class="font-bold text-leaf-800 mb-4 flex items-center gap-2">
-        <span class="w-6 h-6 rounded-md bg-leaf-600 text-white grid place-items-center text-xs">要</span>今日要点
-      </h2>
-      <ol class="space-y-3">
-        <li v-for="(h, i) in daily.highlights" :key="i" class="flex gap-3 text-sm leading-6">
-          <span class="w-5 h-5 rounded-full bg-leaf-100 text-leaf-700 text-xs font-bold grid place-items-center shrink-0 mt-0.5">{{ i + 1 }}</span>
-          <span class="text-stone-700">{{ h }}</span>
-        </li>
-      </ol>
-    </section>
-
-    <section v-for="sec in sections" :key="sec.name" class="mb-8">
-      <div class="flex items-baseline gap-3 mb-3">
-        <h2 class="text-lg font-bold text-leaf-800">{{ sec.name }}</h2>
-        <span class="text-xs text-stone-400">{{ sec.items.length }} 条</span>
-        <div class="flex-1 border-t border-leaf-100"></div>
-      </div>
-      <div class="space-y-3">
-        <ItemCard v-for="it in sec.items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
-      </div>
-    </section>
-
-    <p class="text-xs text-stone-400 border-t border-leaf-100 pt-4 leading-5">
-      本日报内容整理自公开来源，学术论文元数据来自 OpenAlex 等开放接口；外文资料已译为中文，翻译与摘要仅供参考；引用与决策请以官方原文与正式出版物为准。
-    </p>
-
+      <aside class="daily-outline browse-sidebar" aria-label="本期索引">
+        <section class="site-surface"><p class="page-eyebrow">{{ daily.date }}</p><h2>本期索引</h2><p class="daily-outline-count">{{ daily.highlights?.length || 0 }} 条要点 · {{ daily.items?.length || 0 }} 条资讯</p><nav><a v-for="section in sections" :key="section.id" :href="`#daily-${section.id}`"><span>{{ section.name }}</span><span>{{ section.items.length }}</span></a></nav><NuxtLink to="/dailies" class="site-text-link">浏览往期日报<ArticleIcon name="external" /></NuxtLink></section>
+      </aside>
+    </div>
     <ClientOnly>
-      <div v-if="sharing" class="fixed inset-0 z-40 bg-black/50 grid place-items-center p-4" @click.self="sharing = false">
-        <div class="bg-white rounded-2xl p-5 w-full max-w-sm">
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-stone-900">分享本期日报</h3>
-            <button @click="sharing = false" class="text-stone-400 hover:text-stone-600 text-lg leading-none">✕</button>
-          </div>
-          <div v-if="!shareImg" class="text-center text-stone-400 py-16 text-sm">图片生成中…</div>
-          <img v-else :src="shareImg" alt="日报分享图" class="w-full rounded-xl border border-leaf-100" />
-          <a v-if="shareImg" :href="shareImg" :download="`agrihot-daily-${daily.date}.png`"
-            class="mt-4 block text-center px-4 py-2.5 rounded-xl bg-leaf-600 text-white font-medium hover:bg-leaf-700 transition-colors">
-            保存图片
-          </a>
-          <p class="mt-3 text-xs text-stone-400 text-center">手机端可长按图片保存，扫码可进入本期日报</p>
-        </div>
+      <div v-if="sharing" class="share-backdrop" @click.self="closeShare" @keydown="shareKeydown">
+        <section ref="shareDialog" class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1">
+          <div class="share-heading"><h2 id="share-title">分享本期日报</h2><button type="button" aria-label="关闭分享" @click="closeShare"><ArticleIcon name="close" /></button></div>
+          <div v-if="!shareImg" class="site-empty" role="status"><p>正在生成分享图片…</p></div>
+          <img v-else :src="shareImg" alt="日报分享图" class="share-preview" />
+          <a v-if="shareImg" :href="shareImg" :download="`agrihot-daily-${daily.date}.png`" class="site-button share-download">保存图片</a>
+          <p class="share-hint">手机端可长按图片保存，扫码可进入本期日报</p>
+        </section>
       </div>
-      <div v-if="sharing" style="position: fixed; left: -9999px; top: 0">
-        <DailyShareCard v-if="shareQr" ref="shareCard" :daily="daily" :qr="shareQr" />
-      </div>
+      <div v-if="sharing" style="position: fixed; left: -9999px; top: 0"><DailyShareCard v-if="shareQr" ref="shareCard" :daily="daily" :qr="shareQr" /></div>
     </ClientOnly>
   </div>
 </template>
@@ -82,6 +48,8 @@ const sharing = ref(false)
 const shareQr = ref('')
 const shareImg = ref('')
 const shareCard = ref(null)
+const shareDialog = ref(null)
+const shareTrigger = ref(null)
 const generating = ref(false)
 const generateMsg = ref('')
 
@@ -103,13 +71,13 @@ const dateLabel = computed(() => (daily.value ? fmtDay(daily.value.date) : ''))
 const sections = computed(() => {
   if (!daily.value) return []
   const defs = [
-    { name: '一、政策', cats: ['政策'] },
-    { name: '二、报道', cats: ['报道'] },
-    { name: '三、学术论文', cats: ['论文'] },
-    { name: '四、行业动态', cats: ['行业'] },
+    { id: 'policy', name: '政策', cats: ['政策'] },
+    { id: 'reports', name: '报道', cats: ['报道'] },
+    { id: 'research', name: '学术论文', cats: ['论文'] },
+    { id: 'industry', name: '行业动态', cats: ['行业'] },
   ]
   return defs
-    .map((d) => ({ name: d.name, items: (daily.value.items || []).filter((i) => d.cats.includes(i.category)) }))
+    .map((d) => ({ id: d.id, name: d.name, items: (daily.value.items || []).filter((i) => d.cats.includes(i.category)) }))
     .filter((s) => s.items.length)
 })
 
@@ -134,11 +102,34 @@ function closeShare() {
   sharing.value = false
   shareQr.value = ''
   shareImg.value = ''
+  shareTrigger.value?.focus()
+}
+
+function shareKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    closeShare()
+    return
+  }
+  if (event.key !== 'Tab') return
+  const controls = shareDialog.value?.querySelectorAll('button, a[href]')
+  if (!controls?.length) return
+  const first = controls[0]
+  const last = controls[controls.length - 1]
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === shareDialog.value)) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
 }
 
 async function openShare() {
   closeShare()
   sharing.value = true
+  await nextTick()
+  shareDialog.value?.focus()
   const [{ default: QRCode }, { toPng }] = await Promise.all([
     import('qrcode'),
     import('html-to-image'),
@@ -167,3 +158,37 @@ async function regenerate() {
   }
 }
 </script>
+
+<style scoped>
+.daily-highlights { padding: 26px 30px; border-top: 3px solid #234e22; }
+.daily-highlights-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.daily-highlights-heading > div { display: flex; gap: 8px; align-items: center; color: #234e22; }
+.daily-highlights-heading svg { width: 18px; height: 18px; }
+.daily-highlights-heading h2 { font-size: 18px; font-weight: 650; }
+.daily-highlights-heading > span { font-size: 11px; color: #637168; }
+.daily-highlights ul { margin-top: 6px; }
+.daily-highlights li { position: relative; padding: 18px 0 18px 20px; color: #435046; font-size: 14px; line-height: 1.95; }
+.daily-highlights li + li { border-top: 1px solid #e1e8e0; }
+.daily-highlights li::before { content: ''; position: absolute; left: 0; top: 28px; width: 5px; height: 5px; border: 1px solid #82a678; border-radius: 1px; }
+.daily-highlights li:last-child { padding-bottom: 3px; }
+.daily-mobile-contents { display: none; }
+.daily-outline > section { padding: 24px 22px 16px; }
+.daily-outline h2 { margin-top: 10px; font-size: 19px; font-weight: 650; }
+.daily-outline-count { color: #637168; font-size: 11px; margin-top: 10px; }
+.daily-outline nav { display: grid; margin-top: 20px; padding-block: 7px; border-block: 1px solid #e1e8e0; }
+.daily-outline nav a { display: flex; justify-content: space-between; gap: 12px; padding-block: 12px; color: #234e22; font-size: 12px; }
+.daily-outline nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.daily-outline nav a > span:last-child { color: #637168; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; }
+.daily-outline .site-text-link { margin-top: 12px; font-size: 11px; }
+.share-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px; background: #14211bc2; backdrop-filter: blur(4px); }
+.share-dialog { width: 100%; max-width: 390px; max-height: calc(100dvh - 40px); overflow-y: auto; border-radius: 16px; background: white; padding: 22px; }
+.share-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.share-heading h2 { font-size: 17px; font-weight: 650; }
+.share-heading button { display: grid; place-items: center; width: 36px; height: 36px; color: #637168; border-radius: 6px; }
+.share-heading button:hover { background: #f4f8f2; }
+.share-heading svg { width: 20px; height: 20px; }
+.share-preview { width: 100%; border: 1px solid #e1e8e0; border-radius: 8px; }
+.share-download { width: 100%; margin-top: 18px; }
+.share-hint { margin-top: 14px; color: #637168; font-size: 11px; text-align: center; line-height: 1.9; }
+@media (max-width: 767px) { .daily-highlights { padding: 22px 20px; } .daily-highlights li { font-size: 13px; } .daily-outline { display: none; } .daily-mobile-contents { display: flex; } }
+</style>

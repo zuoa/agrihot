@@ -1,18 +1,7 @@
 <template>
-  <div class="min-h-screen flex flex-col bg-leaf-50/60">
-    <header class="bg-white border-b border-leaf-100">
-      <div class="max-w-4xl mx-auto px-4 py-3">
-        <NuxtLink to="/" class="inline-flex items-center gap-2 font-bold text-leaf-800"><BrandMark class="w-8 h-8" />AgriHot</NuxtLink>
-      </div>
-    </header>
-    <main class="flex-1 max-w-4xl mx-auto w-full px-4 py-16 text-center">
-      <h1 class="text-xl font-bold text-stone-900">{{ heading }}</h1>
-      <p class="mt-3 text-sm text-stone-500">{{ error?.message || '这条内容可能已下线。' }}</p>
-      <div class="mt-6 flex justify-center gap-3 text-sm">
-        <NuxtLink to="/" class="px-4 py-2 rounded-full bg-leaf-600 text-white">返回首页</NuxtLink>
-        <NuxtLink to="/dailies" class="px-4 py-2 rounded-full border border-leaf-200 text-leaf-700">农业日报</NuxtLink>
-      </div>
-    </main>
+  <div class="public-site min-h-screen flex flex-col">
+    <header class="site-header"><div class="max-w-6xl mx-auto px-4 py-4"><NuxtLink to="/" class="inline-flex items-center gap-2.5 font-bold text-leaf-800"><BrandMark class="w-8 h-8" />AgriHot<span class="text-leaf-500">.</span></NuxtLink></div></header>
+    <main class="error-main"><div class="error-panel site-surface"><p class="page-eyebrow">{{ error?.statusCode || 500 }} · AGRIHOT</p><h1>{{ heading }}</h1><p class="error-description">{{ error?.message || '这条内容可能已下线，请稍后重试。' }}</p><div class="error-actions"><NuxtLink to="/" class="site-button">返回首页</NuxtLink><NuxtLink to="/feed" class="site-button site-button-secondary">浏览最新动态<ArticleIcon name="external" /></NuxtLink></div></div></main>
   </div>
 </template>
 
@@ -27,3 +16,12 @@ usePageSeo(() => ({
   noindex: true,
 }))
 </script>
+
+<style scoped>
+.error-main { display: grid; place-items: center; flex: 1; padding: 48px 16px; }
+.error-panel { width: 100%; max-width: 620px; padding: 48px; text-align: center; }
+.error-panel h1 { margin-top: 18px; font-size: 30px; font-weight: 650; letter-spacing: -.03em; }
+.error-description { margin-top: 16px; color: #637168; font-size: 14px; line-height: 1.9; }
+.error-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 30px; }
+@media (max-width: 767px) { .error-panel { padding: 32px 24px; } .error-panel h1 { font-size: 26px; } }
+</style>

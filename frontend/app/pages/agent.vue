@@ -1,13 +1,13 @@
 <template>
-  <div class="space-y-8 pb-6">
+  <div class="agent-page site-reading-page space-y-8 pb-6">
     <header class="agent-hero overflow-hidden rounded-2xl border border-leaf-200 bg-white">
       <div class="px-6 py-8 sm:p-10">
-        <p class="text-xs font-mono tracking-widest text-leaf-600">AGRIHOT / AGENT</p>
-        <h1 class="mt-4 max-w-xl text-3xl sm:text-4xl font-bold leading-tight text-leaf-950">让你的 Agent<br />读懂农业正在发生什么</h1>
+        <p class="page-eyebrow">AGRIHOT · AGENT 接入</p>
+        <h1 class="agent-title">让你的 Agent<br />读懂农业正在发生什么</h1>
         <p class="mt-4 max-w-xl text-sm leading-7 text-stone-600">政策、行业动态、学术论文与每日要点。接入 AgriHot，用自然语言查找资料，沿着来源阅读全文。</p>
         <div class="mt-6 flex flex-wrap gap-3 text-sm">
-          <a href="#apply" class="rounded-lg bg-leaf-700 px-5 py-2.5 font-medium text-white hover:bg-leaf-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">申请读取 Key</a>
-          <a href="#connect" class="rounded-lg border border-leaf-200 px-5 py-2.5 text-leaf-800 hover:bg-leaf-50">查看接入方式 ↓</a>
+          <a href="#apply" class="site-button">申请读取 Key</a>
+          <a href="#connect" class="site-button site-button-secondary">查看接入方式<ArticleIcon name="chevron" class="rotate-90" /></a>
         </div>
       </div>
       <div class="grid sm:grid-cols-3 border-t border-leaf-100 bg-leaf-50/60 text-sm">
@@ -74,13 +74,13 @@
 
     <section id="apply" class="scroll-mt-6 rounded-2xl border border-leaf-200 bg-white p-6 sm:p-8">
       <div class="grid md:grid-cols-[1fr_1.5fr] gap-6 sm:gap-10">
-        <div><p class="text-xs font-mono text-leaf-600">ACCESS REQUEST</p><h2 class="mt-3 text-xl font-bold text-stone-900">申请读取 Key</h2><p class="mt-3 text-sm leading-7 text-stone-500">告诉我们你准备如何使用 AgriHot。管理员审核后，会通过你填写的联系方式交付 Key。</p><p class="mt-3 text-xs leading-6 text-stone-400">联系方式仅用于接入申请沟通。请勿在表单中提交现有密钥。</p></div>
+        <div><p class="page-eyebrow">接入申请</p><h2 class="mt-3 text-xl font-bold text-stone-900">申请读取 Key</h2><p class="mt-3 text-sm leading-7 text-stone-500">告诉我们你准备如何使用 AgriHot。管理员审核后，会通过你填写的联系方式交付 Key。</p><p class="mt-3 text-xs leading-6 text-stone-400">联系方式仅用于接入申请沟通。请勿在表单中提交现有密钥。</p></div>
         <form v-if="!submitted" class="space-y-4" @submit.prevent="apply">
           <label class="block text-sm text-stone-700">名称 / 项目名<input v-model="form.name" required maxlength="100" autocomplete="organization" class="agent-input" placeholder="例如：农业研究助手" /></label>
           <label class="block text-sm text-stone-700">邮箱或微信<input v-model="form.contact" required minlength="3" maxlength="200" class="agent-input" placeholder="可联系到你的邮箱或微信号" /></label>
           <label class="block text-sm text-stone-700">使用用途<textarea v-model="form.use_case" required minlength="10" maxlength="2000" rows="3" class="agent-input resize-y" placeholder="希望查询什么内容，用在哪个 Agent 或项目中？（至少 10 字）" /></label>
           <p v-if="error" role="alert" class="text-sm text-red-700">{{ error }}</p>
-          <button type="submit" :disabled="busy" class="rounded-lg bg-leaf-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-leaf-800 disabled:opacity-50">{{ busy ? '提交中…' : '提交申请' }}</button>
+          <button type="submit" :disabled="busy" class="site-button">{{ busy ? '提交中…' : '提交申请' }}</button>
         </form>
         <div v-else role="status" class="self-center rounded-xl bg-leaf-50 border border-leaf-100 p-6"><h3 class="font-bold text-leaf-800">申请已提交</h3><p class="mt-2 text-sm leading-6 text-stone-600">申请编号 #{{ submitted.id }}。审核后，管理员将通过你填写的联系方式交付读取 Key。</p></div>
       </div>
@@ -124,6 +124,13 @@ usePageSeo({ title: 'Agent 接入 · AgriHot', description: '通过 Agent Skill 
 </script>
 
 <style scoped>
-.agent-hero { background-image: radial-gradient(ellipse at 95% 5%, #e0f1db 0, transparent 55%); }
-.agent-input { @apply mt-1.5 block w-full rounded-lg border border-stone-200 bg-stone-50/60 px-3 py-2.5 text-sm outline-none placeholder:text-stone-400 focus:border-leaf-500 focus:ring-2 focus:ring-leaf-100; }
+.agent-hero { border-color: #e1e8e0; border-radius: 16px; }
+.agent-title { margin-top: 18px; max-width: 650px; color: #20332a; font-size: 36px; font-weight: 700; line-height: 1.55; letter-spacing: -.04em; }
+.agent-page :is(section, #connect-panel) { border-color: #e1e8e0; }
+.agent-page :is(h2, h3) { color: #20332a; letter-spacing: -.02em; }
+.agent-page [role='tab'] { min-height: 44px; }
+.agent-input { display: block; width: 100%; margin-top: 8px; padding: 12px 14px; border: 1px solid #e1e8e0; border-radius: 7px; background: #f8faf7; color: #20332a; font-size: 13px; }
+.agent-input::placeholder { color: #829080; }
+.agent-input:focus { border-color: #82a678; }
+@media (max-width: 767px) { .agent-title { font-size: 28px; } .agent-input { font-size: 14px; } .agent-page #connect-panel { padding: 22px 20px; } }
 </style>

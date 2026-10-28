@@ -1,30 +1,16 @@
 <template>
   <div>
-    <div class="flex items-center gap-3 mb-3">
-      <NuxtLink to="/tags" class="text-sm text-stone-400 hover:text-leaf-600">← 主题</NuxtLink>
-      <h1 class="text-xl font-bold text-leaf-800">{{ heading }}</h1>
-    </div>
-    <p v-if="isPhrase && tokens.length" class="text-sm text-stone-500 mb-4 leading-6">
-      同时包含
-      <template v-for="(t, i) in tokens" :key="t">
-        <NuxtLink :to="tagPath(t)" class="text-leaf-700 hover:underline">{{ t }}</NuxtLink>
-        <span v-if="i < tokens.length - 1">、</span>
-      </template>
-      的农业资讯，共 {{ total }} 条。
-    </p>
-    <PageSkeleton v-if="pending" />
-    <div v-else-if="error" class="text-center text-stone-500 py-16">
-      <p>主题加载失败，请稍后重试。</p>
-      <button type="button" class="mt-4 text-sm text-leaf-700 hover:underline" @click="refresh()">重新加载</button>
-    </div>
-    <div v-else-if="!items.length" class="text-center text-stone-500 py-16">
-      <p>暂未找到「{{ name }}」相关内容</p>
-      <NuxtLink to="/topic" class="inline-block mt-4 text-sm text-leaf-700 hover:underline">浏览农业主题 →</NuxtLink>
-    </div>
-    <div v-else class="space-y-3">
-      <ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" />
-    </div>
-    <ContentPagination v-if="!pending && !error" :page="page" :total="total" :page-size="pageSize" />
+    <nav class="site-breadcrumb" aria-label="面包屑"><NuxtLink to="/tags"><ArticleIcon name="back" />全部标签</NuxtLink><ArticleIcon name="chevron" /><span aria-current="page">{{ name }}</span></nav>
+    <PageHeading :eyebrow="isPhrase ? '组合检索 · 相关资讯' : '关键词 · 相关资讯与研究'" :title="heading" :description="isPhrase ? '' : `沿着“${name}”继续探索，共 ${total.toLocaleString('zh-CN')} 条内容。`">
+      <template v-if="isPhrase && tokens.length" #description><p class="page-description">同时包含<template v-for="(token, index) in tokens" :key="token"><NuxtLink :to="tagPath(token)" class="text-leaf-700 hover:underline">{{ token }}</NuxtLink><span v-if="index < tokens.length - 1">、</span></template>的农业资讯，共 {{ total }} 条。</p></template>
+    </PageHeading>
+    <div class="site-columns"><div class="site-column-main">
+      <PageSkeleton v-if="pending" />
+      <div v-else-if="error" class="site-empty" role="alert"><h2>内容暂时加载失败</h2><p>请稍后重试。</p><button type="button" class="site-button site-button-secondary" @click="refresh()">重新加载</button></div>
+      <div v-else-if="!items.length" class="site-empty"><h2>暂未找到相关内容</h2><p>可以换一个关键词，或按农业领域继续浏览。</p><NuxtLink to="/topic" class="site-button site-button-secondary">浏览农业主题</NuxtLink></div>
+      <div v-else class="site-card-list"><ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" /></div>
+      <ContentPagination v-if="!pending && !error" :page="page" :total="total" :page-size="pageSize" />
+    </div><BrowseSidebar /></div>
   </div>
 </template>
 

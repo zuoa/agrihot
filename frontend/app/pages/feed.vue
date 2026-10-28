@@ -1,57 +1,27 @@
 <template>
   <div>
-    <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
-      <h1 class="text-xl font-bold text-leaf-800">{{ heading }}</h1>
-      <input v-model="qInput" @keyup.enter="search" placeholder="搜索标题 / 摘要…"
-        class="px-3 py-1.5 text-sm rounded-full border border-leaf-200 bg-white focus:outline-none focus:border-leaf-500 w-56" />
-    </div>
-
-    <div class="flex gap-2 overflow-x-auto pb-1"
-      :class="category === '论文' && directions.length ? 'mb-3' : 'mb-5'">
-      <NuxtLink v-for="c in categories" :key="c" :to="categoryLink(c)"
-        class="px-3.5 py-1.5 text-sm rounded-full border whitespace-nowrap transition-colors"
-        :class="(category || '全部') === c
-          ? 'bg-leaf-600 text-white border-leaf-600'
-          : 'bg-white text-stone-600 border-leaf-200 hover:border-leaf-400'">
-        {{ c }}
-      </NuxtLink>
-    </div>
-    <div v-if="category === '论文' && directions.length" class="flex gap-2 mb-5 overflow-x-auto pb-1">
-      <NuxtLink v-for="d in [{ name: '全部方向', count: 0 }, ...directions]" :key="d.name"
-        :to="directionLink(d.name === '全部方向' ? '' : d.name)"
-        class="px-3 py-1 text-xs rounded-full border whitespace-nowrap transition-colors"
-        :class="(direction || '全部方向') === d.name || (!direction && d.name === '全部方向')
-          ? 'bg-leaf-700 text-white border-leaf-700'
-          : 'bg-white text-stone-500 border-leaf-200 hover:border-leaf-400'">
-        {{ d.name }}<span v-if="d.count" class="ml-1 tabular-nums opacity-70">{{ d.count }}</span>
-      </NuxtLink>
-    </div>
-
-    <PageSkeleton v-if="pending" />
-    <template v-else>
-      <section v-for="g in groups" :key="g.key" class="mb-8">
-        <div class="flex items-baseline gap-3 mb-3">
-          <h2 class="text-lg font-bold text-leaf-800">{{ g.label }}</h2>
-          <span class="text-xs text-stone-400">{{ g.items.length }} 条</span>
-          <div class="flex-1 border-t border-leaf-100"></div>
-        </div>
-        <div class="space-y-3">
-          <ItemCard v-for="it in g.items" :key="it.id" :item="it"
-            @updated="refresh" @deleted="refresh" />
-        </div>
-      </section>
-      <div v-if="!groups.length" class="text-center text-stone-400 py-16">暂无内容</div>
-
-      <div class="flex justify-center gap-3 mt-6" v-if="totalPages > 1">
-        <NuxtLink v-if="page > 1" :to="pageLink(page - 1)"
-          class="px-4 py-1.5 text-sm rounded-full border border-leaf-200 bg-white hover:border-leaf-400">上一页</NuxtLink>
-        <span v-else class="px-4 py-1.5 text-sm rounded-full border border-leaf-200 bg-white opacity-40">上一页</span>
-        <span class="text-sm text-stone-500 self-center">{{ page }} / {{ totalPages }}</span>
-        <NuxtLink v-if="page < totalPages" :to="pageLink(page + 1)"
-          class="px-4 py-1.5 text-sm rounded-full border border-leaf-200 bg-white hover:border-leaf-400">下一页</NuxtLink>
-        <span v-else class="px-4 py-1.5 text-sm rounded-full border border-leaf-200 bg-white opacity-40">下一页</span>
+    <PageHeading eyebrow="持续收录 · 政策 / 报道 / 论文 / 行业" title="全部动态" description="从最新政策到前沿研究，查找你关心的农业进展。" />
+    <div class="site-columns">
+      <div class="site-column-main">
+        <form role="search" class="site-search feed-search" @submit.prevent="search">
+          <ArticleIcon name="search" /><label for="feed-search" class="sr-only">搜索标题或摘要</label><input id="feed-search" v-model="qInput" type="search" placeholder="搜索标题、摘要或关键词…" /><button type="submit" class="site-button">搜索</button>
+        </form>
+        <nav aria-label="动态分类" class="site-tabs"><NuxtLink v-for="c in categories" :key="c" :to="categoryLink(c)" :aria-current="(category || '全部') === c ? 'page' : undefined">{{ c }}</NuxtLink></nav>
+        <nav v-if="category === '论文' && directions.length" aria-label="论文方向" class="site-filter-pills"><NuxtLink v-for="d in [{ name: '全部方向', count: 0 }, ...directions]" :key="d.name" :to="directionLink(d.name === '全部方向' ? '' : d.name)" :aria-current="(direction || '全部方向') === d.name ? 'page' : undefined">{{ d.name }}<span v-if="d.count" class="tabular-nums opacity-60">{{ d.count }}</span></NuxtLink></nav>
+        <div class="site-result-meta" aria-live="polite"><span>{{ q ? `“${q}”的搜索结果` : direction || (category ? `${category}资讯` : '全部已收录内容') }}<template v-if="!pending && !error"> · {{ total.toLocaleString('zh-CN') }} 条</template></span><NuxtLink v-if="q" :to="searchResetLink">清除搜索</NuxtLink></div>
+        <PageSkeleton v-if="pending" />
+        <div v-else-if="error" class="site-empty" role="alert"><h2>动态暂时加载失败</h2><p>请稍后重试。</p><button type="button" class="site-button site-button-secondary" @click="refresh()">重新加载</button></div>
+        <template v-else>
+          <section v-for="g in groups" :key="g.key" class="feed-day">
+            <div class="site-section-heading"><h2>{{ g.label }}</h2><span>{{ g.items.length }} 条</span></div>
+            <div class="site-card-list"><ItemCard v-for="it in g.items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" /></div>
+          </section>
+          <div v-if="!groups.length" class="site-empty"><h2>{{ q ? '没有找到相关内容' : '暂无内容' }}</h2><p>{{ q ? '试试缩短关键词，或选择其他内容类型。' : '可以按主题浏览已收录的农业进展。' }}</p><NuxtLink to="/topic" class="site-button site-button-secondary">浏览主题</NuxtLink></div>
+          <ContentPagination :page="page" :total="total" :page-size="pageSize" />
+        </template>
       </div>
-    </template>
+      <BrowseSidebar />
+    </div>
   </div>
 </template>
 
@@ -77,7 +47,7 @@ const heading = computed(() => {
   return bits.join(' · ')
 })
 
-const { data, pending, refresh } = await useAsyncData(
+const { data, pending, error, refresh } = await useAsyncData(
   () => `feed-${category.value}-${direction.value}-${q.value}-${page.value}`,
   async () => {
     const [list, dirs] = await Promise.all([
@@ -100,7 +70,13 @@ const items = computed(() => data.value?.list?.items || [])
 const total = computed(() => data.value?.list?.total || 0)
 const directions = computed(() => data.value?.dirs || [])
 const groups = computed(() => groupByDay(items.value))
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+
+const searchResetLink = computed(() => {
+  const query = { ...route.query }
+  delete query.q
+  delete query.page
+  return { path: '/feed', query }
+})
 
 function categoryLink(c) {
   const query = {}
@@ -113,13 +89,6 @@ function directionLink(name) {
   const query = { category: '论文' }
   if (name) query.direction = name
   if (q.value.trim()) query.q = q.value.trim()
-  return { path: '/feed', query }
-}
-
-function pageLink(p) {
-  const query = { ...route.query }
-  if (p <= 1) delete query.page
-  else query.page = String(p)
   return { path: '/feed', query }
 }
 
@@ -152,3 +121,8 @@ usePageSeo(() => ({
   keywords: uniqueKeywords([category.value, direction.value, q.value, DEFAULT_KEYWORDS]),
 }))
 </script>
+
+<style scoped>
+.feed-search { margin-bottom: 16px; }
+.feed-day + .feed-day { margin-top: 32px; }
+</style>
