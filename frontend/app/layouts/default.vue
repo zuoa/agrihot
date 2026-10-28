@@ -27,7 +27,7 @@
       </div>
     </header>
 
-    <main class="flex-1 w-full px-4 py-6 mx-auto max-w-4xl" :class="wide ? 'xl:max-w-7xl' : ''">
+    <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-6">
       <slot />
     </main>
 
@@ -52,7 +52,6 @@
 const route = useRoute()
 const router = useRouter()
 const showAdmin = useClientAdmin()
-const wide = computed(() => route.path.startsWith('/items/'))
 const session = useAdminSession()
 
 function onAdminClick() {

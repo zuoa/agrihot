@@ -1,7 +1,6 @@
 <template>
   <PageSkeleton v-if="pending" variant="article" label="正在加载文章…" />
-  <div v-else-if="item" class="xl:grid xl:grid-cols-[minmax(0,56rem)_280px] xl:items-start xl:justify-center xl:gap-x-8">
-    <div class="min-w-0 xl:col-start-1">
+  <div v-else-if="item">
     <nav aria-label="面包屑" class="mb-4 text-xs text-stone-500 leading-6">
       <ol class="flex flex-wrap items-center gap-x-2">
         <li><NuxtLink to="/" class="hover:text-leaf-700">首页</NuxtLink></li>
@@ -34,7 +33,7 @@
         </div>
       </header>
 
-      <aside class="my-6 space-y-4 xl:hidden">
+      <aside class="my-6 space-y-4">
         <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
         <ContextPanel :item="item" />
       </aside>
@@ -142,12 +141,6 @@
         <ItemCard v-for="it in otherRelated" :key="it.id" :item="it" />
       </div>
     </section>
-    </div>
-
-    <aside class="hidden min-w-0 space-y-4 xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1 xl:block xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto">
-      <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
-      <ContextPanel :item="item" />
-    </aside>
   </div>
 </template>
 
