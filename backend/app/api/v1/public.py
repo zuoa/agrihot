@@ -12,13 +12,13 @@ from ...models import Daily, Item, ItemClassification, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         DirectionOut, ItemListOut, ItemOut, ItemSummaryListOut,
                         ItemSummaryOut, PaperAuthorOut, PaperCardOut,
-                        PaperMetaOut, SourceOut, StatsOut, TagOut, TopicOut,
+                        PaperMetaOut, SourceOut, StatsOut, TagMetaOut, TagOut, TopicOut,
                         TopicSummaryOut, ViewOut)
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, parse_tag_query,
                                        related_items, resolve_topic)
 from ...services import embedding_service, read_cache, taxonomy_service
-from ...services.taxonomy_catalog import canonical_name
+from ...services.taxonomy_catalog import canonical_name, tag_properties
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
 
@@ -89,6 +89,7 @@ def _to_item_out(item: Item, *, compact: bool = False) -> ItemOut | ItemSummaryO
         "score_detail": item.score_detail,
         "classification": ({"status": item.classification.status, "locked": item.classification.locked}
                             if item.classification else {}),
+        "tag_meta": [TagMetaOut(name=name, kind=tag_properties(name)[0]) for name in tags],
     }
     model = ItemSummaryOut if compact else ItemOut
     return model(

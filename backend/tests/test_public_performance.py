@@ -98,7 +98,7 @@ async def test_compact_reads_match_cards_without_loading_heavy_fields(public_cli
     finally:
         event.remove(public_db.sync_engine, "before_cursor_execute", capture)
     assert compact.status_code == 200, compact.text
-    heavy = {"content", "score_detail", "classification"}
+    heavy = {"content", "score_detail", "classification", "tag_meta"}
     expected = [{key: value for key, value in item.items() if key not in heavy}
                 for item in full.json()["items"]]
     assert compact.json()["items"] == expected
@@ -121,6 +121,8 @@ async def test_compact_pagination_and_full_detail(public_client):
     assert detail.status_code == 200
     assert detail.json()["content"] == "水稻遥感监测的完整正文。" * 2000
     assert detail.json()["classification"]["locked"] is True
+    assert detail.json()["tags"] == ["水稻"]
+    assert detail.json()["tag_meta"] == [{"name": "水稻", "kind": "keyword"}]
 
 
 @pytest.mark.asyncio

@@ -262,6 +262,13 @@ async def test_item_exposes_derived_phrases_and_slug(client):
     assert detail["search_phrases"][0] == "四川省农科院 薯花系列 大豆 花生"
     assert detail["slug"].endswith(f"-{item_id}")
     assert " " not in detail["slug"]
+    assert detail["tags"]
+    assert {row["name"] for row in detail["tag_meta"]} == set(detail["tags"])
+    kinds = {row["name"]: row["kind"] for row in detail["tag_meta"]}
+    assert kinds["四川省农科院"] == "organization"
+    assert kinds["花生"] == "keyword"
+    listed = (await client.get("/api/v1/items", params={"compact": True})).json()
+    assert "tag_meta" not in listed["items"][0]
 
 
 @pytest.mark.asyncio

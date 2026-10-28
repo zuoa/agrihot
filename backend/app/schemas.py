@@ -281,6 +281,11 @@ class SourceOut(BaseModel):
     url: str | None = None
 
 
+class TagMetaOut(BaseModel):
+    name: str
+    kind: str = "keyword"
+
+
 class PaperAuthorOut(BaseModel):
     name: str
     orcid: str | None = None
@@ -353,6 +358,8 @@ class ItemOut(ItemSummaryOut):
     content: str | None
     score_detail: dict | None = None
     classification: ClassificationOut = Field(default_factory=ClassificationOut)
+    # Detail only. List payloads keep tags as names so card caches stay small.
+    tag_meta: list[TagMetaOut] = Field(default_factory=list)
 
 
 class ViewOut(BaseModel):
