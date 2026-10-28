@@ -1,11 +1,11 @@
 <template>
   <div class="min-h-screen flex flex-col bg-leaf-50/60">
     <header class="bg-white border-b border-leaf-100">
-      <div class="max-w-3xl mx-auto px-4 py-3">
+      <div class="max-w-4xl mx-auto px-4 py-3">
         <NuxtLink to="/" class="inline-flex items-center gap-2 font-bold text-leaf-800"><BrandMark class="w-8 h-8" />AgriHot</NuxtLink>
       </div>
     </header>
-    <main class="flex-1 max-w-3xl mx-auto w-full px-4 py-16 text-center">
+    <main class="flex-1 max-w-4xl mx-auto w-full px-4 py-16 text-center">
       <h1 class="text-xl font-bold text-stone-900">{{ heading }}</h1>
       <p class="mt-3 text-sm text-stone-500">{{ error?.message || '这条内容可能已下线。' }}</p>
       <div class="mt-6 flex justify-center gap-3 text-sm">

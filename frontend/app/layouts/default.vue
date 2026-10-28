@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen flex flex-col">
     <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-leaf-100">
-      <div class="max-w-3xl mx-auto px-4">
+      <div class="max-w-4xl mx-auto px-4">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between md:gap-4">
           <NuxtLink to="/" aria-label="AgriHot 首页" class="flex w-fit shrink-0 items-center gap-2.5 pt-3 pb-2 md:py-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">
             <BrandMark class="w-8 h-8" />
@@ -27,12 +27,12 @@
       </div>
     </header>
 
-    <main class="flex-1 w-full px-4 py-6" :class="wide ? 'max-w-5xl mx-auto' : 'max-w-3xl mx-auto'">
+    <main class="flex-1 w-full px-4 py-6 mx-auto max-w-4xl" :class="wide ? 'xl:max-w-7xl' : ''">
       <slot />
     </main>
 
     <footer class="border-t border-leaf-100 bg-white">
-      <div class="max-w-3xl mx-auto px-4 py-6 text-center text-xs text-stone-400">
+      <div class="max-w-4xl mx-auto px-4 py-6 text-center text-xs text-stone-400">
         <p class="font-medium text-stone-600">{{ DEFAULT_TITLE }}</p>
         <p class="mt-2 leading-5">内容整理自公开来源，摘要由 AI 生成，引用请以官方原文为准</p>
         <nav aria-label="页脚导航" class="mt-2 flex flex-wrap items-center justify-center gap-x-4">

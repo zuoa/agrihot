@@ -1,6 +1,7 @@
 <template>
   <PageSkeleton v-if="pending" variant="article" label="正在加载文章…" />
-  <div v-else-if="item">
+  <div v-else-if="item" class="xl:grid xl:grid-cols-[minmax(0,56rem)_280px] xl:items-start xl:justify-center xl:gap-x-8">
+    <div class="min-w-0 xl:col-start-1">
     <nav aria-label="面包屑" class="mb-4 text-xs text-stone-500 leading-6">
       <ol class="flex flex-wrap items-center gap-x-2">
         <li><NuxtLink to="/" class="hover:text-leaf-700">首页</NuxtLink></li>
@@ -33,13 +34,12 @@
         </div>
       </header>
 
-      <div class="mt-5 lg:mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-x-8 lg:items-start">
-        <aside class="mb-6 space-y-4 lg:col-start-2 lg:row-start-1 lg:mb-0 lg:sticky lg:top-20 lg:self-start">
-          <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
-          <ContextPanel :item="item" />
-        </aside>
+      <aside class="my-6 space-y-4 xl:hidden">
+        <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
+        <ContextPanel :item="item" />
+      </aside>
 
-        <div class="min-w-0 lg:col-start-1 lg:row-start-1">
+      <div class="min-w-0 mt-5">
         <section v-if="isPaper" class="rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3">
           <p v-if="authorItems.length" class="text-sm text-stone-700 leading-6">
             <template v-for="(author, index) in authorItems" :key="author.name">
@@ -127,8 +127,7 @@
         </div>
 
         <ItemEditModal v-if="showEdit" :item="item" @close="showEdit = false" @saved="onSaved" />
-        </div>
-      </div>
+    </div>
     </article>
 
     <section v-if="sameTopic.length" class="mt-10">
@@ -143,6 +142,12 @@
         <ItemCard v-for="it in otherRelated" :key="it.id" :item="it" />
       </div>
     </section>
+    </div>
+
+    <aside class="hidden min-w-0 space-y-4 xl:sticky xl:top-20 xl:col-start-2 xl:row-start-1 xl:block xl:max-h-[calc(100vh-6rem)] xl:self-start xl:overflow-y-auto">
+      <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
+      <ContextPanel :item="item" />
+    </aside>
   </div>
 </template>
 
