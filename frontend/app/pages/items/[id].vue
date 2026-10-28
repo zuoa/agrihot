@@ -1,146 +1,150 @@
 <template>
   <PageSkeleton v-if="pending" variant="article" label="正在加载文章…" />
-  <div v-else-if="item">
-    <nav aria-label="面包屑" class="mb-4 text-xs text-stone-500 leading-6">
-      <ol class="flex flex-wrap items-center gap-x-2">
-        <li><NuxtLink to="/" class="hover:text-leaf-700">首页</NuxtLink></li>
-        <li aria-hidden="true">/</li>
+  <div v-else-if="item" class="item-detail">
+    <nav aria-label="面包屑" class="detail-breadcrumb">
+      <NuxtLink to="/feed" class="back-link"><ArticleIcon name="back" />全部动态</NuxtLink>
+      <ol>
+        <li><NuxtLink to="/">首页</NuxtLink></li>
+        <li aria-hidden="true"><ArticleIcon name="chevron" /></li>
         <li>
-          <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path" class="hover:text-leaf-700">{{ item.primary_topic.name }}</NuxtLink>
-          <NuxtLink v-else :to="item.category ? { path: '/feed', query: { category: item.category } } : '/feed'" class="hover:text-leaf-700">{{ item.category || '资讯' }}</NuxtLink>
+          <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path">{{ item.primary_topic.name }}</NuxtLink>
+          <NuxtLink v-else :to="item.category ? { path: '/feed', query: { category: item.category } } : '/feed'">{{ item.category || '资讯' }}</NuxtLink>
         </li>
+        <li aria-hidden="true"><ArticleIcon name="chevron" /></li>
+        <li aria-current="page">正文</li>
       </ol>
     </nav>
 
-    <article>
-      <header>
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-xs font-medium">{{ item.category || '资讯' }}</span>
-          <span v-if="item.is_selected" class="px-2 py-0.5 rounded-full bg-leaf-100 text-leaf-700 text-xs font-medium">精选</span>
-          <span v-if="item.paper?.direction" class="px-2 py-0.5 rounded-full bg-leaf-50 text-leaf-700 border border-leaf-100 text-xs">{{ item.paper.direction }}</span>
-        </div>
-
-        <h1 class="mt-3 text-2xl sm:text-[28px] font-bold text-stone-900 leading-snug">{{ item.title }}</h1>
-        <p v-if="lede" class="mt-3 text-base text-stone-600 leading-7">{{ lede }}</p>
-
-        <div class="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500">
-          <span class="text-leaf-800 font-medium">{{ item.source_name || '未知来源' }}</span>
-          <span>{{ dateLabel }}</span>
-          <span>阅读 {{ item.view_count ?? 0 }}</span>
-          <span v-if="item.hotness >= 60" class="text-amber-600">热度 {{ item.hotness }}</span>
-          <span v-if="sourceCount > 1">{{ sourceCount }} 个信源同时报道</span>
-          <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path" class="text-leaf-700 hover:underline">{{ item.primary_topic.name }}</NuxtLink>
-        </div>
-      </header>
-
-      <aside class="my-6 space-y-4">
-        <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
-        <ContextPanel :item="item" />
-      </aside>
-
-      <div class="min-w-0 mt-5">
-        <section v-if="isPaper" class="rounded-xl border border-stone-200 bg-stone-50/80 px-4 py-3">
-          <p v-if="authorItems.length" class="text-sm text-stone-700 leading-6">
-            <template v-for="(author, index) in authorItems" :key="author.name">
-              <span v-if="index"> · </span>
-              <a v-if="author.orcid" :href="author.orcid" target="_blank" rel="noopener" class="text-leaf-800 hover:underline">{{ author.name }}</a>
-              <span v-else>{{ author.name }}</span>
-            </template>
-            <span v-if="authorRest"> 等 {{ authorTotal }} 人</span>
-          </p>
-          <div class="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-            <span v-if="item.paper?.venue">{{ item.paper.venue }}</span>
-            <span v-if="item.paper?.cited_by_count">被引 {{ item.paper.cited_by_count }}</span>
-            <a v-if="item.doi" :href="`https://doi.org/${item.doi}`" target="_blank" rel="noopener" class="text-leaf-700 hover:underline break-all">DOI {{ item.doi }}</a>
-            <a v-if="item.paper?.oa_url" :href="item.paper.oa_url" target="_blank" rel="noopener" class="text-leaf-700 hover:underline">开放获取 PDF</a>
-            <a v-if="item.paper?.openalex_id" :href="`https://openalex.org/${item.paper.openalex_id}`" target="_blank" rel="noopener" class="text-leaf-700 hover:underline">OpenAlex 档案</a>
+    <div class="detail-layout">
+      <article class="article-sheet">
+        <header class="article-header">
+          <div class="article-kicker">
+            <span class="category-label">{{ item.category || '资讯' }}</span>
+            <span v-if="item.is_selected" class="selected-label"><ArticleIcon name="insight" />精选推荐</span>
+            <span v-if="item.paper?.direction" class="direction-label">{{ item.paper.direction }}</span>
           </div>
-        </section>
-
-        <section v-if="readingRows.length" class="mt-5 grid sm:grid-cols-2 gap-3" aria-label="论文解读">
-          <div v-for="row in readingRows" :key="row.key"
-            class="rounded-xl border px-4 py-3"
-            :class="row.key === 'opportunity' ? 'sm:col-span-2 border-leaf-200 bg-leaf-50/70' : 'border-stone-200 bg-white'">
-            <div class="text-[11px] font-bold tracking-wide" :class="row.key === 'opportunity' ? 'text-leaf-800' : 'text-stone-500'">{{ row.label }}</div>
-            <p class="mt-1 text-sm text-stone-800 leading-6">{{ row.value }}</p>
+          <h1>{{ item.title }}</h1>
+          <div class="article-meta">
+            <span class="article-source">{{ item.source_name || '未知来源' }}</span>
+            <span class="meta-dot" aria-hidden="true">·</span>
+            <time :datetime="item.published_at || item.created_at">{{ dateLabel }}</time>
+            <span>阅读 {{ item.view_count ?? 0 }}</span>
+            <span v-if="item.hotness >= 60" class="hotness-label">热度 {{ item.hotness }}</span>
           </div>
-        </section>
+          <div class="article-actions">
+            <a :href="primaryUrl" target="_blank" rel="noopener" class="original-link">阅读原文<ArticleIcon name="external" /></a>
+            <span class="reading-time"><ArticleIcon name="clock" />{{ readingTimeLabel }}</span>
+          </div>
+          <div v-if="lede" class="article-takeaway">
+            <p class="takeaway-label"><ArticleIcon name="insight" />核心看点</p>
+            <p class="takeaway-text">{{ lede }}</p>
+          </div>
+        </header>
 
-        <figure v-if="showCover" class="mt-5">
-          <img :src="item.cover_url" :alt="item.title" class="w-full max-h-80 object-cover rounded-xl border border-stone-200" @error="coverFailed = true">
-        </figure>
+        <nav v-if="articleSections.length > 1" aria-label="文章目录" class="article-contents">
+          <span>本文内容</span>
+          <a v-for="section in articleSections" :key="section.id" :href="`#${section.id}`">{{ section.label }}</a>
+        </nav>
 
-        <section class="mt-5">
-          <div class="flex items-center justify-between gap-3 mb-2">
-            <h2 class="text-xs font-bold text-stone-500">{{ item.paper?.card ? '原文摘要' : '摘要' }}</h2>
-            <div v-if="item.summary_zh" class="flex rounded-full border border-leaf-200 overflow-hidden text-[11px] font-medium leading-none">
-              <button type="button" class="px-2.5 py-1" :class="absLang === 'zh' ? 'bg-leaf-700 text-white' : 'text-leaf-700 hover:bg-leaf-50'" @click="absLang = 'zh'">中</button>
-              <button type="button" class="px-2.5 py-1" :class="absLang === 'en' ? 'bg-leaf-700 text-white' : 'text-leaf-700 hover:bg-leaf-50'" @click="absLang = 'en'">EN</button>
+        <div class="article-body">
+          <section v-if="hasPaperMeta" class="paper-record" aria-label="论文信息">
+            <div class="record-heading"><ArticleIcon name="document" /><h2>论文信息</h2></div>
+            <p v-if="authorItems.length" class="paper-authors">
+              <template v-for="(author, index) in authorItems" :key="author.name">
+                <span v-if="index" class="author-separator"> / </span>
+                <a v-if="author.orcid" :href="author.orcid" target="_blank" rel="noopener">{{ author.name }}</a>
+                <span v-else>{{ author.name }}</span>
+              </template>
+              <span v-if="authorRest"> 等 {{ authorTotal }} 人</span>
+            </p>
+            <div class="paper-publication">
+              <span v-if="item.paper?.venue">{{ item.paper.venue }}</span>
+              <span v-if="item.paper?.cited_by_count">被引 {{ item.paper.cited_by_count }} 次</span>
             </div>
-          </div>
-          <p class="text-sm text-stone-700 leading-7 whitespace-pre-line">{{ displayedSummary }}</p>
-        </section>
-
-        <section v-if="item.content" class="mt-6 border-t border-stone-200 pt-5">
-          <h2 class="text-xs font-bold text-stone-500 mb-3">全文</h2>
-          <!-- eslint-disable-next-line vue/no-v-html -- markdown-it html:false -->
-          <div class="prose-body text-sm text-stone-700" v-html="contentHtml"></div>
-        </section>
-        <a v-else :href="primaryUrl" target="_blank" rel="noopener"
-          class="mt-6 inline-flex items-center px-4 py-2 rounded-full bg-leaf-700 text-white text-sm font-medium hover:bg-leaf-800">
-          阅读原文
-        </a>
-
-        <section v-if="tagGroups.length || item.search_phrases?.length" class="mt-6 border-t border-stone-200 pt-5 space-y-4">
-          <div v-for="group in tagGroups" :key="group.kind">
-            <h2 class="text-xs font-bold text-stone-500 mb-2">{{ group.label }}</h2>
-            <div class="flex flex-wrap gap-1.5">
-              <NuxtLink v-for="name in group.names" :key="name" :to="tagPath(name)"
-                class="px-2.5 py-1 text-xs rounded-full bg-leaf-50 text-leaf-700 border border-leaf-100 hover:bg-leaf-100">
-                #{{ name }}
-              </NuxtLink>
+            <div v-if="item.doi || item.paper?.oa_url || item.paper?.openalex_id" class="paper-links">
+              <a v-if="item.doi" :href="`https://doi.org/${item.doi}`" target="_blank" rel="noopener" class="doi-link">DOI: {{ item.doi }}<ArticleIcon name="external" /></a>
+              <a v-if="item.paper?.oa_url" :href="item.paper.oa_url" target="_blank" rel="noopener">开放获取 PDF<ArticleIcon name="external" /></a>
+              <a v-if="item.paper?.openalex_id" :href="`https://openalex.org/${item.paper.openalex_id}`" target="_blank" rel="noopener">OpenAlex 档案<ArticleIcon name="external" /></a>
             </div>
-          </div>
-          <div v-if="item.search_phrases?.length">
-            <h2 class="text-xs font-bold text-stone-500 mb-2">相关检索</h2>
-            <div class="flex flex-wrap gap-2">
-              <NuxtLink v-for="phrase in item.search_phrases" :key="phrase" :to="tagPath(phrase)"
-                class="px-2.5 py-1 text-xs rounded-full bg-white text-stone-700 border border-leaf-200 hover:border-leaf-500 hover:text-leaf-700">
-                {{ phrase }}
-              </NuxtLink>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <div v-if="showAdmin" class="mt-6 pt-5 border-t border-dashed border-stone-200 flex gap-2 justify-end">
-          <button @click="fetchContent" :disabled="fetching"
-            class="px-4 py-1.5 text-xs rounded-full border border-sky-200 text-sky-700 hover:bg-sky-50 disabled:opacity-50">
-            {{ fetching ? '抓取中…' : (item.content ? '重新获取全文' : '获取全文') }}
-          </button>
-          <button @click="showEdit = true"
-            class="px-4 py-1.5 text-xs rounded-full border border-leaf-300 text-leaf-700 hover:bg-leaf-50">编辑</button>
-          <button @click="remove" :disabled="deleting"
-            class="px-4 py-1.5 text-xs rounded-full border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50">
-            {{ deleting ? '删除中…' : '删除' }}
-          </button>
+          <section v-if="readingRows.length" id="paper-reading" class="reading-section" aria-labelledby="paper-reading-title">
+            <div class="section-heading"><h2 id="paper-reading-title">论文解读</h2><span class="section-caption">AI 辅助整理</span></div>
+            <dl class="paper-insights">
+              <div v-for="row in readingRows" :key="row.key" class="insight-row" :class="{ 'insight-opportunity': row.key === 'opportunity' }">
+                <dt>{{ row.label }}</dt><dd>{{ row.value }}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <figure v-if="showCover" class="article-cover">
+            <img :src="item.cover_url" :alt="item.title" decoding="async" @error="coverFailed = true">
+          </figure>
+
+          <section v-if="displayedSummary" id="article-abstract" class="reading-section" aria-labelledby="abstract-title">
+            <div class="section-heading">
+              <h2 id="abstract-title">{{ isPaper ? '论文摘要' : '内容摘要' }}</h2>
+              <div v-if="item.summary_zh" class="language-switch" role="group" aria-label="摘要语言">
+                <button type="button" :aria-pressed="absLang === 'zh'" @click="absLang = 'zh'">中文</button>
+                <button type="button" :aria-pressed="absLang === 'en'" @click="absLang = 'en'">原文</button>
+              </div>
+            </div>
+            <p class="abstract-text" :lang="absLang === 'zh' && item.summary_zh ? 'zh-CN' : undefined">{{ displayedSummary }}</p>
+          </section>
+
+          <section v-if="item.content" id="article-fulltext" class="reading-section fulltext-section" aria-labelledby="fulltext-title">
+            <div class="section-heading"><h2 id="fulltext-title">全文</h2><span class="section-caption">{{ item.source_name }}</span></div>
+            <!-- eslint-disable-next-line vue/no-v-html -- markdown-it html:false -->
+            <div class="prose-body article-prose" v-html="contentHtml"></div>
+          </section>
+
+          <div class="article-end-source">
+            <div><p>{{ isPaper ? '论文原文与出版信息' : '了解完整信息' }}</p><span>{{ item.source_name || '原始来源' }}</span></div>
+            <a :href="primaryUrl" target="_blank" rel="noopener">{{ isPaper ? '查看论文原文' : '前往原文' }}<ArticleIcon name="external" /></a>
+          </div>
+
+          <section v-if="tagGroups.length || item.search_phrases?.length" id="article-topics" class="article-topics" aria-labelledby="topics-title">
+            <div class="section-heading"><h2 id="topics-title">继续探索</h2></div>
+            <div v-for="group in tagGroups" :key="group.kind" class="topic-group">
+              <h3>{{ group.label }}</h3>
+              <div class="topic-links"><NuxtLink v-for="name in group.names" :key="name" :to="tagPath(name)"><span aria-hidden="true">#</span>{{ name }}</NuxtLink></div>
+            </div>
+            <div v-if="item.search_phrases?.length" class="topic-group">
+              <h3>相关检索</h3>
+              <div class="topic-links search-links"><NuxtLink v-for="phrase in item.search_phrases" :key="phrase" :to="tagPath(phrase)">{{ phrase }}<ArticleIcon name="external" /></NuxtLink></div>
+            </div>
+          </section>
+
+          <div v-if="showAdmin" class="article-admin">
+            <span>内容管理</span>
+            <EmbeddingBadge v-if="item.embedding_ready" />
+            <button type="button" @click="fetchContent" :disabled="fetching">{{ fetching ? '抓取中…' : (item.content ? '重新获取全文' : '获取全文') }}</button>
+            <button type="button" @click="showEdit = true">编辑</button>
+            <button type="button" @click="remove" :disabled="deleting" class="delete-action">{{ deleting ? '删除中…' : '删除' }}</button>
+          </div>
         </div>
-
         <ItemEditModal v-if="showEdit" :item="item" @close="showEdit = false" @saved="onSaved" />
-    </div>
-    </article>
+      </article>
 
-    <section v-if="sameTopic.length" class="mt-10">
-      <h2 class="text-lg font-bold text-leaf-800 mb-3">同一主题</h2>
-      <div class="space-y-3">
-        <ItemCard v-for="it in sameTopic" :key="it.id" :item="it" />
-      </div>
-    </section>
-    <section v-if="otherRelated.length" class="mt-8">
-      <h2 class="text-lg font-bold text-leaf-800 mb-3">{{ otherHeading }}</h2>
-      <div class="space-y-3">
-        <ItemCard v-for="it in otherRelated" :key="it.id" :item="it" />
-      </div>
-    </section>
+      <aside class="detail-sidebar" aria-label="文章参考信息">
+        <div class="sidebar-stack" :class="{ 'sidebar-with-score': item.score != null }">
+          <ScorePanel v-if="item.score != null" :score="item.score" :detail="item.score_detail" />
+          <ContextPanel :item="item" />
+          <p class="sidebar-note">摘要与解读由 AI 辅助整理，引用请以原始来源为准。</p>
+        </div>
+      </aside>
+    </div>
+
+    <div v-if="sameTopic.length || otherRelated.length" class="related-reading">
+      <section v-if="sameTopic.length" aria-labelledby="same-topic-title">
+        <div class="related-heading"><div><p>延伸阅读</p><h2 id="same-topic-title">同一主题</h2></div><NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path">查看主题<ArticleIcon name="external" /></NuxtLink></div>
+        <div class="related-grid"><ItemCard v-for="it in sameTopic" :key="it.id" :item="it" /></div>
+      </section>
+      <section v-if="otherRelated.length" aria-labelledby="other-related-title">
+        <div class="related-heading"><div><p v-if="!sameTopic.length">延伸阅读</p><h2 id="other-related-title">{{ otherHeading }}</h2></div></div>
+        <div class="related-grid"><ItemCard v-for="it in otherRelated" :key="it.id" :item="it" /></div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -218,6 +222,23 @@ const displayedSummary = computed(() => {
 })
 const contentHtml = computed(() => renderMarkdown(item.value?.content))
 const isPaper = computed(() => Boolean(item.value?.paper || item.value?.doi))
+const hasPaperMeta = computed(() => Boolean(
+  authorTotal.value || item.value?.paper?.venue || item.value?.paper?.cited_by_count
+  || item.value?.doi || item.value?.paper?.oa_url || item.value?.paper?.openalex_id,
+))
+const readingTimeLabel = computed(() => {
+  const text = [lede.value, displayedSummary.value, item.value?.content, ...readingRows.value.map(row => row.value)].filter(Boolean).join(' ')
+  const chineseCharacters = (text.match(/[\u3400-\u9fff]/g) || []).length
+  const words = text.replace(/[\u3400-\u9fff]/g, ' ').trim().split(/\s+/).filter(Boolean).length
+  const minutes = Math.max(1, Math.ceil(chineseCharacters / 400 + words / 220))
+  return `约 ${minutes} 分钟阅读`
+})
+const articleSections = computed(() => [
+  readingRows.value.length && { id: 'paper-reading', label: '论文解读' },
+  displayedSummary.value && { id: 'article-abstract', label: '摘要' },
+  item.value?.content && { id: 'article-fulltext', label: '全文' },
+  (tagGroups.value.length || item.value?.search_phrases?.length) && { id: 'article-topics', label: '相关主题' },
+].filter(Boolean))
 const lede = computed(() => {
   const card = item.value?.paper?.card
   if (card?.tldr) return card.tldr
@@ -229,7 +250,6 @@ const sourceList = computed(() => {
   if (sources?.length) return sources
   return [{ name: item.value?.source_name, url: item.value?.url }]
 })
-const sourceCount = computed(() => item.value?.sources?.length || 1)
 const primaryUrl = computed(() => sourceList.value[0]?.url || item.value?.url || '#')
 
 const authorItems = computed(() => {
@@ -243,7 +263,6 @@ const readingRows = computed(() => {
   const card = item.value?.paper?.card
   if (!card) return []
   return [
-    { key: 'tldr', label: '速览', value: card.tldr },
     { key: 'method', label: '方法', value: card.method },
     { key: 'finding', label: '发现', value: card.finding },
     { key: 'opportunity', label: '机会点', value: card.opportunity },
@@ -359,3 +378,174 @@ async function remove() {
 }
 
 </script>
+
+<style scoped>
+.item-detail {
+  --article-ink: #20332a;
+  --article-muted: #637168;
+  --article-green: #234e22;
+  --article-line: #e1e8e0;
+  --article-soft: #f4f8f2;
+  --article-paper: #fff;
+  color: var(--article-ink);
+  padding-bottom: 20px;
+}
+.item-detail :is(a, button):focus-visible { outline: 2px solid var(--article-green); outline-offset: 4px; border-radius: 4px; }
+.item-detail svg { width: 18px; height: 18px; flex-shrink: 0; }
+.detail-breadcrumb { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 22px; font-size: 12px; color: var(--article-muted); }
+.back-link { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--article-green); }
+.detail-breadcrumb ol { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.detail-breadcrumb ol svg { width: 12px; height: 12px; }
+.detail-breadcrumb a:hover { color: var(--article-green); text-decoration: underline; text-underline-offset: 4px; }
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 26px; align-items: start; }
+.article-sheet { min-width: 0; overflow: clip; border: 1px solid var(--article-line); border-radius: 20px; background: var(--article-paper); }
+.article-header { padding: 34px 38px 28px; }
+.article-kicker { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+.category-label { font-weight: 700; color: var(--article-green); padding-right: 12px; border-right: 1px solid var(--article-line); letter-spacing: .12em; }
+.category-label:only-child { padding-right: 0; border-right: 0; }
+.selected-label { display: inline-flex; gap: 4px; align-items: center; color: var(--article-green); }
+.selected-label svg { width: 13px; height: 13px; }
+.direction-label { color: var(--article-muted); }
+.article-header h1 { margin-top: 18px; font-size: clamp(26px, 2.5vw, 34px); font-weight: 700; line-height: 1.5; letter-spacing: -.035em; overflow-wrap: anywhere; text-wrap: pretty; }
+.article-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 20px; font-size: 12px; line-height: 1.6; color: var(--article-muted); }
+.article-source { font-weight: 600; color: var(--article-green); overflow-wrap: anywhere; }
+.article-meta time { font-variant-numeric: tabular-nums; }
+.article-meta .meta-dot { margin: 0 -7px; }
+.hotness-label { color: #946324; }
+.article-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 22px; }
+.original-link { display: inline-flex; min-height: 40px; align-items: center; gap: 18px; border-radius: 8px; padding: 8px 15px; background: var(--article-green); color: white; font-size: 13px; font-weight: 500; transition: background .15s; }
+.original-link:hover { background: #327a2d; }
+.reading-time { display: inline-flex; align-items: center; gap: 6px; color: var(--article-muted); font-size: 12px; }
+.reading-time svg { width: 15px; height: 15px; }
+.article-takeaway { margin-top: 28px; padding: 18px 20px; background: var(--article-soft); border-left: 3px solid var(--article-green); border-radius: 0 10px 10px 0; }
+.takeaway-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--article-green); }
+.takeaway-label svg { width: 14px; height: 14px; }
+.takeaway-text { margin-top: 9px; font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', serif; font-size: 16px; font-weight: 500; line-height: 1.9; overflow-wrap: anywhere; }
+.article-contents { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; margin: 0 38px; padding: 10px 0; border-block: 1px solid var(--article-line); font-size: 12px; }
+.article-contents > span { color: var(--article-muted); font-size: 11px; }
+.article-contents a { display: inline-flex; min-height: 30px; align-items: center; color: var(--article-green); }
+.article-contents a:hover { text-decoration: underline; text-underline-offset: 5px; }
+.article-body { padding: 0 38px 32px; }
+.paper-record { margin-top: 28px; padding: 18px 20px; background: var(--article-soft); border: 1px solid var(--article-line); border-radius: 10px; overflow-wrap: anywhere; }
+.record-heading { display: flex; align-items: center; gap: 7px; color: var(--article-muted); font-size: 11px; font-weight: 600; }
+.record-heading svg { width: 15px; height: 15px; }
+.paper-authors { margin-top: 12px; font-size: 13px; line-height: 1.9; }
+.paper-record a { color: var(--article-green); }
+.paper-record a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.author-separator { color: #b3beb2; }
+.paper-publication { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 5px; color: var(--article-muted); font-size: 12px; line-height: 1.7; }
+.paper-links { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 11px; }
+.paper-links a { display: inline-flex; align-items: center; gap: 3px; min-height: 28px; max-width: 100%; }
+.paper-links svg { width: 13px; height: 13px; }
+.doi-link { word-break: break-all; }
+.reading-section { margin-top: 32px; scroll-margin-top: 100px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 17px; }
+.section-heading h2 { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.section-caption { color: var(--article-muted); font-size: 11px; text-align: right; }
+.paper-insights { border: 1px solid var(--article-line); border-radius: 12px; overflow: hidden; }
+.insight-row { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 16px; padding: 19px 20px; }
+.insight-row + .insight-row { border-top: 1px solid var(--article-line); }
+.insight-row dt { padding-top: 3px; font-size: 12px; font-weight: 600; color: var(--article-muted); }
+.insight-row dd { font-size: 14px; line-height: 1.9; overflow-wrap: anywhere; }
+.insight-opportunity { background: var(--article-soft); }
+.insight-opportunity dt { color: var(--article-green); }
+.article-cover { margin-top: 28px; }
+.article-cover img { width: 100%; max-height: 420px; object-fit: contain; border-radius: 10px; background: var(--article-soft); }
+.language-switch { display: inline-flex; gap: 2px; border: 1px solid var(--article-line); background: var(--article-soft); padding: 3px; border-radius: 7px; }
+.language-switch button { min-height: 30px; padding: 4px 11px; border-radius: 5px; color: var(--article-muted); font-size: 11px; }
+.language-switch button[aria-pressed='true'] { background: white; color: var(--article-green); font-weight: 600; box-shadow: 0 1px 3px #20332a14; }
+.language-switch button:hover { color: var(--article-green); }
+.abstract-text { color: #435046; font-size: 15px; line-height: 2.05; white-space: pre-line; overflow-wrap: anywhere; }
+.fulltext-section { border-top: 1px solid var(--article-line); padding-top: 28px; }
+.article-prose { font-size: 15px; line-height: 2; overflow-wrap: anywhere; }
+.article-prose :deep(p) { line-height: 2; margin-bottom: 20px; }
+.article-prose :deep(:is(h1, h2, h3, h4)) { color: var(--article-ink); line-height: 1.65; margin-top: 28px; margin-bottom: 14px; }
+.article-prose :deep(h1) { font-size: 23px; }
+.article-prose :deep(h2) { font-size: 20px; }
+.article-prose :deep(h3) { font-size: 17px; }
+.article-prose :deep(:is(ul, ol)) { margin-block: 16px; }
+.article-prose :deep(li) { padding-left: 3px; line-height: 1.9; }
+.article-prose :deep(blockquote) { background: var(--article-soft); border-left-width: 3px; padding: 14px 20px; border-radius: 0 8px 8px 0; }
+.article-prose :deep(blockquote p:last-child) { margin-bottom: 0; }
+.article-prose :deep(table) { display: block; max-width: 100%; overflow-x: auto; font-size: 13px; }
+.article-prose :deep(pre) { max-width: 100%; font-size: 13px; }
+.article-end-source { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-top: 32px; padding: 20px 0; border-block: 1px solid var(--article-line); }
+.article-end-source p { font-size: 13px; font-weight: 500; }
+.article-end-source span { display: block; margin-top: 5px; color: var(--article-muted); font-size: 11px; overflow-wrap: anywhere; }
+.article-end-source a { display: inline-flex; align-items: center; gap: 6px; color: var(--article-green); font-size: 12px; min-height: 36px; }
+.article-end-source a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.article-topics { padding-top: 28px; scroll-margin-top: 100px; }
+.topic-group { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: start; gap: 8px 12px; margin-top: 14px; }
+.topic-group h3 { font-size: 11px; color: var(--article-muted); padding-top: 9px; }
+.topic-links { display: flex; flex-wrap: wrap; gap: 7px; }
+.topic-links a { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; max-width: 100%; padding: 6px 10px; border-radius: 6px; background: var(--article-soft); border: 1px solid transparent; color: var(--article-green); font-size: 12px; overflow-wrap: anywhere; }
+.topic-links a > span { opacity: .45; }
+.topic-links a:hover { border-color: #b5ccb0; background: #eaf2e6; }
+.search-links a { background: white; border-color: var(--article-line); color: var(--article-muted); }
+.search-links svg { width: 13px; height: 13px; }
+.article-admin { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px 14px; margin-top: 28px; border-top: 1px dashed var(--article-line); padding-top: 18px; font-size: 11px; }
+.article-admin > span { color: var(--article-muted); margin-right: auto; }
+.article-admin button { min-height: 32px; color: var(--article-green); }
+.article-admin button:hover { text-decoration: underline; }
+.article-admin button:disabled { opacity: .5; }
+.article-admin .delete-action { color: #b64d43; }
+.detail-sidebar { min-width: 0; position: sticky; top: 96px; }
+.sidebar-stack { display: grid; gap: 18px; }
+.sidebar-note { font-size: 11px; color: var(--article-muted); line-height: 1.9; padding-inline: 8px; }
+.related-reading { display: grid; gap: 32px; margin-top: 42px; }
+.related-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.related-heading p { font-size: 11px; color: var(--article-muted); margin-bottom: 5px; }
+.related-heading h2 { font-size: 20px; font-weight: 700; }
+.related-heading > a { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 12px; color: var(--article-green); }
+.related-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+@media (max-width: 1023px) {
+  .detail-layout { grid-template-columns: minmax(0, 1fr) 224px; gap: 18px; }
+  .article-header { padding: 28px; }
+  .article-contents { margin-inline: 28px; gap: 4px 14px; }
+  .article-body { padding-inline: 28px; }
+  .article-header h1 { font-size: 28px; }
+}
+@media (max-width: 767px) {
+  .detail-breadcrumb { margin-bottom: 14px; gap: 10px; font-size: 11px; }
+  .detail-breadcrumb ol { gap: 4px; }
+  .detail-breadcrumb ol li:nth-last-child(-n+2) { display: none; }
+  .detail-layout { grid-template-columns: minmax(0, 1fr); gap: 22px; }
+  .article-sheet { border-radius: 14px; }
+  .article-header { padding: 24px 22px; }
+  .article-header h1 { font-size: 26px; line-height: 1.55; margin-top: 16px; }
+  .article-meta { margin-top: 16px; gap: 7px 12px; font-size: 11px; }
+  .article-actions { margin-top: 20px; }
+  .article-takeaway { margin-top: 24px; padding: 16px; }
+  .takeaway-text { font-size: 15px; }
+  .article-contents { margin-inline: 22px; gap: 4px 14px; }
+  .article-contents > span { display: none; }
+  .article-body { padding: 0 22px 24px; }
+  .paper-record { padding: 16px; }
+  .reading-section, .article-topics { scroll-margin-top: 148px; }
+  .insight-row { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 16px; }
+  .insight-row dt { padding: 0; }
+  .detail-sidebar { position: static; }
+  .sidebar-stack { grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+  .sidebar-with-score { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sidebar-note { grid-column: 1 / -1; }
+  .related-grid { grid-template-columns: minmax(0, 1fr); }
+  .related-reading { margin-top: 32px; }
+  .original-link, .language-switch button, .topic-links a, .article-end-source a, .article-admin button { min-height: 44px; }
+  .paper-links a { min-height: 36px; }
+}
+@media (max-width: 479px) {
+  .article-header { padding-inline: 19px; }
+  .article-body { padding-inline: 19px; }
+  .article-contents { margin-inline: 19px; }
+  .article-header h1 { font-size: 24px; }
+  .article-kicker { gap: 8px; font-size: 11px; }
+  .abstract-text, .article-prose { font-size: 14px; }
+  .sidebar-stack { grid-template-columns: minmax(0, 1fr); }
+  .topic-group { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .topic-group h3 { padding: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .original-link { transition: none; }
+}
+</style>

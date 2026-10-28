@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen flex flex-col">
     <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-leaf-100">
-      <div class="max-w-4xl mx-auto px-4">
+      <div class="mx-auto px-4" :class="isItemDetail ? 'max-w-6xl' : 'max-w-4xl'">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between md:gap-4">
           <NuxtLink to="/" aria-label="AgriHot 首页" class="flex w-fit shrink-0 items-center gap-2.5 pt-3 pb-2 md:py-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">
             <BrandMark class="w-8 h-8" />
@@ -27,7 +27,7 @@
       </div>
     </header>
 
-    <main class="flex-1 w-full max-w-4xl mx-auto px-4 py-6">
+    <main class="flex-1 w-full mx-auto px-4 py-6" :class="isItemDetail ? 'max-w-6xl' : 'max-w-4xl'">
       <slot />
     </main>
 
@@ -53,6 +53,7 @@ const route = useRoute()
 const router = useRouter()
 const showAdmin = useClientAdmin()
 const session = useAdminSession()
+const isItemDetail = computed(() => route.path.startsWith('/items/'))
 
 function onAdminClick() {
   session.hydrateFromStorage()
