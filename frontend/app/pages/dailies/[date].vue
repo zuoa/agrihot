@@ -27,13 +27,18 @@
       <div v-if="sharing" class="share-backdrop" @click.self="closeShare" @keydown="shareKeydown">
         <section ref="shareDialog" class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="share-title" tabindex="-1">
           <div class="share-heading"><h2 id="share-title">分享本期日报</h2><button type="button" aria-label="关闭分享" @click="closeShare"><ArticleIcon name="close" /></button></div>
-          <div v-if="!shareImg" class="site-empty" role="status"><p>正在生成分享图片…</p></div>
-          <img v-else :src="shareImg" alt="日报分享图" class="share-preview" />
-          <a v-if="shareImg" :href="shareImg" :download="`agrihot-daily-${daily.date}.png`" class="site-button share-download">保存图片</a>
-          <p class="share-hint">手机端可长按图片保存，扫码可进入本期日报</p>
+          <div class="share-body" :aria-busy="!shareImg && !shareError">
+            <div v-if="shareError" class="site-empty" role="alert"><p>{{ shareError }}</p><button type="button" class="site-button site-button-secondary" @click="openShare">重新生成</button></div>
+            <div v-else-if="!shareImg" class="site-empty" role="status"><p>正在生成分享图片…</p></div>
+            <img v-else :src="shareImg" :alt="`${daily.date} 农业农村日报分享图`" class="share-preview" />
+          </div>
+          <div v-if="shareImg" class="share-actions">
+            <a :href="shareImg" :download="`agrihot-daily-${daily.date}.png`" class="site-button share-download">保存高清图片<ArticleIcon name="download" /></a>
+            <p class="share-hint">手机端可长按图片保存 · 扫码阅读本期日报</p>
+          </div>
         </section>
       </div>
-      <div v-if="sharing" style="position: fixed; left: -9999px; top: 0"><DailyShareCard v-if="shareQr" ref="shareCard" :daily="daily" :qr="shareQr" /></div>
+      <div v-if="sharing" class="share-render" aria-hidden="true"><DailyShareCard v-if="shareQr" ref="shareCard" :daily="daily" :qr="shareQr" /></div>
     </ClientOnly>
   </div>
 </template>
@@ -47,11 +52,15 @@ const requestURL = useRequestURL()
 const sharing = ref(false)
 const shareQr = ref('')
 const shareImg = ref('')
+const shareError = ref('')
 const shareCard = ref(null)
 const shareDialog = ref(null)
 const shareTrigger = ref(null)
 const generating = ref(false)
 const generateMsg = ref('')
+let shareAttempt = 0
+
+onBeforeUnmount(() => { shareAttempt++ })
 
 const { data, pending, error, refresh } = await useAsyncData(
   () => `daily-${route.params.date}`,
@@ -99,9 +108,11 @@ usePageSeo(() => {
 })
 
 function closeShare() {
+  shareAttempt++
   sharing.value = false
   shareQr.value = ''
   shareImg.value = ''
+  shareError.value = ''
   shareTrigger.value?.focus()
 }
 
@@ -127,20 +138,34 @@ function shareKeydown(event) {
 
 async function openShare() {
   closeShare()
+  const attempt = shareAttempt
   sharing.value = true
   await nextTick()
   shareDialog.value?.focus()
-  const [{ default: QRCode }, { toPng }] = await Promise.all([
-    import('qrcode'),
-    import('html-to-image'),
-  ])
-  const url = `${requestURL.origin}/dailies/${daily.value.date}`
-  shareQr.value = await QRCode.toDataURL(url, {
-    width: 264, margin: 1,
-    color: { dark: '#1e401e', light: '#ffffff' },
-  })
-  await nextTick()
-  shareImg.value = await toPng(shareCard.value.$el, { pixelRatio: 2, cacheBust: true })
+  try {
+    const [{ default: QRCode }, { toPng }] = await Promise.all([
+      import('qrcode'),
+      import('html-to-image'),
+    ])
+    const url = `${requestURL.origin}/dailies/${daily.value.date}`
+    const qr = await QRCode.toDataURL(url, {
+      width: 528, margin: 4,
+      color: { dark: '#234e22', light: '#ffffff' },
+    })
+    if (attempt !== shareAttempt) return
+    shareQr.value = qr
+    await nextTick()
+    const card = shareCard.value.$el
+    await Promise.all([
+      document.fonts.ready,
+      ...Array.from(card.querySelectorAll('img'), (img) => img.decode()),
+    ])
+    if (attempt !== shareAttempt) return
+    const png = await toPng(card, { pixelRatio: 2, cacheBust: true })
+    if (attempt === shareAttempt) shareImg.value = png
+  } catch {
+    if (attempt === shareAttempt) shareError.value = '图片生成失败，请重新生成。'
+  }
 }
 
 async function regenerate() {
@@ -181,14 +206,17 @@ async function regenerate() {
 .daily-outline nav a > span:last-child { color: #637168; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; }
 .daily-outline .site-text-link { margin-top: 12px; font-size: 11px; }
 .share-backdrop { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 20px; background: #14211bc2; backdrop-filter: blur(4px); }
-.share-dialog { width: 100%; max-width: 390px; max-height: calc(100dvh - 40px); overflow-y: auto; border-radius: 16px; background: white; padding: 22px; }
-.share-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.share-dialog { display: flex; flex-direction: column; width: 100%; max-width: 460px; max-height: calc(100dvh - 40px); overflow: hidden; border: 1px solid #e1e8e0; border-radius: 18px; background: white; box-shadow: 0 24px 80px #14211b33; }
+.share-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 22px; border-bottom: 1px solid #e1e8e0; }
 .share-heading h2 { font-size: 17px; font-weight: 650; }
-.share-heading button { display: grid; place-items: center; width: 36px; height: 36px; color: #637168; border-radius: 6px; }
+.share-heading button { display: grid; place-items: center; width: 44px; height: 44px; color: #637168; border-radius: 8px; }
 .share-heading button:hover { background: #f4f8f2; }
 .share-heading svg { width: 20px; height: 20px; }
-.share-preview { width: 100%; border: 1px solid #e1e8e0; border-radius: 8px; }
-.share-download { width: 100%; margin-top: 18px; }
-.share-hint { margin-top: 14px; color: #637168; font-size: 11px; text-align: center; line-height: 1.9; }
+.share-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px; background: #f4f8f2; }
+.share-preview { display: block; width: 100%; border: 1px solid #dce6d8; border-radius: 10px; }
+.share-actions { flex-shrink: 0; padding: 16px 22px; border-top: 1px solid #e1e8e0; }
+.share-download { width: 100%; min-height: 44px; }
+.share-hint { margin-top: 10px; color: #637168; font-size: 11px; text-align: center; line-height: 1.9; }
+.share-render { position: fixed; left: -9999px; top: 0; width: 750px; pointer-events: none; }
 @media (max-width: 767px) { .daily-highlights { padding: 22px 20px; } .daily-highlights li { font-size: 13px; } .daily-outline { display: none; } .daily-mobile-contents { display: flex; } }
 </style>

@@ -8,6 +8,7 @@
 const props = defineProps({ name: { type: String, required: true } })
 const icons = {
   external: ['M7 17 17 7M7 7h10v10'],
+  download: ['M12 3v12m-5-5 5 5 5-5', 'M5 16v4h14v-4'],
   back: ['M19 12H5m6-6-6 6 6 6'],
   chevron: ['m9 5 7 7-7 7'],
   link: ['M10 13a5 5 0 0 0 7 .5l3-3a5 5 0 0 0-7-7l-2 2', 'M14 11a5 5 0 0 0-7-.5l-3 3a5 5 0 0 0 7 7l2-2'],
