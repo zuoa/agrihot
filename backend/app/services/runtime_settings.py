@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..models import PipelineState, utcnow
+from .cron_schedule import daily_cron, validate_cron
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ OVERRIDABLE: dict[str, tuple[type, int | None, int | None]] = {
     "content_fetch_enabled": (bool, None, None),
     "specials_enabled": (bool, None, None),
     "specials_time": (str, None, None),
+    "specials_cron": (str, None, None),
     "specials_max_new": (int, 1, 20),
     "specials_max_updates": (int, 1, 50),
 }
@@ -87,6 +89,8 @@ def _coerce(key: str, raw: Any) -> Any:
         return value
     # str — schedule times
     text = str(raw).strip()
+    if key == "specials_cron":
+        return validate_cron(text)
     if key.endswith("_time") and not _valid_hhmm(text):
         raise ValueError(f"{key} 应为 HH:MM")
     return text
@@ -99,6 +103,10 @@ def get(key: str) -> Any:
             return _coerce(key, _overrides[key])
         except ValueError:
             log.warning("ignoring invalid override %s=%r", key, _overrides[key])
+    if key == "specials_cron":
+        if "specials_time" in _overrides:
+            return daily_cron(get("specials_time"))
+        return settings.specials_cron or daily_cron(settings.specials_time)
     return getattr(settings, key)
 
 
@@ -122,6 +130,11 @@ def snapshot() -> dict[str, dict[str, Any]]:
     """writable key -> {value, source} for the admin settings page."""
     out: dict[str, dict[str, Any]] = {}
     for key in OVERRIDABLE:
+        if key == "specials_time":
+            continue  # Accepted for old clients; the editor now exposes the effective cron.
+        if key == "specials_cron":
+            out[key] = {"value": get(key), "source": "override" if key in _overrides or "specials_time" in _overrides else "env"}
+            continue
         if key in _overrides:
             try:
                 out[key] = {"value": _coerce(key, _overrides[key]), "source": "override"}
@@ -155,6 +168,8 @@ async def patch(session: AsyncSession, updates: dict[str, Any]) -> dict[str, dic
         if raw is None:
             continue
         coerced[key] = _coerce(key, raw)
+    if "specials_time" in coerced and "specials_cron" not in coerced:
+        coerced["specials_cron"] = daily_cron(coerced["specials_time"])
     merged = dict(_overrides)
     merged.update(coerced)
     row = await session.get(PipelineState, STATE_KEY)

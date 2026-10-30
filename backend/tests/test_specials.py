@@ -317,10 +317,10 @@ async def test_schedule_only_runs_once_after_business_time(database, monkeypatch
         calls.append(name)
         return True
     monkeypatch.setattr(special_scheduler.job_runner, 'spawn', spawn)
-    await special_scheduler.tick(datetime(2026, 10, 30, 8, 29, tzinfo=ZoneInfo('Asia/Shanghai')))
+    await special_scheduler.tick(datetime(2026, 10, 30, 9, 59, tzinfo=ZoneInfo('Asia/Shanghai')))
     assert calls == []
     for _ in range(2):
-        await special_scheduler.tick(datetime(2026, 10, 30, 8, 31, tzinfo=ZoneInfo('Asia/Shanghai')))
+        await special_scheduler.tick(datetime(2026, 10, 30, 10, 0, tzinfo=ZoneInfo('Asia/Shanghai')))
     assert calls == ['specials_generate']
 
 
@@ -389,3 +389,116 @@ async def test_timeline_dates_require_source_support(database, material):
     doc['timeline'][0]['date'] = '2001-01-01'
     with pytest.raises(ValueError, match='时间线日期'):
         service.validate_evidence(doc, sources)
+
+
+@pytest.mark.asyncio
+async def test_cron_multiple_daily_slots_and_worker_restart(database, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.services import runtime_settings, special_scheduler
+    monkeypatch.setattr(special_scheduler, 'SessionLocal', database)
+    async with database() as session:
+        await runtime_settings.patch(session, {'specials_cron': '0 10,18 * * *'})
+        await session.commit()
+    calls = []
+    async def spawn(name):
+        calls.append(name)
+        return True
+    monkeypatch.setattr(special_scheduler.job_runner, 'spawn', spawn)
+    for hour in (10, 10, 17, 18, 18):
+        runtime_settings.reset()  # The next tick loads the persisted config and deduplication marker.
+        await special_scheduler.tick(datetime(2026, 10, 30, hour, 0, tzinfo=ZoneInfo('Asia/Shanghai')))
+    assert calls == ['specials_generate', 'specials_generate']
+
+
+@pytest.mark.asyncio
+async def test_cron_weekdays_runtime_changes_and_disabled_schedule(database, monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.services import runtime_settings, special_scheduler
+    monkeypatch.setattr(special_scheduler, 'SessionLocal', database)
+    async def configure(**values):
+        async with database() as session:
+            await runtime_settings.patch(session, values)
+            await session.commit()
+    await configure(specials_cron='0 10 * * 1-5')
+    calls = []
+    async def spawn(name):
+        calls.append(name)
+        return True
+    monkeypatch.setattr(special_scheduler.job_runner, 'spawn', spawn)
+    zone = ZoneInfo('Asia/Shanghai')
+    await special_scheduler.tick(datetime(2026, 10, 31, 10, 0, tzinfo=zone))  # Saturday
+    assert calls == []
+    await configure(specials_cron='*/15 * * * *')
+    await special_scheduler.tick(datetime(2026, 10, 31, 10, 15, tzinfo=zone))
+    assert len(calls) == 1
+    await configure(specials_enabled=False)
+    await special_scheduler.tick(datetime(2026, 10, 31, 10, 30, tzinfo=zone))
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_daily_setting_migrates_to_cron(database, monkeypatch):
+    import json
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.models import PipelineState
+    from app.services import runtime_settings, special_scheduler
+    monkeypatch.setattr(special_scheduler, 'SessionLocal', database)
+    async with database() as session:
+        session.add(PipelineState(key=runtime_settings.STATE_KEY, value=json.dumps({'specials_time': '11:45'})))
+        session.add(PipelineState(key='specials:last_scheduled_day', value='2026-10-30'))
+        await session.commit()
+        await runtime_settings.load(session)
+    assert runtime_settings.snapshot()['specials_cron']['value'] == '45 11 * * *'
+    assert 'specials_time' not in runtime_settings.snapshot()
+    calls = []
+    async def spawn(name):
+        calls.append(name)
+        return True
+    monkeypatch.setattr(special_scheduler.job_runner, 'spawn', spawn)
+    await special_scheduler.tick(datetime(2026, 10, 30, 11, 45, tzinfo=ZoneInfo('Asia/Shanghai')))
+    assert calls == []  # Do not repeat today's legacy run during migration.
+    async with database() as session:
+        await runtime_settings.patch(session, {'specials_cron': '0 12 * * *'})
+        await session.commit()
+    assert runtime_settings.get('specials_cron') == '0 12 * * *'
+    await special_scheduler.tick(datetime(2026, 10, 30, 12, 0, tzinfo=ZoneInfo('Asia/Shanghai')))
+    assert calls == ['specials_generate']
+
+
+@pytest.mark.asyncio
+async def test_admin_cron_preview_and_persistence(database, client):
+    from app.services import runtime_settings
+    headers = {'X-Admin-Token': issue_admin_token()}
+    assert (await client.post('/api/v1/admin/settings/specials-preview', json={'expression': '0 10 * * *'})).status_code == 401
+    before = (await client.get('/api/v1/admin/settings', headers=headers)).json()
+    response = await client.post('/api/v1/admin/settings/specials-preview', headers=headers, json={'expression': '0 10,18 * * *'})
+    assert response.status_code == 200, response.text
+    assert len(response.json()['next_runs']) == 3
+    assert response.json()['timezone'] == 'Asia/Shanghai'
+    after = (await client.get('/api/v1/admin/settings', headers=headers)).json()
+    assert before['writable'] == after['writable']  # Preview does not save a draft.
+    saved = await client.patch('/api/v1/admin/settings', headers=headers, json={'specials_cron': ' 0   10,18 * * * '})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()['writable']['specials_cron']['value'] == '0 10,18 * * *'
+    runtime_settings.reset()
+    async with database() as session:
+        await runtime_settings.load(session)
+    assert runtime_settings.get('specials_cron') == '0 10,18 * * *'
+    for expression in ('bad', '0 0 10 * * *', '@daily', '0 25 * * *', '0 0 30 2 *'):
+        invalid = await client.patch('/api/v1/admin/settings', headers=headers, json={'specials_cron': expression})
+        assert invalid.status_code == 422, invalid.text
+    assert runtime_settings.get('specials_cron') == '0 10,18 * * *'
+
+
+def test_cron_next_runs_use_business_timezone_and_support_intervals():
+    from datetime import datetime, timezone
+    from app.services.cron_schedule import cron_preview
+    result = cron_preview('0 10 * * *', 'Asia/Shanghai', now=datetime(2026, 10, 30, 1, 59, tzinfo=timezone.utc))
+    assert result['next_runs'][0] == datetime(2026, 10, 30, 2, 0, tzinfo=timezone.utc)
+    result = cron_preview('0 */6 * * *', 'Asia/Shanghai', now=datetime(2026, 10, 30, 1, 0, tzinfo=timezone.utc))
+    assert result['next_runs'][0] == datetime(2026, 10, 30, 4, 0, tzinfo=timezone.utc)
+    result = cron_preview('0 10 * * MON-FRI', 'Asia/Shanghai', now=datetime(2026, 10, 30, 3, 0, tzinfo=timezone.utc))
+    assert result['next_runs'][0] == datetime(2026, 11, 2, 2, 0, tzinfo=timezone.utc)

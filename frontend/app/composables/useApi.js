@@ -96,6 +96,7 @@ export function useApi() {
     adminJobs: () => adminFetch('/admin/jobs'),
     adminRunJob: (name, body = {}) => adminFetch(`/admin/jobs/${name}/run`, { method: 'POST', body }),
     adminSettings: () => adminFetch('/admin/settings'),
+    adminPreviewSpecialCron: (expression) => adminFetch('/admin/settings/specials-preview', { method: 'POST', body: { expression } }),
     adminPatchSettings: (patch) => adminFetch('/admin/settings', { method: 'PATCH', body: patch }),
     adminWatchlist: () => adminFetch('/admin/watchlist'),
     adminPutWatchlist: (data) => adminFetch('/admin/watchlist', { method: 'PUT', body: data }),

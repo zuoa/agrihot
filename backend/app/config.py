@@ -1,5 +1,5 @@
 """Application settings, loaded from environment / .env file."""
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     # 与容器/服务器系统时区解耦（生产容器默认 UTC，不能用它切日界）
     daily_timezone: str = "Asia/Shanghai"
     specials_enabled: bool = True
-    specials_time: str = "08:30"
+    specials_time: str = "10:00"
+    # Empty preserves a legacy SPECIALS_TIME setting; the effective default is 0 10 * * *.
+    specials_cron: str = ""
     specials_max_new: int = 3
     specials_max_updates: int = 10
     tavily_api_key: str = ""
@@ -71,6 +73,12 @@ class Settings(BaseSettings):
     site_url: str = "https://agrihot.com"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    @field_validator("specials_cron")
+    @classmethod
+    def valid_specials_cron(cls, value: str) -> str:
+        from .services.cron_schedule import validate_cron
+        return validate_cron(value) if value.strip() else ""
 
 
 settings = Settings()

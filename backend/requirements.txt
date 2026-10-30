@@ -13,6 +13,7 @@ pyyaml>=6.0
 aiosqlite>=0.20
 # IANA 时区数据库：zoneinfo 在精简容器镜像里缺少系统 tzdata 时的兜底
 tzdata>=2024.1
+croniter>=6,<7
 mcp>=1.26,<2
 pgvector>=0.4,<1
 jieba>=0.42.1,<1

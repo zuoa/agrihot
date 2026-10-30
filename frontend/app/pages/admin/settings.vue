@@ -62,8 +62,12 @@
 
     <section class="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
       <h2 class="text-sm font-bold">热点专题</h2>
-      <label class="flex items-center gap-2 text-sm"><input v-model="form.specials_enabled" type="checkbox" class="accent-leaf-700">每天自动发现与发布</label>
-      <label class="block text-sm"><span class="text-xs text-stone-500">运行时刻（业务时区）</span><input v-model="form.specials_time" type="time" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label>
+      <label class="flex items-center gap-2 text-sm"><input v-model="form.specials_enabled" type="checkbox" class="accent-leaf-700">按计划自动发现与发布</label>
+      <label class="block text-sm"><span class="text-xs text-stone-500">Cron 表达式 {{ source('specials_cron') }}</span><input v-model="form.specials_cron" type="text" maxlength="100" spellcheck="false" placeholder="0 10 * * *" aria-describedby="specials-cron-help specials-cron-error" :aria-invalid="!!cronError" class="mt-1 w-full px-3 py-2 rounded-md border border-stone-200 font-mono"></label>
+      <p id="specials-cron-help" class="text-xs text-stone-500">五段格式：分 时 日 月 周。使用 {{ readonly?.daily_timezone || 'Asia/Shanghai' }} 时区，不包含秒或年份。</p>
+      <div class="flex flex-wrap gap-2"><button v-for="preset in cronPresets" :key="preset.value" type="button" class="text-xs px-2.5 py-1.5 rounded border border-stone-200 hover:bg-stone-50" @click="form.specials_cron = preset.value">{{ preset.label }}</button></div>
+      <p v-if="cronError" id="specials-cron-error" role="alert" class="text-xs text-red-600">{{ cronError }}</p>
+      <div v-else class="text-xs text-stone-500" aria-live="polite"><p>{{ cronLoading ? '正在计算运行时间…' : `${form.specials_enabled ? '接下来计划运行' : '当前已停用，启用后按以下时间运行'}（${cronPreview?.timezone || readonly?.daily_timezone || 'Asia/Shanghai'}）` }}</p><ul v-if="!cronLoading && cronPreview" aria-label="接下来三次运行时间" class="mt-1.5 space-y-1"><li v-for="time in cronPreview.next_runs" :key="time">{{ formatCronTime(time) }}</li></ul></div>
       <div class="grid grid-cols-2 gap-3"><label class="block text-xs text-stone-500">每轮最多新建<input v-model.number="form.specials_max_new" type="number" min="1" max="20" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label><label class="block text-xs text-stone-500">每轮最多更新<input v-model.number="form.specials_max_updates" type="number" min="1" max="50" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label></div>
       <p class="text-xs text-stone-500">DeepSeek 综合站内资料；外部优先补原始论文，配置 Tavily 后同时检索权威网页。</p>
     </section>
@@ -87,7 +91,7 @@
     </section>
 
     <p v-if="msg" class="text-xs" :class="ok ? 'text-leaf-700' : 'text-red-600'">{{ msg }}</p>
-    <button type="submit" :disabled="saving"
+    <button type="submit" :disabled="saving || !!cronError || cronLoading"
       class="px-4 py-2 text-sm rounded-lg bg-leaf-700 text-white hover:bg-leaf-800 disabled:opacity-50">
       {{ saving ? '保存中…' : '保存配置' }}
     </button>
@@ -111,6 +115,35 @@ const ok = ref(false)
 const form = reactive({})
 const sources = ref({})
 const readonly = ref(null)
+const cronPreview = ref(null)
+const cronError = ref('')
+const cronLoading = ref(false)
+const cronPresets = [
+  { value: '0 10 * * *', label: '每天 10:00' },
+  { value: '0 10,18 * * *', label: '每天 10:00、18:00' },
+  { value: '0 10 * * 1-5', label: '工作日 10:00' },
+]
+
+function formatCronTime(value) {
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: cronPreview.value?.timezone || 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value))
+}
+
+watch(() => form.specials_cron, (expression, _old, cleanup) => {
+  let cancelled = false
+  cronError.value = ''
+  cronLoading.value = true
+  const timer = setTimeout(async () => {
+    try {
+      const preview = await api.adminPreviewSpecialCron(expression || '')
+      if (!cancelled) cronPreview.value = preview
+    } catch (e) {
+      if (!cancelled) cronError.value = e.message
+    } finally {
+      if (!cancelled) cronLoading.value = false
+    }
+  }, 300)
+  cleanup(() => { cancelled = true; clearTimeout(timer) })
+})
 
 function source(key) {
   return sources.value[key] === 'override' ? '· 已覆盖' : '· 环境默认'
@@ -118,6 +151,7 @@ function source(key) {
 
 function apply(data) {
   readonly.value = data.readonly
+  cronPreview.value = data.specials_schedule
   for (const [k, v] of Object.entries(data.writable)) {
     form[k] = v.value
     sources.value[k] = v.source

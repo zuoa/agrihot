@@ -34,6 +34,7 @@ from ...schemas import (
     OverviewOut,
     SchedulerInfoOut,
     SettingValueOut,
+    SpecialCronPreviewIn,
     WatchlistOut,
 )
 from ...security import (
@@ -413,6 +414,18 @@ async def run_job(
 
 # ---------- settings / watchlist ----------
 
+def _specials_schedule(expression: str | None = None) -> dict:
+    from ...services.cron_schedule import cron_preview
+    return cron_preview(expression or runtime_settings.get("specials_cron"), str(daily_service.business_tz()))
+
+
+@router.post("/settings/specials-preview")
+async def preview_specials_schedule(payload: SpecialCronPreviewIn, _: None = Depends(require_admin)):
+    try:
+        return _specials_schedule(payload.expression)
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc))
+
 @router.get("/settings", response_model=AdminSettingsOut)
 async def get_settings(_: None = Depends(require_admin)) -> AdminSettingsOut:
     writable = {
@@ -422,6 +435,7 @@ async def get_settings(_: None = Depends(require_admin)) -> AdminSettingsOut:
     return AdminSettingsOut(
         writable=writable,
         readonly=AdminSettingsReadonly(**runtime_settings.readonly_snapshot()),
+        specials_schedule=_specials_schedule(),
     )
 
 
@@ -446,6 +460,7 @@ async def patch_settings(
     return AdminSettingsOut(
         writable=writable,
         readonly=AdminSettingsReadonly(**runtime_settings.readonly_snapshot()),
+        specials_schedule=_specials_schedule(),
     )
 
 

@@ -88,6 +88,11 @@ class AdminSettingsReadonly(BaseModel):
 class AdminSettingsOut(BaseModel):
     writable: dict[str, SettingValueOut]
     readonly: AdminSettingsReadonly
+    specials_schedule: dict = Field(default_factory=dict)
+
+
+class SpecialCronPreviewIn(BaseModel):
+    expression: str = Field(min_length=1, max_length=100)
 
 
 class AdminSettingsPatch(BaseModel):
@@ -104,8 +109,15 @@ class AdminSettingsPatch(BaseModel):
     content_fetch_enabled: bool | None = None
     specials_enabled: bool | None = None
     specials_time: str | None = None
+    specials_cron: str | None = Field(default=None, max_length=100)
     specials_max_new: int | None = Field(default=None, ge=1, le=20)
     specials_max_updates: int | None = Field(default=None, ge=1, le=50)
+
+    @field_validator("specials_cron")
+    @classmethod
+    def cron_expression(cls, value: str | None) -> str | None:
+        from .services.cron_schedule import validate_cron
+        return validate_cron(value) if value is not None else None
 
     @field_validator("daily_generate_time", "literature_fetch_time", "specials_time")
     @classmethod
