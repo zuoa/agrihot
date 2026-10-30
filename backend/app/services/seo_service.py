@@ -68,6 +68,10 @@ async def sitemap_xml(session: AsyncSession) -> Response:
     add("/", changefreq="daily", priority="1.0")
     add("/feed", changefreq="hourly", priority="0.9")
     add("/dailies", changefreq="daily", priority="0.9")
+    add("/specials", changefreq="daily", priority="0.9")
+    from .special_service import public_specials
+    for special, version in await public_specials(session):
+        add(f"/specials/{special.id}", _lastmod(version.created_at), "daily", "0.8")
     add("/tags", changefreq="daily", priority="0.7")
     from .taxonomy_service import tree
     taxonomy = await tree(session)

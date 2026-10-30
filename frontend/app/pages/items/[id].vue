@@ -133,6 +133,10 @@
       </aside>
     </div>
 
+    <section v-if="itemSpecials?.specials?.length" class="related-reading" aria-label="所属专题">
+      <div class="related-heading"><h2>在专题中理解这篇文章</h2><NuxtLink to="/specials">全部专题</NuxtLink></div>
+      <div class="related-grid"><SpecialCard v-for="special in itemSpecials.specials" :key="special.id" :special="special" /></div>
+    </section>
     <section v-if="recommendations.length" class="related-reading" aria-labelledby="related-reading-title">
       <div class="related-heading">
         <h2 id="related-reading-title">相关阅读</h2>
@@ -190,6 +194,12 @@ const { data: relatedData } = await useLazyAsyncData(
       return { items: [], similar: [], forItemId: id }
     }
   },
+  { watch: [() => route.params.id] },
+)
+
+const { data: itemSpecials } = await useLazyAsyncData(
+  () => `item-specials:${route.params.id}`,
+  () => api.specials({ item_id: route.params.id }).catch(() => ({ specials: [] })),
   { watch: [() => route.params.id] },
 )
 

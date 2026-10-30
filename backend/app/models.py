@@ -111,6 +111,51 @@ class PipelineState(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class Special(Base):
+    """An editorial storyline, distinct from the permanent Topic taxonomy."""
+    __tablename__ = "specials"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(20))  # event | research
+    title: Mapped[str] = mapped_column(String(200))
+    scope: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="draft", index=True)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    locked_fields: Mapped[list] = mapped_column(JSON, default=list)
+    rank: Mapped[int] = mapped_column(Integer, default=0)
+    merged_into: Mapped[int | None] = mapped_column(ForeignKey("specials.id"))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    external_status: Mapped[str] = mapped_column(String(40), default="not_run")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    content_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SpecialItem(Base):
+    __tablename__ = "special_items"
+
+    special_id: Mapped[int] = mapped_column(ForeignKey("specials.id", ondelete="CASCADE"), primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    role: Mapped[str] = mapped_column(String(20), default="core")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence_group: Mapped[str] = mapped_column(String(100), default="")
+
+
+class SpecialVersion(Base):
+    __tablename__ = "special_versions"
+    __table_args__ = (Index("ix_special_versions_latest", "special_id", "id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    special_id: Mapped[int] = mapped_column(ForeignKey("specials.id", ondelete="CASCADE"), index=True)
+    input_hash: Mapped[str] = mapped_column(String(64))
+    document: Mapped[dict] = mapped_column(JSON)
+    sources: Mapped[list] = mapped_column(JSON)
+    signatures: Mapped[list] = mapped_column(JSON, default=list)
+    preview: Mapped[dict] = mapped_column(JSON, default=dict)
+    changes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Tag(Base):
     __tablename__ = "tags"
 

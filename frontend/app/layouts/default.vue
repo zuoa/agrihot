@@ -11,7 +11,7 @@
               <div class="text-[11px] text-stone-500">{{ SITE_TAGLINE }}</div>
             </div>
           </NuxtLink>
-          <nav aria-label="主导航" class="grid grid-cols-6 items-center gap-0.5 pb-2 text-[13px] md:flex md:py-3 md:text-sm">
+          <nav aria-label="主导航" class="grid grid-cols-7 items-center gap-0.5 pb-2 text-[13px] md:flex md:py-3 md:text-sm">
             <NuxtLink
               v-for="l in links"
               :key="l.to"
@@ -65,6 +65,7 @@ function onAdminClick() {
 const links = [
   { to: '/', label: '精选', name: 'index' },
   { to: '/feed', label: '全部动态', mobileLabel: '动态', name: 'feed' },
+  { to: '/specials', label: '热点专题', mobileLabel: '专题', name: 'specials' },
   { to: '/dailies', label: '农业日报', mobileLabel: '日报', name: 'dailies' },
   { to: '/topic', label: '主题', name: 'topic' },
   { to: '/agent', label: 'Agent 接入', mobileLabel: 'Agent', name: 'agent' },
@@ -75,6 +76,7 @@ const isActive = (l) => {
   if (l.to === '/') return route.path === '/'
   if (l.to === '/dailies') return route.path.startsWith('/dailies')
   if (l.to === '/topic') return route.path.startsWith('/topic') || route.path.startsWith('/tags')
+  if (l.to === '/specials') return route.path.startsWith('/specials')
   return route.path === l.to
 }
 </script>

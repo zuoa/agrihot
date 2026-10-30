@@ -61,6 +61,13 @@
     </section>
 
     <section class="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
+      <h2 class="text-sm font-bold">热点专题</h2>
+      <label class="flex items-center gap-2 text-sm"><input v-model="form.specials_enabled" type="checkbox" class="accent-leaf-700">每天自动发现与发布</label>
+      <label class="block text-sm"><span class="text-xs text-stone-500">运行时刻（业务时区）</span><input v-model="form.specials_time" type="time" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label>
+      <div class="grid grid-cols-2 gap-3"><label class="block text-xs text-stone-500">每轮最多新建<input v-model.number="form.specials_max_new" type="number" min="1" max="20" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label><label class="block text-xs text-stone-500">每轮最多更新<input v-model.number="form.specials_max_updates" type="number" min="1" max="50" class="mt-1 w-full px-3 py-1.5 rounded-md border border-stone-200"></label></div>
+      <p class="text-xs text-stone-500">DeepSeek 综合站内资料；外部优先补原始论文，配置 Tavily 后同时检索权威网页。</p>
+    </section>
+    <section class="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
       <h2 class="text-sm font-bold">抓取</h2>
       <label class="flex items-center gap-2 text-sm">
         <input v-model="form.content_fetch_enabled" type="checkbox" class="accent-leaf-700" />
@@ -73,6 +80,7 @@
       <ul class="text-xs text-stone-600 space-y-1">
         <li>DeepSeek {{ readonly.deepseek_configured ? '已配置' : '未配置' }} · {{ readonly.deepseek_model }}</li>
         <li>Jina {{ readonly.jina_configured ? '已配置' : '匿名额度' }}</li>
+        <li>Tavily {{ readonly.tavily_configured ? '已配置' : '未配置（仅补充学术资料）' }}</li>
         <li>OpenAlex {{ readonly.openalex_configured ? '已配置 Key' : '无 Key' }} · {{ readonly.openalex_mailto }}</li>
         <li>业务时区 {{ readonly.daily_timezone }} · 推送限流 {{ readonly.ingest_rate_limit }}</li>
       </ul>

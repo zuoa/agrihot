@@ -30,11 +30,12 @@ JOB_LABELS = {
     "retag": "重切标签",
     "taxonomy_backfill": "回填主题分类",
     "fetch_content": "批量抓取全文",
+    "specials_generate": "发现与更新热点专题",
 }
 
 JOB_NAMES = tuple(JOB_LABELS)
 # Outbound full-text fetches. The API records them; the worker process runs them.
-WORKER_JOBS = frozenset({"fetch_content"})
+WORKER_JOBS = frozenset({"fetch_content", "specials_generate"})
 # Unset (local and tests) keeps jobs in this process. Production API sets "api".
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
@@ -130,6 +131,7 @@ async def _execute(name: str, params: dict[str, Any]) -> dict[str, Any]:
         "name": name, "label": JOB_LABELS.get(name, name),
         "status": "running", "started_at": started, "finished_at": None,
         "stats": None, "error": None, "progress": None,
+        "params": params,
     })
     try:
         handler = HANDLERS[name]
@@ -416,3 +418,13 @@ HANDLERS: dict[str, Handler] = {
     "taxonomy_backfill": _taxonomy_backfill,
     "fetch_content": _fetch_content,
 }
+
+
+async def _specials_generate(params: dict[str, Any]) -> dict[str, Any]:
+    from .special_service import run_once
+    async with SessionLocal() as session:
+        await runtime_settings.load(session)
+    return await run_once(special_id=params.get("special_id"), dry_run=bool(params.get("dry_run")))
+
+
+HANDLERS["specials_generate"] = _specials_generate

@@ -60,6 +60,7 @@ const hints = {
   retag: '把历史标签再切成短词并清理空标签',
   taxonomy_backfill: '按主题规则回填历史内容；跳过人工锁定，评分和精选不变',
   fetch_content: '回补无全文的政策/报道/行业；论文不抓。也可从内容页勾选指定条目',
+  specials_generate: '发现共同议题、提炼与补充引用，通过检查后自动发布',
 }
 
 function hint(name) {
@@ -116,7 +117,7 @@ async function run(j) {
 onMounted(async () => {
   await load()
   timer = setInterval(async () => {
-    if (jobs.value.some((j) => j.status === 'running')) await load()
+    if (jobs.value.some((j) => ['running', 'queued'].includes(j.status))) await load()
   }, 2000)
 })
 onUnmounted(() => { if (timer) clearInterval(timer) })

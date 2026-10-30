@@ -21,6 +21,7 @@
 
 <script setup>
 const links = [
+  { to: '/specials', label: '热点专题', description: '汇集证据，理解共同进展', icon: 'insight' },
   { to: '/topic', label: '主题索引', description: '沿着产业与技术查找进展', icon: 'grid' },
   { to: '/dailies', label: '农业日报', description: '按日回顾政策、动态与研究', icon: 'calendar' },
   { to: '/agent', label: 'Agent 接入', description: '在你的工具中检索与引用', icon: 'link' },

@@ -19,6 +19,7 @@ from .api.v1.public import router as public_router
 from .api.v1.seo import router as seo_router
 from .api.v1.agent import router as agent_router
 from .api.v1.agent_admin import router as agent_admin_router
+from .api.v1.specials import router as specials_router
 from .mcp_server import mcp, mcp_app
 from .config import settings
 from .database import SessionLocal, ensure_schema
@@ -53,19 +54,22 @@ async def lifespan(app: FastAPI):
     literature = start_literature_scheduler()
     content = None
     indexer = None
+    specials = None
     if SERVE_CONTENT_WORKER:
+        from .services.special_scheduler import start_special_scheduler
         from .services.content_scheduler import start_content_scheduler
         from .services.search_index_service import run_worker
 
         content = start_content_scheduler()
         indexer = asyncio.create_task(run_worker())
+        specials = start_special_scheduler()
     else:
         log.info("background indexing runs in the worker process")
     try:
         async with mcp.session_manager.run():
             yield
     finally:
-        tasks = [task for task in (scheduler, literature, content, indexer) if task is not None]
+        tasks = [task for task in (scheduler, literature, content, indexer, specials) if task is not None]
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -135,6 +139,7 @@ app.include_router(public_router)
 app.include_router(seo_router)
 app.include_router(agent_router)
 app.include_router(agent_admin_router)
+app.include_router(specials_router)
 app.add_route("/api/v1/mcp", mcp_app, methods=["GET", "POST", "DELETE"])
 
 
@@ -165,6 +170,10 @@ def _public_cache_control(path: str) -> str | None:
 async def private_cache_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
+    if path.startswith("/api/v1/specials"):
+        # Evidence changes and withdrawals must be visible on the next public read.
+        response.headers["Cache-Control"] = "no-store"
+        return response
     if request.method == "GET":
         cache = _public_cache_control(path)
         if cache and response.status_code == 200:

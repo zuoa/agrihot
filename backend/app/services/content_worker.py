@@ -29,7 +29,9 @@ async def _claim(name: str) -> dict | None:
     if job_runner.is_running(name):
         return None
     async with SessionLocal() as session:
-        row = await session.get(PipelineState, f"{_JOB_PREFIX}{name}")
+        row = await session.scalar(select(PipelineState).where(
+            PipelineState.key == f"{_JOB_PREFIX}{name}",
+        ).with_for_update(skip_locked=True))
         if row is None or not row.value:
             return None
         try:
@@ -39,7 +41,8 @@ async def _claim(name: str) -> dict | None:
         if not isinstance(data, dict) or data.get("status") != "queued":
             return None
         params = data.get("params") or {}
-        row.value = ""
+        data["status"] = "running"
+        row.value = json.dumps(data, ensure_ascii=False)
         await session.commit()
         return params
 
@@ -84,6 +87,8 @@ async def serve() -> None:
     from .search_index_service import run_worker
 
     scheduler = start_content_scheduler()
+    from .special_scheduler import start_special_scheduler
+    specials = start_special_scheduler()
     # The API process keeps this loop unless production disables it.
     indexer = None if os.environ.get("AGRIHOT_PROCESS") != "worker" else asyncio.create_task(
         run_worker(), name="search-index",
@@ -92,7 +97,7 @@ async def serve() -> None:
     try:
         await _serve_until_stopped()
     finally:
-        tasks = [task for task in (scheduler, indexer) if task is not None]
+        tasks = [task for task in (scheduler, indexer, specials) if task is not None]
         for task in tasks:
             task.cancel()
         for task in tasks:

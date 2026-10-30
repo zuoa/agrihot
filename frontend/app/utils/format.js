@@ -35,6 +35,14 @@ export function fmtDateKey(iso) {
   return shanghaiDateKey(iso || new Date())
 }
 
+export function fmtDate(iso) {
+  return iso ? shanghaiDateKey(iso) : ''
+}
+
+export function fmtDateTime(iso) {
+  return iso ? `${shanghaiDateKey(iso)} ${fmtTime(iso)}` : ''
+}
+
 export function fmtTime(iso) {
   if (!iso) return ''
   const parts = new Intl.DateTimeFormat('en-GB', {

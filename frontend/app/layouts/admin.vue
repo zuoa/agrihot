@@ -45,6 +45,7 @@ const api = useApi()
 const links = [
   { to: '/admin', label: '总览', exact: true },
   { to: '/admin/items', label: '内容' },
+  { to: '/admin/specials', label: '热点专题' },
   { to: '/admin/jobs', label: '任务' },
   { to: '/admin/settings', label: '配置' },
   { to: '/admin/watchlist', label: '关注面' },

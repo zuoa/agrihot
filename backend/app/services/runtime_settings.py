@@ -33,6 +33,10 @@ OVERRIDABLE: dict[str, tuple[type, int | None, int | None]] = {
     "literature_bootstrap_days": (int, 1, 90),
     "literature_max_new_per_run": (int, 1, 500),
     "content_fetch_enabled": (bool, None, None),
+    "specials_enabled": (bool, None, None),
+    "specials_time": (str, None, None),
+    "specials_max_new": (int, 1, 20),
+    "specials_max_updates": (int, 1, 50),
 }
 
 _overrides: dict[str, Any] = {}
@@ -132,6 +136,7 @@ def readonly_snapshot() -> dict[str, Any]:
     return {
         "deepseek_configured": bool(settings.deepseek_api_key),
         "jina_configured": bool(settings.jina_api_key),
+        "tavily_configured": bool(settings.tavily_api_key),
         "openalex_configured": bool(settings.openalex_api_key),
         "deepseek_model": settings.deepseek_model,
         "openalex_mailto": settings.openalex_mailto,

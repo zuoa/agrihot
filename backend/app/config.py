@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # 日报归集使用的业务时区：「收录日期」按此时区的日历日切分，
     # 与容器/服务器系统时区解耦（生产容器默认 UTC，不能用它切日界）
     daily_timezone: str = "Asia/Shanghai"
+    specials_enabled: bool = True
+    specials_time: str = "08:30"
+    specials_max_new: int = 3
+    specials_max_updates: int = 10
+    tavily_api_key: str = ""
     # admin console password; empty disables the admin endpoints entirely
     admin_password: str = ""
     # OpenAlex 文献雷达：免费学术元数据，不爬期刊官网 / WoS

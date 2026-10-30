@@ -75,6 +75,7 @@ class SettingValueOut(BaseModel):
 
 
 class AdminSettingsReadonly(BaseModel):
+    tavily_configured: bool = False
     deepseek_configured: bool
     jina_configured: bool
     openalex_configured: bool
@@ -101,8 +102,12 @@ class AdminSettingsPatch(BaseModel):
     literature_bootstrap_days: int | None = Field(default=None, ge=1, le=90)
     literature_max_new_per_run: int | None = Field(default=None, ge=1, le=500)
     content_fetch_enabled: bool | None = None
+    specials_enabled: bool | None = None
+    specials_time: str | None = None
+    specials_max_new: int | None = Field(default=None, ge=1, le=20)
+    specials_max_updates: int | None = Field(default=None, ge=1, le=50)
 
-    @field_validator("daily_generate_time", "literature_fetch_time")
+    @field_validator("daily_generate_time", "literature_fetch_time", "specials_time")
     @classmethod
     def hhmm(cls, v: str | None) -> str | None:
         if v is None:

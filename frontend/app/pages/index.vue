@@ -3,6 +3,10 @@
     <PageHeading eyebrow="AGRIHOT · 农业科技情报" :title="category ? `${category}精选` : '值得关注的农业新进展'" :description="lede">
       <NuxtLink to="/feed" class="site-text-link">查看全部动态<ArticleIcon name="external" /></NuxtLink>
     </PageHeading>
+    <section v-if="showSpecials && specials.length" class="home-specials" aria-labelledby="home-specials-title">
+      <div class="site-section-heading"><h2 id="home-specials-title">热点专题</h2><NuxtLink to="/specials" class="site-text-link">查看全部专题<ArticleIcon name="external" /></NuxtLink></div>
+      <div class="home-specials-grid" :class="{ 'home-specials-single': specials.length === 1 }"><SpecialCard :special="specials[0]" lead /><div v-if="specials.length > 1" class="home-specials-secondary"><SpecialCard v-for="special in specials.slice(1)" :key="special.id" :special="special" /></div></div>
+    </section>
     <div class="site-columns">
       <div class="site-column-main">
         <section v-if="!pending && topItem" class="featured-story">
@@ -48,15 +52,20 @@ const lede = computed(() => (
     : '追踪农业政策、前沿研究与技术进展，让有价值的信息更早被看见。'
 ))
 
-const { data, pending, error, refresh } = await useAsyncData(
-  () => `home:${category.value || 'all'}:${page.value}`,
-  () => api.items({ mode: 'selected', category: category.value, page: page.value, page_size: pageSize }),
-  { watch: [category, page] },
-)
+const [{ data, pending, error, refresh }, { data: featuredSpecials }] = await Promise.all([
+  useAsyncData(
+    () => `home:${category.value || 'all'}:${page.value}`,
+    () => api.items({ mode: 'selected', category: category.value, page: page.value, page_size: pageSize }),
+    { watch: [category, page] },
+  ),
+  useAsyncData('home-specials', () => api.featuredSpecials().catch(() => ({ specials: [] }))),
+])
 
 const items = computed(() => data.value?.items || [])
+const showSpecials = computed(() => !category.value && page.value === 1)
+const specials = computed(() => featuredSpecials.value?.specials || [])
 const topItem = computed(() => {
-  if (category.value || page.value > 1 || !items.value.length) return null
+  if (category.value || page.value > 1 || !items.value.length || specials.value.length) return null
   return [...items.value].sort((a, b) => b.hotness - a.hotness)[0]
 })
 const groups = computed(() => {
@@ -80,6 +89,11 @@ usePageSeo(() => ({
 </script>
 
 <style scoped>
+.home-specials { margin-bottom: 36px; }
+.home-specials-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; }
+.home-specials-secondary { display: grid; gap: 18px; }
+.home-specials-single { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 767px) { .home-specials-grid { grid-template-columns: minmax(0, 1fr); } .home-specials { margin-bottom: 26px; } }
 .featured-story { margin-bottom: 24px; overflow: hidden; border: 1px solid #d3dfce; border-radius: 16px; background: white; }
 .featured-story-link { display: block; padding: 28px 30px; border-left: 3px solid #234e22; }
 .featured-kicker { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #234e22; }
