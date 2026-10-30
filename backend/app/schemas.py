@@ -385,10 +385,13 @@ class TopicOut(BaseModel):
     page: int
     page_size: int
     items: list[ItemOut]
+    # Vector neighbors of an atomic tag. Empty for phrases and when embeddings are down.
+    similar: list[ItemOut] = Field(default_factory=list)
 
 
 class TopicSummaryOut(TopicOut):
     items: list[ItemSummaryOut]
+    similar: list[ItemSummaryOut] = Field(default_factory=list)
 
 
 class DailyOut(BaseModel):

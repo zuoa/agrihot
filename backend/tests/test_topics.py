@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from urllib.parse import quote
 
 import pytest
@@ -15,9 +16,12 @@ os.environ["DATABASE_URL"] = TEST_DB
 os.environ["CONTENT_FETCH_ENABLED"] = "false"
 os.environ["LITERATURE_FETCH_ENABLED"] = "false"
 
+from app.config import settings  # noqa: E402
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ApiKey, Base, hash_api_key  # noqa: E402
+from app.models import ApiKey, Base, SearchChunk, SearchJob, hash_api_key  # noqa: E402
+from app.services import embedding_service  # noqa: E402
+from app.services.search_index_service import tokens as index_tokens  # noqa: E402
 from app.services.topic_service import (  # noqa: E402
     _clean_name,
     derive_phrases,
@@ -52,6 +56,7 @@ async def fresh_db():
     async with TestSession() as s:
         s.add(ApiKey(key_hash=hash_api_key(TEST_KEY), name="test-bot"))
         await s.commit()
+    embedding_service._query_cache.clear()
     yield
 
 
@@ -311,3 +316,56 @@ async def test_sitemap_includes_phrase_not_as_tag(client):
     assert quote(phrase, safe="") in body
     listed = await client.get("/api/v1/tags")
     assert phrase not in {t["name"] for t in listed.json()}
+
+
+@pytest.mark.asyncio
+async def test_topic_similar_uses_vectors_and_skips_exact_tag(client, monkeypatch):
+    tagged = await create_item(
+        client,
+        url="https://example.com/sim-tagged",
+        tags=["城市基础设施"],
+        title="城市地下管网改造",
+        summary="市政管网更新进入施工阶段。",
+    )
+    near = await create_item(
+        client,
+        url="https://example.com/sim-near",
+        tags=["排水管网"],
+        title="市政排水管网普查",
+        summary="城市排水管网隐患排查已经展开。",
+    )
+    far = await create_item(
+        client,
+        url="https://example.com/sim-far",
+        tags=["生猪"],
+        title="生猪饲料成本",
+        summary="养殖场饲料价格出现波动。",
+    )
+    monkeypatch.setattr(settings, "embedding_api_key", "test-not-sent")
+    monkeypatch.setattr(settings, "embedding_dimensions", 3)
+    fp = embedding_service.fingerprint()
+    async with TestSession() as session:
+        for item_id, vector, content in (
+            (tagged, [1, 0, 0], "城市基础设施"),
+            (near, [1, 0, 0], "市政排水"),
+            (far, [0, 1, 0], "生猪饲料"),
+        ):
+            job = await session.get(SearchJob, item_id)
+            job.status, job.fingerprint = "ready", fp
+            session.add(SearchChunk(
+                item_id=item_id, text=content, lexemes=" ".join(index_tokens(content)),
+                fingerprint=fp, embedding=vector,
+            ))
+        await session.commit()
+    embedding_service._query_cache[(fp, "城市基础设施")] = (time.monotonic() + 30, [1, 0, 0])
+
+    page = (await client.get("/api/v1/topics", params={"name": "城市基础设施"})).json()
+    assert [item["id"] for item in page["items"]] == [tagged]
+    assert [item["id"] for item in page["similar"]] == [near]
+
+    phrase = (await client.get("/api/v1/topics", params={"name": "城市基础设施 排水管网"})).json()
+    assert phrase["kind"] == "phrase"
+    assert phrase["similar"] == []
+
+    later = (await client.get("/api/v1/topics", params={"name": "城市基础设施", "page": 2})).json()
+    assert later["similar"] == []

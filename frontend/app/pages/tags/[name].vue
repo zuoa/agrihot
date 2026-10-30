@@ -10,6 +10,10 @@
       <div v-else-if="!items.length" class="site-empty"><h2>暂未找到相关内容</h2><p>可以换一个关键词，或按农业领域继续浏览。</p><NuxtLink to="/topic" class="site-button site-button-secondary">浏览农业主题</NuxtLink></div>
       <div v-else class="site-card-list"><ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" /></div>
       <ContentPagination v-if="!pending && !error" :page="page" :total="total" :page-size="pageSize" />
+      <section v-if="!pending && !error && similar.length" class="site-section" aria-labelledby="similar-title">
+        <div class="site-section-heading"><h2 id="similar-title">语义相近</h2><span>未标这个词，内容接近</span></div>
+        <div class="site-card-list"><ItemCard v-for="it in similar" :key="it.id" :item="it" /></div>
+      </section>
     </div><BrowseSidebar /></div>
   </div>
 </template>
@@ -35,6 +39,7 @@ const { data, pending, error, refresh } = await useAsyncData(
 )
 
 const items = computed(() => data.value?.items || [])
+const similar = computed(() => (page.value === 1 ? data.value?.similar : []) || [])
 const total = computed(() => data.value?.total ?? items.value.length)
 const tokens = computed(() => data.value?.tokens || [])
 const isPhrase = computed(() => data.value?.kind === 'phrase')

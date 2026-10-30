@@ -16,7 +16,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         TopicSummaryOut, ViewOut)
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, parse_tag_query,
-                                       related_items, resolve_topic)
+                                       related_items, resolve_topic, similar_items)
 from ...services import embedding_service, read_cache, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name, tag_properties
 
@@ -343,10 +343,17 @@ async def get_topic(
     session: AsyncSession = Depends(get_session),
 ) -> TopicOut | TopicSummaryOut:
     """Resolve an atomic tag or a space-separated long-tail phrase. Never writes Tag rows."""
+    load_options = _list_load_options(compact)
     result = await resolve_topic(
         session, name, page=page, page_size=page_size,
-        load_options=_list_load_options(compact),
+        load_options=load_options,
     )
+    # First page of an atomic tag only. Phrase pages stay exact AND matches.
+    neighbors = []
+    if result.kind == "tag" and page == 1 and result.name:
+        neighbors = await similar_items(
+            session, result.name, {item.id for item in result.items}, load_options=load_options,
+        )
     model = TopicSummaryOut if compact else TopicOut
     return model(
         name=result.name,
@@ -356,6 +363,7 @@ async def get_topic(
         page=page,
         page_size=page_size,
         items=[_to_item_out(i, compact=compact) for i in result.items],
+        similar=[_to_item_out(i, compact=compact) for i in neighbors],
     )
 
 
