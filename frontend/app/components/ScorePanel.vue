@@ -5,12 +5,15 @@
       <div class="score-number" :class="textColor">{{ score }}<span>/ 100</span></div>
       <span class="score-verdict" :class="textColor">{{ verdict }}</span>
     </div>
-    <div v-if="hasDimensions" class="score-dimensions">
-      <div v-for="dim in dims" :key="dim.key" class="score-dimension">
-        <div class="dimension-label"><span>{{ dim.label }}</span><span>{{ dim.value }}<span class="dimension-max"> / {{ dim.max }}</span></span></div>
-        <div class="dimension-track"><div :class="barColor(dim.value, dim.max)" :style="{ width: `${Math.max(0, Math.min(100, (dim.value / dim.max) * 100))}%` }"></div></div>
+    <details v-if="hasDimensions" class="score-breakdown">
+      <summary><span class="score-expand">查看评分明细</span><span class="score-collapse">收起评分明细</span><ArticleIcon name="chevron" /></summary>
+      <div class="score-dimensions">
+        <div v-for="dim in dims" :key="dim.key" class="score-dimension">
+          <div class="dimension-label"><span>{{ dim.label }}</span><span>{{ dim.value }}<span class="dimension-max"> / {{ dim.max }}</span></span></div>
+          <div class="dimension-track"><div :class="barColor(dim.value, dim.max)" :style="{ width: `${Math.max(0, Math.min(100, (dim.value / dim.max) * 100))}%` }"></div></div>
+        </div>
       </div>
-    </div>
+    </details>
     <p v-else class="score-unavailable">暂无分项评分</p>
   </section>
 </template>
@@ -50,7 +53,15 @@ function barColor(value, max) {
 .score-number { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 42px; font-weight: 500; line-height: 1; letter-spacing: -.08em; }
 .score-number > span { margin-left: 8px; color: #637168; font-size: 11px; font-weight: 400; letter-spacing: 0; }
 .score-verdict { font-size: 11px; font-weight: 500; }
-.score-dimensions { display: grid; gap: 14px; margin-top: 20px; }
+.score-breakdown summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: #234e22; font-size: 11px; list-style: none; cursor: pointer; scroll-margin-top: 100px; }
+.score-breakdown summary::-webkit-details-marker { display: none; }
+.score-breakdown summary:hover { text-decoration: underline; text-underline-offset: 4px; }
+.score-breakdown summary:focus-visible { outline: 2px solid #234e22; outline-offset: 4px; border-radius: 3px; }
+.score-breakdown summary svg { width: 14px; height: 14px; transform: rotate(90deg); }
+.score-breakdown[open] summary svg { transform: rotate(-90deg); }
+.score-collapse, .score-breakdown[open] .score-expand { display: none; }
+.score-breakdown[open] .score-collapse { display: inline; }
+.score-dimensions { display: grid; gap: 14px; padding-top: 6px; }
 .dimension-label { display: flex; justify-content: space-between; font-size: 11px; color: #637168; }
 .dimension-label > span:last-child { font-family: 'SFMono-Regular', Consolas, monospace; color: #20332a; }
 .dimension-max { color: #637168; }
@@ -58,4 +69,5 @@ function barColor(value, max) {
 .dimension-track > div { height: 100%; border-radius: 2px; }
 .score-unavailable { margin-top: 16px; font-size: 11px; color: #637168; }
 @media (min-width: 768px) and (max-width: 1023px) { .score-panel { padding: 18px; } }
+@media (max-width: 767px) { .score-breakdown summary { scroll-margin-top: 148px; } }
 </style>
