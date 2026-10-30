@@ -135,7 +135,7 @@
       </aside>
     </div>
 
-    <div v-if="sameTopic.length || otherRelated.length" class="related-reading">
+    <div v-if="sameTopic.length || otherRelated.length || titleNeighbors.length" class="related-reading">
       <section v-if="sameTopic.length" aria-labelledby="same-topic-title">
         <div class="related-heading"><div><p>延伸阅读</p><h2 id="same-topic-title">同一主题</h2></div><NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path">查看主题<ArticleIcon name="external" /></NuxtLink></div>
         <div class="related-grid"><ItemCard v-for="it in sameTopic" :key="it.id" :item="it" /></div>
@@ -143,6 +143,10 @@
       <section v-if="otherRelated.length" aria-labelledby="other-related-title">
         <div class="related-heading"><div><p v-if="!sameTopic.length">延伸阅读</p><h2 id="other-related-title">{{ otherHeading }}</h2></div></div>
         <div class="related-grid"><ItemCard v-for="it in otherRelated" :key="it.id" :item="it" /></div>
+      </section>
+      <section v-if="titleNeighbors.length" aria-labelledby="title-neighbors-title">
+        <div class="related-heading"><div><p v-if="!sameTopic.length && !otherRelated.length">延伸阅读</p><h2 id="title-neighbors-title">你可能还想看</h2></div></div>
+        <div class="related-grid"><ItemCard v-for="it in titleNeighbors" :key="it.id" :item="it" /></div>
       </section>
     </div>
   </div>
@@ -198,6 +202,7 @@ watch(error, (e) => {
 
 const item = computed(() => data.value)
 const related = computed(() => (relatedData.value?.items || []).filter((it) => it.id !== item.value?.id))
+const titleNeighbors = computed(() => (relatedData.value?.similar || []).filter((it) => it.id !== item.value?.id))
 const sameTopic = computed(() => {
   const code = item.value?.primary_topic?.code
   if (!code) return []

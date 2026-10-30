@@ -15,7 +15,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         PaperMetaOut, SourceOut, StatsOut, TagMetaOut, TagOut, TopicOut,
                         TopicSummaryOut, ViewOut)
 from ...services.topic_service import (apply_tag_match, effective_phrases,
-                                       item_slug, parse_tag_query,
+                                       item_slug, items_near_query, parse_tag_query,
                                        related_items, resolve_topic, similar_items)
 from ...services import embedding_service, read_cache, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name, tag_properties
@@ -247,10 +247,14 @@ async def list_related_items(
     if item is None:
         raise _item_404()
     rows = await related_items(session, item, load_options=load_options)
+    neighbors = await items_near_query(
+        session, item.title or "", {item.id, *(row.id for row in rows)}, load_options=load_options,
+    )
     model = ItemSummaryListOut if compact else ItemListOut
     return model(
         total=len(rows), page=1, page_size=len(rows) or 1,
         items=[_to_item_out(i, compact=compact) for i in rows],
+        similar=[_to_item_out(i, compact=compact) for i in neighbors],
     )
 
 

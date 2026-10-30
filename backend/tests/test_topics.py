@@ -358,6 +358,7 @@ async def test_topic_similar_uses_vectors_and_skips_exact_tag(client, monkeypatc
             ))
         await session.commit()
     embedding_service._query_cache[(fp, "城市基础设施")] = (time.monotonic() + 30, [1, 0, 0])
+    embedding_service._query_cache[(fp, "城市地下管网改造")] = (time.monotonic() + 30, [1, 0, 0])
 
     page = (await client.get("/api/v1/topics", params={"name": "城市基础设施"})).json()
     assert [item["id"] for item in page["items"]] == [tagged]
@@ -369,3 +370,7 @@ async def test_topic_similar_uses_vectors_and_skips_exact_tag(client, monkeypatc
 
     later = (await client.get("/api/v1/topics", params={"name": "城市基础设施", "page": 2})).json()
     assert later["similar"] == []
+
+    related = (await client.get(f"/api/v1/items/{tagged}/related")).json()
+    assert [item["id"] for item in related["similar"]] == [near]
+    assert tagged not in {item["id"] for item in related["items"] + related["similar"]}

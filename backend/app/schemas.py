@@ -371,10 +371,13 @@ class ItemListOut(BaseModel):
     page: int
     page_size: int
     items: list[ItemOut]
+    # Title neighbors on the article related endpoint. Other lists leave this empty.
+    similar: list[ItemOut] = Field(default_factory=list)
 
 
 class ItemSummaryListOut(ItemListOut):
     items: list[ItemSummaryOut]
+    similar: list[ItemSummaryOut] = Field(default_factory=list)
 
 
 class TopicOut(BaseModel):

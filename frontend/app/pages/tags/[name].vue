@@ -11,7 +11,7 @@
       <div v-else class="site-card-list"><ItemCard v-for="it in items" :key="it.id" :item="it" @updated="refresh" @deleted="refresh" /></div>
       <ContentPagination v-if="!pending && !error" :page="page" :total="total" :page-size="pageSize" />
       <section v-if="!pending && !error && similar.length" class="site-section" aria-labelledby="similar-title">
-        <div class="site-section-heading"><h2 id="similar-title">语义相近</h2><span>未标这个词，内容接近</span></div>
+        <div class="site-section-heading"><h2 id="similar-title">你可能还想看</h2><span>没有这个标签，内容接近</span></div>
         <div class="site-card-list"><ItemCard v-for="it in similar" :key="it.id" :item="it" /></div>
       </section>
     </div><BrowseSidebar /></div>

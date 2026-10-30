@@ -401,7 +401,14 @@ async def similar_items(
     tagged = select(Item.id).where(Item.tags.any(Tag.name.in_(equivalent_names(query))))
     exclude = set(exclude_ids)
     exclude.update((await session.execute(tagged)).scalars().all())
-    ids = await _similar_item_ids(session, query, exclude, limit)
+    return await items_near_query(session, query, exclude, limit=limit, load_options=load_options)
+
+
+async def items_near_query(
+    session: AsyncSession, query: str, exclude_ids: set[int], *, limit: int = SIMILAR_LIMIT, load_options=()
+) -> list[Item]:
+    """Nearest indexed articles for a title or tag name, excluding the given ids."""
+    ids = await _similar_item_ids(session, query.strip(), set(exclude_ids), limit)
     if not ids:
         return []
     rows = (
