@@ -36,10 +36,11 @@
           <AgentCodeBlock lang="提示词" :code="installPrompt" />
           <button class="mt-3 text-sm font-medium text-leaf-700 hover:underline" @click="copy(installPrompt, 'skill')">{{ copied === 'skill' ? '已复制' : '复制安装提示词' }}</button>
           <ol class="mt-5 space-y-2 list-decimal pl-5 text-sm leading-6 text-stone-600">
-            <li>将读取 Key 配置为 Agent 运行环境的 <AgentCode>AGRIHOT_API_KEY</AgentCode>，不要写进 Skill 文件。</li>
+            <li>在运行 Agent 的用户主目录下创建 <AgentCode>.agrihot/.env</AgentCode>，写入 <AgentCode>AGRIHOT_API_KEY=你的读取Key</AgentCode>，不要写进 Skill 文件。</li>
             <li>安装后开启新会话，确保工具能发现 AgriHot Skill。</li>
             <li>试着问：“过去一周，农业遥感领域有哪些值得关注的进展？”</li>
           </ol>
+          <p class="mt-3 text-xs leading-6 text-stone-500">macOS / Linux：<AgentCode>~/.agrihot/.env</AgentCode>；Windows：<AgentCode>%USERPROFILE%\.agrihot\.env</AgentCode>。已配置的 <AgentCode>AGRIHOT_API_KEY</AgentCode> 环境变量优先使用。</p>
           <a :href="`${base}/agrihot-skill/README.md`" class="mt-4 inline-block text-xs text-leaf-700 underline underline-offset-4">完整安装说明 ↗</a>
         </template>
         <template v-else>
@@ -100,7 +101,7 @@ const tab = ref('skill')
 const tabs = [{ id: 'skill', label: 'Agent Skill' }, { id: 'mcp', label: 'MCP' }]
 const steps = [{ title: '申请 Key', detail: '填写用途，等待管理员审核' }, { title: '连接 Agent', detail: '安装 Skill 或配置 MCP' }, { title: '提问与引用', detail: '检索内容，查看全文与来源' }]
 const prompts = ['过去 24 小时，有哪些值得关注的农业政策？', '检索近一周关于作物病害智能识别的论文。', '给我最新一期农业农村日报。']
-const installPrompt = `请安装 AgriHot Skill：${base}/agrihot-skill/README.md\n使用我已配置的 AGRIHOT_API_KEY 环境变量进行读取，不要将 Key 写入 Skill 文件或输出。\n安装后告诉我是否需要开启新会话。`
+const installPrompt = `请安装 AgriHot Skill：${base}/agrihot-skill/README.md\n读取 Key 时优先使用非空的 AGRIHOT_API_KEY 环境变量，否则从运行环境用户主目录下的 .agrihot/.env 读取同名配置。\n若缺少配置，请提示我在本机填写该文件；不要将 Key 写入 Skill 文件、安装提示词或输出。\n安装后告诉我是否需要开启新会话。`
 const mcpConfig = JSON.stringify({ mcpServers: { agrihot: { url: `${base}/api/v1/mcp`, headers: { Authorization: 'Bearer <你的读取Key>' } } } }, null, 2)
 const form = reactive({ name: '', contact: '', use_case: '' })
 const busy = ref(false), submitted = ref(null), error = ref(''), copied = ref(''), copyError = ref('')

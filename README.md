@@ -74,6 +74,12 @@ access token 与 ticket 按有效期提前 5 分钟刷新，同进程合并并�
 - REST：`POST /api/v1/agent/search`、`POST /api/v1/agent/items`、`GET /api/v1/agent/items/{id}`、
   `GET /api/v1/agent/dailies`、`GET /api/v1/agent/dailies/{date|latest}`
 
+Skill 推荐从运行 Agent 的用户主目录下的 `.agrihot/.env` 读取 `AGRIHOT_API_KEY=你的读取Key`。
+macOS / Linux 路径为 `~/.agrihot/.env`，Windows 为 `%USERPROFILE%\.agrihot\.env`；
+已有的非空 `AGRIHOT_API_KEY` 环境变量优先。Skill 直接读取文件，无需修改 Agent 的全局配置；
+Key 不写入 Skill 文件或仓库。WSL、容器或远程执行时，使用对应环境的用户主目录。
+此文件配置仅用于 Skill；下面的 `curl` 示例仍需先设置环境变量，MCP 仍在客户端配置认证头。
+
 ```bash
 curl http://localhost:8100/api/v1/agent/search \
   -H "Authorization: Bearer $AGRIHOT_API_KEY" -H 'Content-Type: application/json' \
