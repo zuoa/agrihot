@@ -421,6 +421,7 @@ HANDLERS: dict[str, Handler] = {
 
 
 async def _specials_generate(params: dict[str, Any]) -> dict[str, Any]:
+    from . import runtime_settings
     from .special_service import run_once
     async with SessionLocal() as session:
         await runtime_settings.load(session)

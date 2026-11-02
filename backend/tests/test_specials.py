@@ -285,6 +285,43 @@ async def test_shared_references_do_not_merge_independent_papers(database, mater
 
 
 @pytest.mark.asyncio
+async def test_special_job_loads_runtime_settings_and_publishes(database, material, monkeypatch):
+    from app.services import job_runner, runtime_settings
+
+    candidate, _, document = material
+    async with database() as session:
+        await runtime_settings.patch(session, {'specials_max_new': 1})
+        await session.commit()
+    runtime_settings.reset()
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            assert runtime_settings.get('specials_max_new') == 1
+            return {'candidates': [candidate.model_dump()]}
+        if system == service.COMPOSE:
+            return document
+        assert system == service.VERIFY
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+
+    result = await job_runner.run('specials_generate')
+
+    assert result['status'] == 'ok', result['error']
+    assert result['stats']['created'] == 1
+    async with database() as session:
+        published = await service.public_specials(session)
+        assert len(published) == 1
+        assert published[0][0].title == candidate.title
+
+
+@pytest.mark.asyncio
 async def test_worker_restart_preserves_special_task_parameters(database, monkeypatch):
     import json
     from app.models import PipelineState
