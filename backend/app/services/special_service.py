@@ -18,7 +18,7 @@ from sqlalchemy.orm import defer, noload
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item, SearchChunk, SearchJob, Special, SpecialItem, SpecialVersion, utcnow
-from ..special_schemas import Candidate, CandidateItem, Discovery, SpecialDocument
+from ..special_schemas import Candidate, CandidateItem, Discovery, DiscoveryProposal, SpecialDocument
 from . import embedding_service, runtime_settings
 from .special_research import supplement
 
@@ -250,12 +250,12 @@ VERIFY = """独立审查这份农业专题。逐条对照 sources，检查文档
 完全通过才返回 {"approved":true,"reason":""}。这只是模型审查，不是事实认证。"""
 
 
-async def discover(articles: list[dict], prior: list[dict], now: datetime) -> list[Candidate]:
+async def discover(articles: list[dict], prior: list[dict], now: datetime) -> tuple[list[Candidate], int]:
     max_new = runtime_settings.get("specials_max_new")
     max_updates = min(runtime_settings.get("specials_max_updates"), sum(p["status"] not in {"withdrawn", "merged"} for p in prior))
     candidate_limit = min(3, max_new + max_updates)
     if candidate_limit <= 0:
-        return []
+        return [], 0
     for attempt in range(2):
         limit, item_limit = (candidate_limit, 6) if not attempt else (1, 4)
         # The same bounds reach the prompt, the JSON schema, and local validation.
@@ -266,36 +266,66 @@ async def discover(articles: list[dict], prior: list[dict], now: datetime) -> li
                   "max_new": min(max_new, limit), "max_updates": min(max_updates, limit)}
         await _report("discover", "按输出预算发现选题", attempt=attempt + 1, **limits)
         try:
-            result = Discovery.model_validate(await llm(DISCOVER, {"today": now.date().isoformat(), "articles": articles,
-                                                                   "existing": prior, "limits": limits, "schema": schema}))
+            result = await llm(DISCOVER, {"today": now.date().isoformat(), "articles": articles,
+                                         "existing": prior, "limits": limits, "schema": schema})
         except ModelOutputLimitError:
             if attempt:
                 raise
             await _report("discover", "选题输出被截断，缩减为1个候选、最多4篇文章重试", level="warning")
             continue
-        if len(result.candidates) > limit or any(len(c.items) > item_limit for c in result.candidates):
-            raise ValueError("选题数量或关联文章数量超出本轮输出预算")
-        candidates = [Candidate.model_validate(c.model_dump()) for c in result.candidates]
+        # The complete response container must be valid. Validate each proposal
+        # separately so one unusable topic cannot discard other valid selections.
+        if not isinstance(result, dict) or set(result) - {"candidates"}:
+            raise ValueError("选题响应格式不符：必须为只包含 candidates 的 JSON 对象")
+        proposals = result.get("candidates", [])
+        if not isinstance(proposals, list):
+            raise ValueError("选题响应格式不符：candidates 必须为列表")
+        if len(proposals) > limit:
+            raise ValueError("选题数量超出本轮输出预算")
+        candidates, skipped = [], 0
         by_id = {p["id"]: p for p in prior}
-        for candidate in candidates:
-            previous = by_id.get(candidate.existing_id)
-            if not previous:
+        for index, proposal in enumerate(proposals):
+            try:
+                candidate = DiscoveryProposal.model_validate(proposal)
+            except ValidationError as exc:
+                skipped += 1
+                await _report("discover", "选题字段不符合要求，已跳过该候选", level="warning", candidate_index=index,
+                              title=str(proposal.get("title", ""))[:200] if isinstance(proposal, dict) else "",
+                              validation_errors=[{"path": list(e["loc"]), "code": e["type"], "reason": e["msg"]}
+                                                 for e in exc.errors(include_input=False, include_url=False)])
                 continue
-            # A short discovery response must not remove a storyline's history.
-            old_items = {i["item_id"]: CandidateItem.model_validate(i) for i in previous["items"]}
-            anchors = defaultdict(set)
-            for link in candidate.items:
-                if link.item_id in old_items:
-                    anchors[link.evidence_group].add(old_items[link.item_id].evidence_group)
-            additions = []
-            for link in candidate.items:
-                if link.item_id not in old_items:
-                    groups = anchors[link.evidence_group]
-                    link.evidence_group = min(groups) if groups else f"discovery:{candidate.existing_id}:{link.evidence_group}"
-                    additions.append(link)
-            candidate.items = [*old_items.values(), *additions[:max(0, 40 - len(old_items))]]
-        return candidates
-    return []
+            if len(candidate.items) > item_limit:
+                skipped += 1
+                await _report("discover", "候选关联文章数量超出本轮输出预算，已跳过", level="warning",
+                              title=candidate.title, article_count=len(candidate.items), max_items=item_limit)
+                continue
+            previous = by_id.get(candidate.existing_id)
+            if previous:
+                # A short discovery response must not remove a storyline's history.
+                old_items = {i["item_id"]: CandidateItem.model_validate(i) for i in previous["items"]}
+                anchors = defaultdict(set)
+                for link in candidate.items:
+                    if link.item_id in old_items:
+                        anchors[link.evidence_group].add(old_items[link.item_id].evidence_group)
+                additions = []
+                for link in candidate.items:
+                    if link.item_id not in old_items:
+                        groups = anchors[link.evidence_group]
+                        link.evidence_group = min(groups) if groups else f"discovery:{candidate.existing_id}:{link.evidence_group}"
+                        additions.append(link)
+                # The merged articles use the full CandidateItem limits.
+                items = [*old_items.values(), *additions[:max(0, 40 - len(old_items))]]
+            else:
+                items = candidate.items
+            if len(items) < 3:
+                skipped += 1
+                await _report("eligibility", f"关联文章 {len(items)}/3 篇，材料不足，已跳过", level="warning",
+                              special_id=candidate.existing_id, title=candidate.title, article_count=len(items),
+                              required_articles=3, item_ids=[i.item_id for i in items])
+                continue
+            candidates.append(Candidate.model_validate({**candidate.model_dump(), "items": [i.model_dump() for i in items]}))
+        return candidates, skipped
+    return [], 0
 
 
 def source_eligibility(published_at, now) -> dict:
@@ -618,6 +648,7 @@ async def _run_once(*, factory=None, special_id=None, dry_run=False):
     articles, prior = await load_candidates(factory)
     await _report("load", "候选资料读取完成", article_count=len(articles), existing_count=len(prior))
     now = utcnow()
+    discovery_skipped = 0
     if not dry_run:
         async with factory() as session:
             rows = (await session.scalars(select(Special).where(Special.status == "published"))).all()
@@ -634,12 +665,12 @@ async def _run_once(*, factory=None, special_id=None, dry_run=False):
         await _report("skip", "近期材料不足，跳过生成", article_count=len(articles))
         return {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "reason": "近期材料不足"}
     else:
-        candidates = await discover(articles, prior, now)
+        candidates, discovery_skipped = await discover(articles, prior, now)
     await _report("discover", "选题准备完成", candidate_count=len(candidates), max_new=runtime_settings.get("specials_max_new"),
                   max_updates=runtime_settings.get("specials_max_updates"))
     known = {s["id"]: s for s in prior}
     allowed_ids = {a["id"] for a in articles} | {i["item_id"] for p in prior for i in p["items"]}
-    stats = {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "candidates": []}
+    stats = {"created": 0, "updated": 0, "skipped": discovery_skipped, "failed": 0, "candidates": []}
     seen, new_count, update_count = set(), 0, 0
     for candidate in candidates:
         identity = candidate.existing_id or compact_space(candidate.scope)

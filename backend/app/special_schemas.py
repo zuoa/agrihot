@@ -83,6 +83,11 @@ class DiscoveryCandidate(Candidate):
     queries: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=1)
 
 
+class DiscoveryProposal(DiscoveryCandidate):
+    """Parse a proposal before checking the material count or merging history."""
+    items: list[DiscoveryItem] = Field(default_factory=list, max_length=6)
+
+
 class Discovery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidates: list[DiscoveryCandidate] = Field(default_factory=list, max_length=3)

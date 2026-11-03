@@ -603,8 +603,106 @@ async def test_discovery_rejects_oversized_output_before_creating_drafts(databas
         return {'candidates': [proposed] * (4 if overflow == 'candidates' else 1)}
 
     monkeypatch.setattr(service, 'llm', llm)
-    with pytest.raises(ValueError):
-        await service.run_once(factory=database)
+    if overflow == 'candidates':
+        with pytest.raises(ValueError):
+            await service.run_once(factory=database)
+    else:
+        result = await service.run_once(factory=database)
+        assert result['skipped'] == 1 and result['failed'] == result['created'] == 0
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 0
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('problem', ['two_articles', 'empty_articles', 'missing_articles', 'duplicate_articles', 'bad_role', 'long_reason', 'not_an_object'])
+async def test_invalid_proposal_does_not_discard_other_valid_topics(database, material, monkeypatch, problem):
+    candidate, _, document = material
+    invalid = candidate.model_dump()
+    invalid['title'] = '这是一条应当跳过的无效候选'
+    if problem == 'two_articles':
+        invalid['items'] = [{**invalid['items'][0], 'item_id': 6514}, {**invalid['items'][1], 'item_id': 6436}]
+    elif problem == 'empty_articles':
+        invalid['items'] = []
+    elif problem == 'missing_articles':
+        del invalid['items']
+    elif problem == 'duplicate_articles':
+        invalid['items'][1]['item_id'] = invalid['items'][0]['item_id']
+    elif problem == 'bad_role':
+        invalid['items'][0]['role'] = 'unsupported'
+    elif problem == 'long_reason':
+        invalid['items'][0]['reason'] = '长' * 41
+    else:
+        invalid = None
+    logs, reviewed = [], []
+
+    async def report(**entry):
+        logs.append(entry)
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            assert payload['schema']['$defs']['DiscoveryCandidate']['properties']['items']['minItems'] == 3
+            return {'candidates': [invalid, candidate.model_dump()]}
+        if system == service.COMPOSE:
+            assert payload['title'] == candidate.title
+            return document
+        assert system == service.VERIFY
+        reviewed.append(payload)
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, report=report)
+
+    assert result['created'] == result['skipped'] == 1 and result['failed'] == 0
+    assert len(reviewed) == 1
+    warning = next(e for e in logs if e['level'] == 'warning')
+    assert '已跳过' in warning['message']
+    if problem == 'two_articles':
+        assert '2/3' in warning['message'] and warning['details']['item_ids'] == [6514, 6436]
+    async with database() as session:
+        special = await session.scalar(select(Special))
+        assert special.title == candidate.title and special.status == 'published'
+        assert await session.scalar(select(func.count()).select_from(Special)) == 1
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('dry_run', [False, True])
+async def test_two_article_selection_finishes_as_skip_and_keeps_admin_diagnostics(database, material, client, monkeypatch, dry_run):
+    from app.services import job_runner
+
+    candidate, _, _ = material
+    proposed = candidate.model_dump()
+    proposed['items'] = proposed['items'][:2]
+    calls = []
+
+    async def llm(system, payload):
+        assert system == service.DISCOVER, 'an insufficient proposal must never reach composition or review'
+        calls.append(payload)
+        return {'candidates': [proposed]}
+
+    async def forbidden(*args):
+        pytest.fail('an insufficient proposal must not use external services')
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', forbidden)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    result = await job_runner.run('specials_generate', {'dry_run': dry_run})
+
+    assert result['status'] == 'ok' and result['error'] is None
+    assert result['stats']['skipped'] == 1 and result['stats']['failed'] == result['stats']['created'] == 0
+    assert len(calls) == 1
+    headers = {'X-Admin-Token': issue_admin_token()}
+    jobs = (await client.get('/api/v1/admin/jobs', headers=headers)).json()['jobs']
+    job = next(j for j in jobs if j['name'] == 'specials_generate')
+    assert job['status'] == 'ok' and job['stats']['skipped'] == 1
+    warning = next(e for e in job['logs'] if e['level'] == 'warning')
+    assert '2/3' in warning['message'] and warning['details']['required_articles'] == 3
     async with database() as session:
         assert await session.scalar(select(func.count()).select_from(Special)) == 0
         assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
@@ -729,7 +827,8 @@ async def test_manual_regeneration_keeps_larger_existing_material(database, mate
 
 
 @pytest.mark.asyncio
-async def test_short_discovery_response_preserves_history_and_evidence_groups(database, material, monkeypatch):
+@pytest.mark.parametrize('selected_count', [2, 3])
+async def test_short_discovery_response_preserves_history_and_evidence_groups(database, material, monkeypatch, selected_count):
     candidate, _, document = material
     async with database() as session:
         for i in range(5, 10):
@@ -747,6 +846,8 @@ async def test_short_discovery_response_preserves_history_and_evidence_groups(da
         {**candidate.items[1].model_dump(), 'item_id': 2, 'evidence_group': 'other-study'},
         {**candidate.items[0].model_dump(), 'item_id': 9, 'evidence_group': 'same-study'},
     ]
+    if selected_count == 2:
+        proposed['items'].pop(1)
 
     async def llm(system, payload):
         if system == service.DISCOVER:
