@@ -46,31 +46,50 @@ def item_source(item: Item) -> dict:
 
 
 def all_blocks(document: dict):
-    yield document["overview"]
-    yield from document["findings"]
-    yield from document.get("comparisons", [])
-    for row in document.get("timeline", []):
-        yield row["claim"]
-    for row in document.get("extensions", []):
-        yield row["body"]
+    """Yield each cited block with its path for actionable validation errors."""
+    yield "overview", document["overview"]
+    for key in ("findings", "comparisons"):
+        for index, block in enumerate(document.get(key, [])):
+            yield f"{key}[{index}]", block
+    for index, row in enumerate(document.get("timeline", [])):
+        yield f"timeline[{index}].claim", row["claim"]
+    for index, row in enumerate(document.get("extensions", [])):
+        yield f"extensions[{index}].body", row["body"]
 
 
 def compact_space(text: str) -> str:
     return re.sub(r"\s+", "", text).casefold()
 
 
+class CitationValidationError(ValueError):
+    def __init__(self, errors: list[dict]):
+        self.errors = errors
+        details = "；".join(f"{e['path']} ({e['source_id']})：{e['reason']}" for e in errors[:3])
+        super().__init__(f"引用校验失败（共 {len(errors)} 处）：{details}")
+
+
 def validate_evidence(document: dict, sources: list[dict]) -> None:
     """Reject invented IDs/excerpts, misleading consensus, and orphaned comparisons."""
     SpecialDocument.model_validate(document)
     by_id = {s["id"]: s for s in sources}
-    for block in all_blocks(document):
-        groups = set()
-        for citation in block["citations"]:
-            source = by_id.get(citation["source_id"])
-            if not source or compact_space(citation["quote"]) not in compact_space(source["text"]):
-                raise ValueError("引用不存在或证据摘录与原文不符")
-            if source["kind"] == "internal":
-                groups.add(source.get("evidence_group", source["id"]))
+    texts = {s["id"]: compact_space(s["text"]) for s in sources}
+    errors = []
+    for path, block in all_blocks(document):
+        for index, citation in enumerate(block["citations"]):
+            source_id = citation["source_id"]
+            quote = compact_space(citation["quote"])
+            if source_id not in by_id:
+                field, reason = "source_id", "引用来源不存在，必须使用 sources 中的 id"
+            elif not quote or quote not in texts[source_id]:
+                field, reason = "quote", "证据摘录与原文不符，必须逐字复制该来源 text 中的连续原文"
+            else:
+                continue
+            errors.append({"path": f"{path}.citations[{index}].{field}", "source_id": source_id, "reason": reason})
+    if errors:
+        raise CitationValidationError(errors)
+    for _, block in all_blocks(document):
+        groups = {by_id[c["source_id"]].get("evidence_group", c["source_id"]) for c in block["citations"]
+                  if by_id[c["source_id"]]["kind"] == "internal"}
         if block.get("kind") == "shared" and len(groups) < 2:
             raise ValueError("共同发现需要至少两组独立站内证据")
     for row in document.get("comparisons", []):
@@ -116,6 +135,10 @@ title 和 scope 必须具体。对核心及背景文章说明关联；外部 que
 不要把报道数量说成独立研究数；不要生成过大的农业大类。"""
 COMPOSE = """你是农业科研编辑，基于给定来源撰写专题，输出 schema 对应的 JSON。
 overview 为150–250字速览；findings 为3–5条。每个事实块均引用 source_id 和来自其 text 的原文 quote（至少8字）。
+source_id 必须逐字使用 sources 的 id（如 i123、e1），不能使用 item_id、序号、DOI 或 URL。
+正文用中文；quote 必须从对应来源的 text 逐字复制一段连续原文，保留原语言、标点和数字。
+英文来源的 quote 保留英文，不能翻译、改写、拼接句子或添加省略号；不能引用 text 之外的资料。
+若输入含 previous_document 和 citation_errors，逐项修正所有引用错误并返回完整文档；必要时改写缺乏证据的结论，不能伪造证据。
 shared 仅用于至少2个独立研究/证据组支持的共同发现；difference 保留条件差异；question 为明确未解问题；
 inference 为延伸思考，不能写成原文结论。只有摘要的来源不能声称已阅读全文。
 event 使用有来源日期的 timeline；research 使用 comparisons，比较对象、方法、数据条件、结果、局限；
@@ -367,9 +390,21 @@ async def generate_one(candidate, factory):
             return special.id, False
     external, external_status = await supplement(candidate.queries)
     sources.extend(external)
-    document = SpecialDocument.model_validate(await llm(COMPOSE, {"title": candidate.title, "scope": candidate.scope, "kind": candidate.kind,
-                                                               "sources": sources, "schema": SpecialDocument.model_json_schema()})).model_dump()
-    validate_evidence(document, sources)
+    payload = {"title": candidate.title, "scope": candidate.scope, "kind": candidate.kind,
+               "sources": sources, "schema": SpecialDocument.model_json_schema()}
+    # One corrective pass uses the exact same source snapshot and every citation error.
+    # The corrected document must still pass all programmatic and independent checks.
+    for attempt in range(2):
+        document = SpecialDocument.model_validate(await llm(COMPOSE, payload)).model_dump()
+        try:
+            validate_evidence(document, sources)
+        except CitationValidationError as exc:
+            if attempt:
+                raise
+            log.info("special %s: correcting %d citation errors", candidate.existing_id, len(exc.errors))
+            payload = {**payload, "previous_document": document, "citation_errors": exc.errors}
+        else:
+            break
     if candidate.kind == "event" and document["comparisons"] or candidate.kind == "research" and document["timeline"]:
         raise ValueError("专题内容模块与类型不符")
     review = await llm(VERIFY, {"title": candidate.title, "scope": candidate.scope, "document": document, "sources": sources})
@@ -471,7 +506,7 @@ async def run_once(*, factory=None, special_id=None, dry_run=False):
             stats["skipped"] += int(not changed)
         except (ValueError, httpx.HTTPError, KeyError, TypeError) as exc:
             stats["failed"] += 1
-            log.warning("special generation failed: %s", type(exc).__name__)
+            log.warning("special %s generation failed: %s", candidate.existing_id, str(exc)[:500] if isinstance(exc, ValueError) else type(exc).__name__)
             if candidate.existing_id:
                 async with factory() as session:
                     row = await session.get(Special, candidate.existing_id)

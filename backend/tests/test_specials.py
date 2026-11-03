@@ -149,6 +149,145 @@ async def test_fabricated_quotes_and_false_consensus_rejected(database, material
 
 
 @pytest.mark.asyncio
+async def test_citation_errors_identify_every_invalid_reference(material):
+    _, sources, document = material
+    document['overview']['citations'][0]['source_id'] = '1'
+    document['findings'][0]['citations'][0]['quote'] = '不存在于原始材料的模型改写'
+    document['comparisons'] = [{
+        'item_id': 1, 'object': '', 'method': '', 'data': '', 'result': '', 'limitation': '',
+        'citations': [{'source_id': 'missing', 'quote': '不存在于原始材料的摘录'}],
+    }]
+    document['timeline'] = [{'date': sources[0]['published_at'][:10], 'claim': copy.deepcopy(document['findings'][0])}]
+    document['extensions'] = [{'kind': 'method', 'title': '跨域评估', 'body': copy.deepcopy(document['findings'][0])}]
+
+    with pytest.raises(service.CitationValidationError) as caught:
+        service.validate_evidence(document, sources)
+
+    errors = caught.value.errors
+    assert {e['path'] for e in errors} == {
+        'overview.citations[0].source_id', 'findings[0].citations[0].quote',
+        'comparisons[0].citations[0].source_id', 'timeline[0].claim.citations[0].quote',
+        'extensions[0].body.citations[0].quote',
+    }
+    assert errors[0]['source_id'] == '1' and '来源不存在' in errors[0]['reason']
+    assert errors[1]['source_id'] == 'i1' and '摘录与原文不符' in errors[1]['reason']
+    assert '共 5 处' in str(caught.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('quote', [
+    '跨地域测试存在性能差异……仍需更多验证',  # Discontinuous excerpts.
+    '跨地域测试存在性能差异,仍需更多验证',  # Changed source punctuation.
+    '        ',
+])
+async def test_inexact_or_blank_excerpts_remain_invalid(material, quote):
+    _, sources, document = material
+    document['overview']['citations'][0]['quote'] = quote
+    with pytest.raises(service.CitationValidationError):
+        service.validate_evidence(document, sources)
+
+
+@pytest.mark.asyncio
+async def test_generation_corrects_all_citations_before_review(database, material, monkeypatch):
+    candidate, _, document = material
+    external = {'id': 'e1', 'kind': 'external', 'basis': 'abstract',
+                'text': 'Cross-region evaluation reveals performance differences under changing field conditions.'}
+    corrected = copy.deepcopy(document)
+    corrected['extensions'] = [{'kind': 'method', 'title': '跨域评估', 'body': {
+        'text': '跨地域评估可用于分析不同田间条件下的性能差异。', 'kind': 'inference',
+        'citations': [{'source_id': 'e1', 'quote': external['text']}],
+    }}]
+    invalid = copy.deepcopy(corrected)
+    invalid['overview']['citations'][0]['source_id'] = '1'
+    invalid['extensions'][0]['body']['citations'][0]['quote'] = '跨地域评估表明田间条件变化时存在性能差异。'
+    compose_calls, review_calls, external_calls = [], [], []
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        if system == service.COMPOSE:
+            compose_calls.append(copy.deepcopy(payload))
+            return invalid if len(compose_calls) == 1 else corrected
+        assert system == service.VERIFY
+        review_calls.append(copy.deepcopy(payload))
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        external_calls.append(queries)
+        return [copy.deepcopy(external)], 'academic_only'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+
+    assert result['created'] == 1 and result['failed'] == 0
+    assert len(compose_calls) == 2 and len(review_calls) == 1 and len(external_calls) == 1
+    first, retry = compose_calls
+    assert 'previous_document' not in first and 'citation_errors' not in first
+    assert retry['sources'] == first['sources'] == review_calls[0]['sources']
+    assert retry['previous_document'] == invalid
+    assert {e['path'] for e in retry['citation_errors']} == {
+        'overview.citations[0].source_id', 'extensions[0].body.citations[0].quote',
+    }
+    assert review_calls[0]['document'] == corrected
+    async with database() as session:
+        versions = (await session.scalars(select(SpecialVersion))).all()
+        assert len(versions) == 1 and versions[0].document == corrected
+        special = await session.scalar(select(Special))
+        assert special.status == 'published' and special.last_error is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize('review_rejects', [False, True])
+async def test_failed_correction_or_review_keeps_published_content(database, material, monkeypatch, existing, review_rejects):
+    candidate, _, document = material
+    special_id = (await publish(database, material))[0] if existing else None
+    if existing:
+        async with database() as session:
+            item = await session.get(Item, 1)
+            item.summary += ' 新材料增加了田间验证条件。'
+            await session.commit()
+    invalid = copy.deepcopy(document)
+    invalid['findings'][0]['citations'][0]['quote'] = '这个模型生成的摘录始终不在原文中'
+    compose_calls, review_calls = [], []
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        if system == service.COMPOSE:
+            compose_calls.append(payload)
+            return document if review_rejects and len(compose_calls) == 2 else invalid
+        assert system == service.VERIFY and review_rejects, 'invalid citations must never reach review'
+        assert payload['document'] == document
+        review_calls.append(payload)
+        return {'approved': False, 'reason': '修正后的结论仍超出证据'}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, special_id=special_id)
+
+    assert result['failed'] == 1 and result['created'] == result['updated'] == 0
+    assert len(compose_calls) == 2
+    assert len(review_calls) == int(review_rejects)
+    async with database() as session:
+        special = await session.scalar(select(Special))
+        assert special.status == ('published' if existing else 'draft')
+        if review_rejects:
+            assert special.last_error == '修正后的结论仍超出证据'
+        else:
+            assert 'findings[0].citations[0].quote' in special.last_error
+            assert 'i1' in special.last_error and '摘录与原文不符' in special.last_error
+        versions = (await session.scalars(select(SpecialVersion))).all()
+        assert len(versions) == int(existing)
+        if existing:
+            assert versions[0].document == document
+
+
+@pytest.mark.asyncio
 async def test_same_doi_and_reposts_cannot_create_hotspot(database, material):
     candidate, _, _ = material
     async with database() as session:
