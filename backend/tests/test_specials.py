@@ -161,7 +161,7 @@ async def test_citation_errors_identify_every_invalid_reference(material):
     document['timeline'] = [{'date': sources[0]['published_at'][:10], 'claim': copy.deepcopy(document['findings'][0])}]
     document['extensions'] = [{'kind': 'method', 'title': '跨域评估', 'body': copy.deepcopy(document['findings'][0])}]
 
-    with pytest.raises(service.CitationValidationError) as caught:
+    with pytest.raises(service.EvidenceValidationError) as caught:
         service.validate_evidence(document, sources)
 
     errors = caught.value.errors
@@ -169,10 +169,11 @@ async def test_citation_errors_identify_every_invalid_reference(material):
         'overview.citations[0].source_id', 'findings[0].citations[0].quote',
         'comparisons[0].citations[0].source_id', 'timeline[0].claim.citations[0].quote',
         'extensions[0].body.citations[0].quote',
+        'overview.citations', 'comparisons[0].citations',
     }
     assert errors[0]['source_id'] == '1' and '来源不存在' in errors[0]['reason']
     assert errors[1]['source_id'] == 'i1' and '摘录与原文不符' in errors[1]['reason']
-    assert '共 5 处' in str(caught.value)
+    assert '共 7 处' in str(caught.value)
 
 
 @pytest.mark.asyncio
@@ -224,11 +225,11 @@ async def test_generation_corrects_all_citations_before_review(database, materia
     assert result['created'] == 1 and result['failed'] == 0
     assert len(compose_calls) == 2 and len(review_calls) == 1 and len(external_calls) == 1
     first, retry = compose_calls
-    assert 'previous_document' not in first and 'citation_errors' not in first
+    assert 'previous_document' not in first and 'validation_errors' not in first
     assert retry['sources'] == first['sources'] == review_calls[0]['sources']
     assert retry['previous_document'] == invalid
-    assert {e['path'] for e in retry['citation_errors']} == {
-        'overview.citations[0].source_id', 'extensions[0].body.citations[0].quote',
+    assert {e['path'] for e in retry['validation_errors']} == {
+        'overview.citations[0].source_id', 'extensions[0].body.citations[0].quote', 'overview.citations',
     }
     assert review_calls[0]['document'] == corrected
     async with database() as session:
@@ -236,6 +237,111 @@ async def test_generation_corrects_all_citations_before_review(database, materia
         assert len(versions) == 1 and versions[0].document == corrected
         special = await session.scalar(select(Special))
         assert special.status == 'published' and special.last_error is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('problem', [
+    'comparison_citation', 'comparison_item', 'shared_evidence', 'internal_evidence',
+    'timeline_evidence', 'timeline_date', 'document_kind', 'schema',
+])
+async def test_all_document_checks_can_be_repaired_before_independent_review(database, material, monkeypatch, problem):
+    candidate, sources, document = material
+    comparison = {'item_id': 2, 'object': '田间视觉模型', 'method': '跨地域评估', 'data': '田间数据',
+                  'result': '跨地域存在性能差异', 'limitation': '仅一种作物',
+                  'citations': copy.deepcopy(document['findings'][0]['citations'])}
+    invalid, corrected = copy.deepcopy(document), copy.deepcopy(document)
+    external = {'id': 'e1', 'kind': 'external', 'basis': 'abstract', 'text': '外部原始论文只用于说明方法的应用边界。'}
+    if problem in {'comparison_citation', 'comparison_item'}:
+        invalid['comparisons'] = [comparison]
+        if problem == 'comparison_item':
+            comparison['item_id'] = 999  # A row number or a fabricated item ID.
+        corrected['comparisons'] = [{**comparison, 'item_id': 2,
+                                     'citations': copy.deepcopy(document['findings'][1]['citations'])}]
+    elif problem == 'shared_evidence':
+        invalid['findings'][0]['kind'] = 'shared'
+    elif problem == 'internal_evidence':
+        invalid['findings'][0]['citations'] = [{'source_id': 'e1', 'quote': external['text']}]
+    elif problem in {'timeline_evidence', 'timeline_date'}:
+        candidate.kind = 'event'
+        invalid['timeline'] = [{'date': '2001-01-01' if problem == 'timeline_evidence' else '2026-02-30',
+                                'claim': copy.deepcopy(document['findings'][0])}]
+        corrected['timeline'] = [{'date': sources[0]['published_at'][:10], 'claim': copy.deepcopy(document['findings'][0])}]
+    elif problem == 'document_kind':
+        candidate.kind = 'event'
+        invalid['comparisons'] = [{**comparison, 'citations': copy.deepcopy(document['findings'][1]['citations'])}]
+    else:
+        invalid['findings'] = invalid['findings'][:1]
+    calls, reviewed = [], []
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        if system == service.COMPOSE:
+            calls.append(copy.deepcopy(payload))
+            return invalid if len(calls) == 1 else corrected
+        assert system == service.VERIFY
+        reviewed.append(copy.deepcopy(payload))
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [external], 'academic_only'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+
+    assert result['created'] == 1 and result['failed'] == 0
+    assert len(calls) == 2 and len(reviewed) == 1
+    assert reviewed[0]['document'] == corrected
+    assert calls[0]['sources'] == calls[1]['sources'] == reviewed[0]['sources']
+    assert {e['code'] for e in calls[1]['validation_errors']} == {problem}
+    assert calls[1]['previous_document'] == invalid
+    if problem == 'comparison_citation':
+        error = calls[1]['validation_errors'][0]
+        assert error['path'] == 'comparisons[0].citations'
+        assert error['source_id'] == 'i2' and error['actual_source_ids'] == ['i1']
+    assert calls[0]['comparison_sources'] == [{'item_id': i, 'source_id': f'i{i}'} for i in range(1, 4)]
+    assert calls[0]['schema']['$defs']['Comparison']['properties']['item_id']['enum'] == [1, 2, 3]
+    assert calls[0]['schema']['$defs']['Citation']['properties']['source_id']['enum'] == ['i1', 'i2', 'i3', 'e1']
+    async with database() as session:
+        version = await session.scalar(select(SpecialVersion))
+        assert version.document == corrected
+
+
+@pytest.mark.asyncio
+async def test_comparison_repair_failure_retains_previous_version(database, material, monkeypatch):
+    special_id, _ = await publish(database, material)
+    candidate, _, document = material
+    candidate.existing_id = special_id
+    async with database() as session:
+        item = await session.get(Item, 1)
+        item.summary += ' 新增田间实验的验证条件。'
+        await session.commit()
+    invalid = copy.deepcopy(document)
+    invalid['comparisons'] = [{'item_id': 2, 'object': '', 'method': '', 'data': '', 'result': '', 'limitation': '',
+                               'citations': document['findings'][0]['citations']}]
+    calls = []
+
+    async def llm(system, payload):
+        assert system == service.COMPOSE, 'invalid comparisons must never reach independent review'
+        calls.append(payload)
+        return invalid
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, special_id=special_id)
+
+    assert result['failed'] == 1 and len(calls) == 2
+    async with database() as session:
+        version = await session.scalar(select(SpecialVersion))
+        assert version.document == document
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+        special = await session.get(Special, special_id)
+        assert special.status == 'published'
+        assert 'comparisons[0].citations' in special.last_error and 'i2' in special.last_error
 
 
 @pytest.mark.asyncio
@@ -311,6 +417,116 @@ async def test_missing_or_old_dates_do_not_manufacture_hotness(database, materia
     for source in sources:
         source['published_at'] = (utcnow() - timedelta(days=61)).isoformat()
     assert not service.eligible(candidate, sources)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('dry_run', [False, True])
+@pytest.mark.parametrize('shortage', ['background', 'same_doi', 'missing_date', 'no_fresh', 'event_window', 'missing_item'])
+async def test_ineligible_selections_are_skipped_with_specific_diagnostics_before_generation(database, material, monkeypatch, dry_run, shortage):
+    candidate, _, _ = material
+    if shortage == 'background':
+        candidate.items[2].role = 'background'
+    if shortage == 'event_window':
+        candidate.kind = 'event'
+    async with database() as session:
+        for i in range(1, 4):
+            item = await session.get(Item, i)
+            if shortage == 'same_doi':
+                item.category = '报道'
+                item.summary += ' 原始论文：https://doi.org/10.1234/one-result'
+            elif shortage == 'missing_date' and i == 1:
+                item.published_at = None
+            elif shortage == 'no_fresh':
+                item.published_at = utcnow() - timedelta(days=8 + i)
+            elif shortage == 'event_window':
+                item.published_at = utcnow() - timedelta(days=20 + i)
+        await session.commit()
+    logs = []
+
+    async def report(**entry):
+        logs.append(entry)
+
+    async def llm(system, payload):
+        assert system == service.DISCOVER, 'insufficient evidence must not reach composition'
+        articles = {a['id']: a for a in payload['articles']}
+        if shortage == 'missing_date':
+            assert articles[1]['eligibility'] == {'event_core': False, 'research_core': False, 'fresh': False}
+        elif shortage == 'event_window':
+            assert articles[1]['eligibility'] == {'event_core': False, 'research_core': True, 'fresh': False}
+        elif shortage == 'same_doi':
+            assert {articles[i]['primary_doi'] for i in range(1, 4)} == {'10.1234/one-result'}
+        if shortage == 'missing_item':
+            async with database() as session:
+                await session.delete(await session.get(Item, 3))
+                await session.commit()
+        return {'candidates': [candidate.model_dump()]}
+
+    async def forbidden(*args):
+        pytest.fail('insufficient selections must not use external services')
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', forbidden)
+    result = await service.run_once(factory=database, dry_run=dry_run, report=report)
+
+    assert result['skipped'] == 1 and result['failed'] == result['created'] == result['updated'] == 0
+    entry = next(e for e in logs if e['stage'] == 'eligibility' and e['level'] == 'warning')
+    details = entry['details']
+    assert details['title'] == candidate.title and details['eligible'] is False and details['reasons']
+    assert '材料不足：' in entry['message']
+    assert all('published_at' in a and 'evidence_group' in a for a in details['articles'])
+    if shortage == 'background':
+        assert details['core_count'] == details['recent_core_count'] == 2
+        assert '核心文章 2/3' in entry['message']
+    elif shortage == 'same_doi':
+        assert details['independent_groups'] == 1
+        assert len({a['evidence_group'] for a in details['articles']}) == 1
+        assert '独立证据 1/2' in entry['message']
+    elif shortage == 'missing_date':
+        assert details['recent_core_count'] == 2 and '无日期' in entry['message']
+    elif shortage == 'no_fresh':
+        assert details['recent_core_count'] == 3 and details['fresh_core_count'] == 0
+        assert '近7天发表的核心文章 0/1' in entry['message']
+    elif shortage == 'event_window':
+        assert details['window_days'] == 14 and details['recent_core_count'] == 0
+        assert '近14天发表的核心文章 0/3' in entry['message']
+    else:
+        assert details['missing_item_ids'] == [3]
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 0
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
+async def test_future_dates_are_background_and_do_not_supply_recent_evidence(material):
+    candidate, sources, _ = material
+    sources[0]['published_at'] = (utcnow() + timedelta(days=1)).isoformat()
+    result = service.eligibility_report(candidate, sources)
+    assert result['eligible'] is False and result['recent_core_count'] == 2
+    article = result['articles'][0]
+    assert article['event_core'] is article['research_core'] is article['fresh'] is False
+
+
+@pytest.mark.asyncio
+async def test_insufficient_existing_special_keeps_publication_and_records_reason(database, material, monkeypatch):
+    special_id, _ = await publish(database, material)
+    async with database() as session:
+        for i in range(1, 4):
+            item = await session.get(Item, i)
+            item.published_at = utcnow() - timedelta(days=8 + i)
+        await session.commit()
+
+    async def forbidden(*args):
+        pytest.fail('material preflight must happen before generation')
+
+    monkeypatch.setattr(service, 'llm', forbidden)
+    monkeypatch.setattr(service, 'supplement', forbidden)
+    result = await service.run_once(factory=database, special_id=special_id)
+
+    assert result['skipped'] == 1 and result['failed'] == result['updated'] == 0
+    async with database() as session:
+        special = await session.get(Special, special_id)
+        assert special.status == 'published' and '近7天发表的核心文章 0/1' in special.last_error
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
 
 
 @pytest.mark.asyncio

@@ -87,7 +87,7 @@ const hints = {
 
 const stages = {
   load: '读取资料', discover: '发现选题', candidate: '处理专题', sources: '站内来源',
-  research: '外部检索', compose: '撰写专题', repair: '修正引用', verify: '独立审查',
+  eligibility: '材料检查', research: '外部检索', compose: '撰写专题', repair: '修正文档', verify: '独立审查',
   publish: '发布', skip: '跳过', complete: '完成',
 }
 

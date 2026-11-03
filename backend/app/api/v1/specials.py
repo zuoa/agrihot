@@ -130,7 +130,7 @@ async def edit(special_id: int, payload: SpecialPatch, session: AsyncSession = D
         await session.refresh(version, attribute_names=["document", "sources"])
         document = payload.document.model_dump()
         try:
-            service.validate_evidence(document, version.sources)
+            service.validate_evidence(document, version.sources, kind=special.kind)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         session.add(SpecialVersion(special_id=special_id, input_hash=service.digest(document), sources=version.sources,
