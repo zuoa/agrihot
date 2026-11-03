@@ -79,7 +79,10 @@ class DiscoveryCandidate(Candidate):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=5, max_length=60)
     scope: str = Field(min_length=10, max_length=120)
-    items: list[DiscoveryItem] = Field(min_length=3, max_length=6)
+    items: list[DiscoveryItem] = Field(min_length=3, max_length=6, json_schema_extra={
+        "contains": {"type": "object", "properties": {"role": {"const": "core"}}, "required": ["role"]},
+        "minContains": 3,
+    })
     queries: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=1)
 
 
@@ -91,6 +94,20 @@ class DiscoveryProposal(DiscoveryCandidate):
 class Discovery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidates: list[DiscoveryCandidate] = Field(default_factory=list, max_length=3)
+
+
+class MaterialSelection(BaseModel):
+    """A bounded replacement selection; an empty list means insufficient evidence."""
+    model_config = ConfigDict(extra="forbid")
+    items: list[DiscoveryItem] = Field(default_factory=list, max_length=6, json_schema_extra={
+        "anyOf": [{"maxItems": 0}, {"minItems": 3, "minContains": 3,
+            "contains": {"type": "object", "properties": {"role": {"const": "core"}}, "required": ["role"]}}],
+    })
+
+    @field_validator("items")
+    @classmethod
+    def unique_items(cls, items):
+        return Candidate.unique_items(items)
 
 
 class SpecialPatch(BaseModel):

@@ -70,6 +70,31 @@ async def material(database):
     return candidate, sources, document
 
 
+@pytest.fixture
+def model_requests(monkeypatch):
+    import httpx
+    from collections import deque
+    from types import SimpleNamespace
+
+    provider = SimpleNamespace(responses=deque(), requests=[], waits=[])
+
+    async def handler(request):
+        provider.requests.append(json.loads(request.content))
+        response = provider.responses.popleft()
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    async def wait(delay):
+        provider.waits.append(delay)
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(service.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(service, 'sleep', wait)
+    monkeypatch.setattr(settings, 'deepseek_api_key', 'retry-secret-not-for-logs')
+    return provider
+
+
 async def publish(database, material):
     candidate, sources, document = material
     return await service.publish(candidate, document, sources, service.input_hash(candidate, sources), database)
@@ -447,6 +472,8 @@ async def test_ineligible_selections_are_skipped_with_specific_diagnostics_befor
         logs.append(entry)
 
     async def llm(system, payload):
+        if system == service.RESELECT:
+            return {'items': [i.model_dump() for i in candidate.items]}
         assert system == service.DISCOVER, 'insufficient evidence must not reach composition'
         articles = {a['id']: a for a in payload['articles']}
         if shortage == 'missing_date':
@@ -518,7 +545,11 @@ async def test_insufficient_existing_special_keeps_publication_and_records_reaso
     async def forbidden(*args):
         pytest.fail('material preflight must happen before generation')
 
-    monkeypatch.setattr(service, 'llm', forbidden)
+    async def reselect(system, payload):
+        assert system == service.RESELECT
+        return {'items': []}
+
+    monkeypatch.setattr(service, 'llm', reselect)
     monkeypatch.setattr(service, 'supplement', forbidden)
     result = await service.run_once(factory=database, special_id=special_id)
 
@@ -527,6 +558,240 @@ async def test_insufficient_existing_special_keeps_publication_and_records_reaso
         special = await session.get(Special, special_id)
         assert special.status == 'published' and '近7天发表的核心文章 0/1' in special.last_error
         assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('dry_run', [False, True])
+@pytest.mark.parametrize('shortage', ['background', 'missing_date', 'no_fresh', 'same_doi'])
+async def test_insufficient_core_selection_is_repaired_before_generation(database, material, monkeypatch, dry_run, shortage):
+    candidate, _, document = material
+    proposed = candidate.model_dump()
+    if shortage == 'background':
+        proposed['items'][2]['role'] = 'background'
+    async with database() as session:
+        for item_id in range(1, 4):
+            item = await session.get(Item, item_id)
+            if shortage == 'missing_date' and item_id == 1:
+                item.published_at = None
+            elif shortage == 'no_fresh':
+                item.published_at = utcnow() - timedelta(days=10 + item_id)
+            elif shortage == 'same_doi':
+                item.category = '报道'
+                item.summary += ' 原始论文：https://doi.org/10.1234/one-result'
+        await session.commit()
+    selected = copy.deepcopy(proposed['items'])
+    if shortage == 'missing_date':
+        selected[0]['role'] = 'background'
+    selected.append({**candidate.items[0].model_dump(), 'item_id': 4, 'evidence_group': 'study-4'})
+    calls, logs = [], []
+
+    async def report(**entry):
+        logs.append(entry)
+
+    async def llm(system, payload):
+        calls.append(system)
+        if system == service.DISCOVER:
+            items = payload['schema']['$defs']['DiscoveryCandidate']['properties']['items']
+            assert items['minContains'] == 3 and items['contains']['properties']['role']['const'] == 'core'
+            assert payload['limits']['min_core_items'] == 3
+            return {'candidates': [proposed]}
+        if system == service.RESELECT:
+            assert payload['previous_candidate']['scope'] == candidate.scope
+            assert payload['material_diagnostics']['eligible'] is False
+            assert 4 in {a['id'] for a in payload['articles']}, 'Offer unselected site articles to fill the gap'
+            return {'items': selected}
+        assert not dry_run
+        if system == service.COMPOSE:
+            sources = {s['item_id']: s for s in payload['sources']}
+            assert set(sources) == {1, 2, 3, 4}
+            if shortage in {'background', 'missing_date'}:
+                assert sum(s['role'] == 'core' for s in sources.values()) == 3
+            if shortage == 'same_doi':
+                assert len({s['evidence_group'] for s in sources.values()}) == 2
+            return document
+        assert system == service.VERIFY
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        assert not dry_run
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, dry_run=dry_run, report=report)
+    assert result['skipped'] == result['failed'] == 0
+    assert calls == [service.DISCOVER, service.RESELECT] + ([] if dry_run else [service.COMPOSE, service.VERIFY])
+    assert any(entry['stage'] == 'reselect' and '检查通过' in entry['message'] for entry in logs)
+    if dry_run:
+        assert len(result['candidates']) == 1 and len(result['candidates'][0]['items']) == 4
+    else:
+        assert result['created'] == 1
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == int(not dry_run)
+        assert await session.scalar(select(func.count()).select_from(Special)) == int(not dry_run)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('repair_result', ['empty', 'still_insufficient', 'unknown_id', 'duplicate', 'overflow', 'invalid', 'error', 'truncated'])
+async def test_unsuccessful_material_reselection_is_bounded_and_does_not_block_other_topics(database, material, monkeypatch, repair_result):
+    candidate, _, document = material
+    insufficient = candidate.model_dump()
+    insufficient['title'] = '需要补选材料的独立选题'
+    insufficient['scope'] += '侧重另一项具体应用条件。'
+    insufficient['items'][2]['role'] = 'background'
+    calls, logs = [], []
+
+    async def report(**entry):
+        logs.append(entry)
+
+    async def llm(system, payload):
+        calls.append(system)
+        if system == service.DISCOVER:
+            return {'candidates': [insufficient, candidate.model_dump()]}
+        if system == service.RESELECT:
+            if repair_result == 'error':
+                raise service.ModelRequestError('DeepSeek 服务繁忙（HTTP 503）')
+            if repair_result == 'truncated':
+                raise service.ModelOutputLimitError('补选输出被截断')
+            if repair_result == 'invalid':
+                return {'items': 'invalid'}
+            selected = copy.deepcopy(insufficient['items'])
+            if repair_result == 'empty':
+                selected = []
+            elif repair_result == 'unknown_id':
+                selected[2].update(item_id=99999, role='core')
+            elif repair_result == 'duplicate':
+                selected[2] = selected[0]
+            elif repair_result == 'overflow':
+                selected = [{**selected[0], 'item_id': i} for i in range(1, 8)]
+            return {'items': selected}
+        assert payload['title'] == candidate.title, 'Only the valid candidate may reach composition or review'
+        return document if system == service.COMPOSE else {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, report=report)
+    assert result['skipped'] == result['created'] == 1 and result['failed'] == 0
+    assert calls.count(service.RESELECT) == 1 and calls.count(service.COMPOSE) == 1
+    assert any(entry['stage'] == 'eligibility' and '材料不足' in entry['message'] for entry in logs)
+    async with database() as session:
+        special, = (await session.scalars(select(Special))).all()
+        assert special.title == candidate.title and special.status == 'published'
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('items_locked', [False, True])
+async def test_existing_special_reselection_preserves_history_scope_groups_and_manual_locks(database, material, monkeypatch, items_locked):
+    from app.models import SpecialItem
+
+    candidate, sources, document = material
+    candidate.scope *= 6  # Existing/manual scopes may exceed discovery's shorter output limits.
+    candidate.items.append(candidate.items[0].model_copy(update={'item_id': 4, 'role': 'background', 'evidence_group': 'study-4'}))
+    sources = await service.prepare_sources(candidate, database)
+    special_id, _ = await service.publish(candidate, document, sources, service.input_hash(candidate, sources), database)
+    async with database() as session:
+        link = await session.scalar(select(SpecialItem).where(SpecialItem.special_id == special_id, SpecialItem.item_id == 3))
+        link.role = 'background'
+        item = await session.get(Item, 1)
+        item.summary += ' 新增跨地域验证条件。'
+        special = await session.get(Special, special_id)
+        special.locked_fields = ['items'] if items_locked else []
+        await session.commit()
+    calls = []
+
+    async def llm(system, payload):
+        calls.append(system)
+        if system == service.RESELECT:
+            assert not items_locked
+            assert payload['previous_candidate']['scope'] == candidate.scope
+            return {'items': [i.model_dump() for i in candidate.items[:3]]}
+        assert payload['scope'] == candidate.scope
+        by_id = {s['item_id']: s for s in payload['sources']}
+        assert set(by_id) == {1, 2, 3, 4} and by_id[4]['role'] == 'background'
+        assert by_id[3]['role'] == 'core'
+        assert {i: s['evidence_group'] for i, s in by_id.items()} == {s['item_id']: s['evidence_group'] for s in sources}
+        return document if system == service.COMPOSE else {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, special_id=special_id)
+    assert result['failed'] == 0 and result['updated'] == int(not items_locked)
+    assert calls == ([] if items_locked else [service.RESELECT, service.COMPOSE, service.VERIFY])
+    async with database() as session:
+        special = await session.get(Special, special_id)
+        assert special.status == 'published' and special.scope == candidate.scope
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == (1 if items_locked else 2)
+
+
+@pytest.mark.asyncio
+async def test_material_reselection_cannot_create_a_duplicate_existing_topic(database, material, monkeypatch):
+    from app.models import SpecialItem
+
+    candidate, _, _ = material
+    proposed = candidate.model_dump()
+    proposed['items'][2]['role'] = 'background'
+    async with database() as session:
+        for item_id in (5, 6):
+            session.add(Item(id=item_id, title=f'相关独立研究{item_id}', url=f'https://research.example/{item_id}',
+                             url_hash=str(item_id), title_simhash=item_id, summary='跨地域测试存在性能差异，仍需更多验证。',
+                             published_at=utcnow() - timedelta(days=1), category='论文', source_name='研究机构'))
+        existing = Special(kind='research', title='已存在的相关研究专题', scope=candidate.scope + '关注既有研究条件。')
+        session.add(existing)
+        await session.flush()
+        for item_id in (4, 5, 6):
+            session.add(SpecialItem(special_id=existing.id, item_id=item_id, role='core',
+                                    reason='已有议题的核心研究材料', evidence_group=f'study-{item_id}'))
+        await session.commit()
+    calls, logs = [], []
+
+    async def report(**entry):
+        logs.append(entry)
+
+    async def llm(system, payload):
+        calls.append(system)
+        if system == service.DISCOVER:
+            return {'candidates': [proposed]}
+        assert system == service.RESELECT, 'A duplicate must be rejected before composition'
+        return {'items': [{**candidate.items[0].model_dump(), 'item_id': item_id, 'evidence_group': f'study-{item_id}'}
+                          for item_id in (1, 2, 4, 5)]}
+
+    monkeypatch.setattr(service, 'llm', llm)
+    result = await service.run_once(factory=database, report=report)
+    assert result['skipped'] == 1 and result['created'] == result['failed'] == 0
+    assert calls == [service.DISCOVER, service.RESELECT]
+    assert any(entry['stage'] == 'skip' and '重叠' in entry['message'] for entry in logs)
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 1
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
+async def test_globally_missing_publication_dates_do_not_trigger_material_reselection(database, material, monkeypatch):
+    candidate, _, _ = material
+    async with database() as session:
+        for item in (await session.scalars(select(Item))).all():
+            item.published_at = None
+        await session.commit()
+    calls = []
+
+    async def llm(system, payload):
+        calls.append(system)
+        assert system == service.DISCOVER
+        return {'candidates': [candidate.model_dump()]}
+
+    monkeypatch.setattr(service, 'llm', llm)
+    result = await service.run_once(factory=database)
+    assert result['skipped'] == 1 and result['created'] == result['failed'] == 0
+    assert calls == [service.DISCOVER]
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 0
 
 
 @pytest.mark.asyncio
@@ -963,6 +1228,169 @@ async def test_special_job_loads_runtime_settings_and_publishes(database, materi
         published = await service.public_specials(session)
         assert len(published) == 1
         assert published[0][0].title == candidate.title
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure_stage', ['discover', 'compose', 'repair', 'verify'])
+async def test_special_job_recovers_from_model_overload(database, material, client, monkeypatch, model_requests, failure_stage):
+    import httpx
+    from app.services import job_runner
+
+    candidate, _, document = material
+    invalid = copy.deepcopy(document)
+    invalid['overview']['citations'][0]['quote'] = '不存在于原文的摘录，需要修正'
+    phases = [('discover', {'candidates': [candidate.model_dump()]}),
+              ('compose', invalid if failure_stage == 'repair' else document)]
+    if failure_stage == 'repair':
+        phases.append(('repair', document))
+    phases.append(('verify', {'approved': True, 'reason': ''}))
+    for stage, output in phases:
+        if stage == failure_stage:
+            model_requests.responses.append(httpx.Response(503, text='provider-error-body-must-not-be-logged'))
+        model_requests.responses.append(httpx.Response(200, json={
+            'id': f'request-{stage}',
+            'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(output)}}],
+        }))
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await job_runner.run('specials_generate')
+    assert result['status'] == 'ok' and result['stats']['created'] == 1 and result['stats']['failed'] == 0
+    assert model_requests.waits == [2]
+    assert len(model_requests.requests) == len(phases) + 1
+    index = next(i for i, (stage, _) in enumerate(phases) if stage == failure_stage)
+    assert model_requests.requests[index] == model_requests.requests[index + 1], 'Retry the same stage and payload'
+    warning, = [entry for entry in result['logs'] if entry['level'] == 'warning' and '自动重试' in entry['message']]
+    assert warning['stage'] == failure_stage and 'HTTP 503' in warning['message']
+    assert warning['details']['attempt'] == 1 and warning['details']['next_attempt'] == 2
+    assert warning['details']['retry_delay_seconds'] == 2
+    recovered = next(entry for entry in result['logs'] if entry['details'] and entry['details'].get('request_id') == f'request-{failure_stage}')
+    assert recovered['details']['attempt'] == 2
+    headers = {'X-Admin-Token': issue_admin_token()}
+    jobs = (await client.get('/api/v1/admin/jobs', headers=headers)).json()['jobs']
+    job = next(job for job in jobs if job['name'] == 'specials_generate')
+    assert any(entry['message'] == warning['message'] for entry in job['logs'])
+    assert 'retry-secret-not-for-logs' not in json.dumps(job)
+    assert 'provider-error-body-must-not-be-logged' not in json.dumps(job)
+    assert service._reporter.get() is None
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure_stage', ['discover', 'verify'])
+async def test_model_overload_stops_after_bounded_retries_and_retains_version(database, material, monkeypatch, model_requests, failure_stage):
+    import httpx
+    from app.services import job_runner
+
+    special_id, _ = await publish(database, material)
+    if failure_stage == 'verify':
+        async with database() as session:
+            item = await session.get(Item, 1)
+            item.summary += ' 新增验证条件。'
+            await session.commit()
+        model_requests.responses.append(httpx.Response(200, json={
+            'choices': [{'message': {'content': json.dumps(material[2])}}],
+        }))
+    model_requests.responses.extend(httpx.Response(503) for _ in range(3))
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await job_runner.run('specials_generate', {'special_id': special_id} if failure_stage == 'verify' else {})
+    assert model_requests.waits == [2, 4]
+    assert len(model_requests.requests) == (4 if failure_stage == 'verify' else 3)
+    error, = [entry for entry in result['logs'] if entry['stage'] == failure_stage and entry['level'] == 'error']
+    assert '服务繁忙' in error['message'] and 'HTTP 503' in error['message'] and '已尝试 3 次' in error['message']
+    assert error['details']['attempt'] == error['details']['max_attempts'] == 3
+    if failure_stage == 'discover':
+        assert result['status'] == 'error' and result['error'] == error['message']
+    else:
+        assert result['stats']['failed'] == 1 and result['stats']['updated'] == 0
+    async with database() as session:
+        row = await session.get(Special, special_id)
+        assert row.status == 'published'
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 1
+        if failure_stage == 'verify':
+            assert row.last_error == error['message']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', [400, 401, 402, 403, 422])
+async def test_model_configuration_errors_are_not_retried(model_requests, status):
+    import httpx
+
+    model_requests.responses.append(httpx.Response(status, text='private-provider-body'))
+    with pytest.raises(service.ModelRequestError, match=f'HTTP {status}') as error:
+        await service.llm(service.DISCOVER, {})
+    assert len(model_requests.requests) == 1 and model_requests.waits == []
+    assert 'private-provider-body' not in str(error.value)
+    assert 'retry-secret-not-for-logs' not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure', [408, 429, 500, 502, 504, 'ReadTimeout', 'ConnectError', 'ReadError', 'RemoteProtocolError'])
+async def test_model_transient_failures_retry_the_same_request(model_requests, failure):
+    import httpx
+
+    model_requests.responses.append(httpx.Response(failure) if isinstance(failure, int) else getattr(httpx, failure)('private-error-details'))
+    model_requests.responses.append(httpx.Response(200, json={'choices': [{'message': {'content': '{"candidates": []}'}}]}))
+    assert await service.llm(service.DISCOVER, {'articles': []}) == {'candidates': []}
+    assert model_requests.waits == [2]
+    assert len(model_requests.requests) == 2 and model_requests.requests[0] == model_requests.requests[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(('header', 'delay'), [
+    ('7', 7), ('Tue, 03 Nov 2026 09:02:16 GMT', 12),
+    ('invalid', 2), ('-5', 2), ('nan', 2), ('inf', 2), ('0', 2),
+    ('61', None), ('7200', None),
+])
+async def test_model_retry_respects_provider_delay_without_unbounded_waits(model_requests, monkeypatch, header, delay):
+    import httpx
+
+    monkeypatch.setattr(service.time, 'time', lambda: datetime.fromisoformat('2026-11-03T09:02:04+00:00').timestamp())
+    model_requests.responses.append(httpx.Response(503, headers={'Retry-After': header}))
+    model_requests.responses.append(httpx.Response(200, json={'choices': [{'message': {'content': '{}'}}]}))
+    if delay is None:
+        with pytest.raises(service.ModelRequestError, match='服务端要求等待较长时间'):
+            await service.llm(service.DISCOVER, {})
+        assert len(model_requests.requests) == 1 and model_requests.waits == []
+    else:
+        assert await service.llm(service.DISCOVER, {}) == {}
+        assert len(model_requests.requests) == 2 and model_requests.waits == [delay]
+
+
+@pytest.mark.asyncio
+async def test_model_invalid_response_is_not_retried(model_requests):
+    import httpx
+
+    model_requests.responses.append(httpx.Response(200, text='private-invalid-response'))
+    with pytest.raises(service.ModelRequestError, match='不是有效 JSON'):
+        await service.llm(service.DISCOVER, {})
+    assert len(model_requests.requests) == 1 and model_requests.waits == []
+
+
+@pytest.mark.asyncio
+async def test_model_retry_does_not_swallow_cancellation(model_requests, monkeypatch):
+    import asyncio
+    import httpx
+
+    async def cancelled(delay):
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(service, 'sleep', cancelled)
+    model_requests.responses.append(httpx.Response(503))
+    with pytest.raises(asyncio.CancelledError):
+        await service.llm(service.DISCOVER, {})
+    assert len(model_requests.requests) == 1
 
 
 @pytest.mark.asyncio
