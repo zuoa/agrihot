@@ -136,6 +136,14 @@ class AdminSettingsPatch(BaseModel):
         return f"{hour:02d}:{minute:02d}"
 
 
+class JobLogOut(BaseModel):
+    at: datetime
+    level: str = "info"
+    stage: str
+    message: str
+    details: dict | None = None
+
+
 class JobStatusOut(BaseModel):
     name: str
     label: str
@@ -145,6 +153,7 @@ class JobStatusOut(BaseModel):
     stats: dict | None = None
     error: str | None = None
     progress: dict | None = None
+    logs: list[JobLogOut] = Field(default_factory=list)
 
 
 class JobListOut(BaseModel):

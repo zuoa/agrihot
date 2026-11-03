@@ -17,7 +17,29 @@
           <div v-if="j.error" class="text-red-600">{{ j.error }}</div>
           <div v-else-if="j.stats">{{ formatStats(j) }}</div>
           <div v-if="j.finished_at">上次完成 {{ fmtWhen(j.finished_at) }}</div>
+          <div v-else-if="j.logs?.length">最近进展：{{ j.logs[j.logs.length - 1].message }}</div>
         </div>
+        <details v-if="j.logs?.length" class="min-w-0 border-t border-stone-100 pt-3 text-xs">
+          <summary class="cursor-pointer text-leaf-700">执行详情（{{ j.logs.length }} 条）</summary>
+          <p class="mt-2 text-stone-400">保留本次执行最近 100 条记录；失败输出保留开头和结尾片段。</p>
+          <ol class="mt-3 max-h-96 overflow-y-auto space-y-3 pr-1" :aria-label="`${j.label}执行记录`">
+            <li v-for="(entry, index) in j.logs" :key="`${entry.at}-${index}`" class="min-w-0">
+              <div class="flex flex-wrap gap-x-2 gap-y-1 text-stone-400">
+                <time :datetime="entry.at">{{ fmtLogTime(entry.at) }}</time>
+                <span>{{ stages[entry.stage] || entry.stage }}</span>
+                <span v-if="entry.level === 'error'" class="text-red-600">错误</span>
+                <span v-else-if="entry.level === 'warning'" class="text-amber-700">提醒</span>
+              </div>
+              <p class="mt-1 whitespace-pre-wrap break-words" :class="entry.level === 'error' ? 'text-red-700' : 'text-stone-700'">{{ entry.message }}</p>
+              <p v-if="entry.details?.title" class="mt-1 break-words text-stone-500">{{ entry.details.special_id ? `#${entry.details.special_id} · ` : '' }}{{ entry.details.title }}</p>
+              <p v-if="logMetrics(entry.details)" class="mt-1 break-words text-stone-500">{{ logMetrics(entry.details) }}</p>
+              <details v-if="entry.details" class="mt-1">
+                <summary class="cursor-pointer text-stone-500">诊断数据与输出片段</summary>
+                <pre class="mt-2 max-h-64 overflow-y-auto rounded bg-stone-50 p-2 whitespace-pre-wrap break-words text-[11px] text-stone-600">{{ JSON.stringify(entry.details, null, 2) }}</pre>
+              </details>
+            </li>
+          </ol>
+        </details>
         <div class="mt-auto flex items-center gap-2">
           <input v-if="j.name === 'daily_generate'" v-model="dailyDate" type="date"
             class="px-2 py-1 text-xs rounded border border-stone-200" />
@@ -25,10 +47,10 @@
             class="px-3 py-1.5 text-xs rounded-md border border-stone-200 text-stone-600 hover:bg-stone-50">
             去内容页勾选
           </router-link>
-          <button :disabled="j.status === 'running' || busy === j.name"
+          <button :disabled="['running', 'queued'].includes(j.status) || busy === j.name"
             @click="run(j)"
             class="ml-auto px-3 py-1.5 text-xs rounded-md bg-leaf-700 text-white hover:bg-leaf-800 disabled:opacity-40">
-            {{ j.status === 'running' ? '运行中…' : '立即执行' }}
+            {{ j.status === 'running' ? '运行中…' : j.status === 'queued' ? '排队中…' : '立即执行' }}
           </button>
         </div>
       </article>
@@ -63,6 +85,27 @@ const hints = {
   specials_generate: '发现共同议题、提炼与补充引用，通过检查后自动发布',
 }
 
+const stages = {
+  load: '读取资料', discover: '发现选题', candidate: '处理专题', sources: '站内来源',
+  research: '外部检索', compose: '撰写专题', repair: '修正引用', verify: '独立审查',
+  publish: '发布', skip: '跳过', complete: '完成',
+}
+
+function fmtLogTime(iso) {
+  return new Date(iso).toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+function logMetrics(details) {
+  if (!details) return ''
+  const parts = []
+  if (details.model) parts.push(details.model)
+  if (details.completion_tokens != null) parts.push(`输出 ${details.completion_tokens} / ${details.max_tokens} tokens`)
+  if (details.prompt_tokens != null) parts.push(`输入 ${details.prompt_tokens} tokens`)
+  if (details.elapsed_seconds != null) parts.push(`耗时 ${details.elapsed_seconds} 秒`)
+  if (details.finish_reason) parts.push(`结束原因 ${details.finish_reason}`)
+  return parts.join(' · ')
+}
+
 function hint(name) {
   return hints[name] || ''
 }
@@ -89,6 +132,7 @@ function formatStats(j) {
   if (j.name === 'retag') return `条目 ${s.items ?? 0}，改动 ${s.changed ?? 0}`
   if (j.name === 'taxonomy_backfill') return `已处理 ${s.processed ?? 0} · 更新 ${s.changed ?? 0} · 锁定跳过 ${s.locked ?? 0} · 待复核 ${s.needs_review ?? 0}`
   if (j.name === 'fetch_content') return `抓取 ${s.fetched ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
+  if (j.name === 'specials_generate') return `新建 ${s.created ?? 0} · 更新 ${s.updated ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}${s.reason ? ` · ${s.reason}` : ''}`
   return JSON.stringify(s)
 }
 

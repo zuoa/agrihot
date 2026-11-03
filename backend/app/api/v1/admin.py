@@ -83,6 +83,7 @@ def _job_out(raw: dict) -> JobStatusOut:
         stats=raw.get("stats"),
         error=raw.get("error"),
         progress=raw.get("progress"),
+        logs=raw.get("logs") or [],
     )
 
 

@@ -1,7 +1,8 @@
 """Behavioral coverage for evidence lineage, publication and editorial controls."""
 import copy
+import json
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -458,6 +459,127 @@ async def test_special_job_loads_runtime_settings_and_publishes(database, materi
         published = await service.public_specials(session)
         assert len(published) == 1
         assert published[0][0].title == candidate.title
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure_stage', ['discover', 'compose', 'repair', 'verify', None])
+async def test_special_job_retains_model_diagnostics_in_admin_output(database, material, client, monkeypatch, failure_stage):
+    import httpx
+    from app.services import job_runner
+
+    candidate, _, document = material
+    invalid = copy.deepcopy(document)
+    invalid['overview']['citations'][0]['quote'] = '模型改写的摘录并不存在于任何原文'
+    truncated_output = '{"candidates":[' + '截断内容' * 1500
+    requests = []
+
+    async def handler(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body['max_tokens'] == service.MAX_OUTPUT_TOKENS
+        system = body['messages'][0]['content']
+        payload = json.loads(body['messages'][1]['content'])
+        if system.startswith(service.DISCOVER):
+            stage, result = 'discover', {'candidates': [candidate.model_dump()]}
+        elif system.startswith(service.VERIFY):
+            stage, result = 'verify', {'approved': True, 'reason': ''}
+        else:
+            stage = 'repair' if 'previous_document' in payload else 'compose'
+            result = invalid if failure_stage == 'repair' and stage == 'compose' else document
+        truncated = stage == failure_stage
+        return httpx.Response(200, json={
+            'id': f'request-{stage}', 'model': 'test-editorial-model',
+            'choices': [{'finish_reason': 'length' if truncated else 'stop',
+                         'message': {'content': truncated_output if truncated else json.dumps(result, ensure_ascii=False)}}],
+            'usage': {'prompt_tokens': 1000, 'completion_tokens': 8192 if truncated else 128,
+                      'total_tokens': 9192 if truncated else 1128},
+        })
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(service.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(settings, 'deepseek_api_key', 'diagnostics-secret-not-for-logs')
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await job_runner.run('specials_generate', {'dry_run': False})
+    assert service._reporter.get() is None  # Reporters must not leak into another task.
+    assert requests
+
+    assert (await client.get('/api/v1/admin/jobs')).status_code == 401
+    headers = {'X-Admin-Token': issue_admin_token()}
+    jobs = (await client.get('/api/v1/admin/jobs', headers=headers)).json()['jobs']
+    job = next(j for j in jobs if j['name'] == 'specials_generate')
+    assert len(job['logs']) == len(result['logs'])
+    for entry, saved in zip(job['logs'], result['logs']):
+        assert datetime.fromisoformat(entry['at']) == datetime.fromisoformat(saved['at'])
+        assert {k: v for k, v in entry.items() if k != 'at'} == {k: v for k, v in saved.items() if k != 'at'}
+    assert 'diagnostics-secret-not-for-logs' not in json.dumps(job)
+    assert job['logs'][0]['stage'] == 'load'
+    if failure_stage:
+        entry = next(e for e in job['logs'] if e['stage'] == failure_stage and e['level'] == 'error')
+        details = entry['details']
+        assert '输出限制' in entry['message'] and '8192' in entry['message']
+        assert details['finish_reason'] == 'length' and details['completion_tokens'] == 8192
+        assert details['prompt_tokens'] == 1000 and details['total_tokens'] == 9192
+        assert details['max_tokens'] == 8192 and details['output_chars'] == len(truncated_output)
+        assert details['request_id'] == f'request-{failure_stage}' and details['model'] == 'test-editorial-model'
+        assert details['elapsed_seconds'] >= 0
+        assert details['output_head'] == truncated_output[:1500] and details['output_tail'] == truncated_output[-1500:]
+        assert details['output_preview_truncated'] is True
+        if failure_stage == 'discover':
+            assert job['status'] == 'error' and '输出限制' in job['error']
+        else:
+            assert job['stats']['failed'] == 1
+            async with database() as session:
+                draft = await session.scalar(select(Special))
+                assert draft.status == 'draft' and '输出限制' in draft.last_error
+        async with database() as session:
+            assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+    else:
+        assert job['status'] == 'ok' and job['stats']['created'] == 1
+        returned = [e for e in job['logs'] if e['details'] and e['details'].get('finish_reason') == 'stop']
+        assert {e['stage'] for e in returned} == {'discover', 'compose', 'verify'}
+        assert all(e['details']['completion_tokens'] == 128 for e in returned)
+        assert job['logs'][-1]['stage'] == 'complete'
+
+
+@pytest.mark.asyncio
+async def test_job_diagnostics_are_bounded_preserve_parameters_and_reset_on_rerun(database, monkeypatch):
+    from app.models import PipelineState
+    from app.services import job_runner
+
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    snapshots = []
+
+    async def handler(params):
+        for index in range(job_runner.MAX_JOB_LOGS + 2):
+            await job_runner.append_log('specials_generate', stage='test', message=f'记录 {index}')
+        async with database() as session:
+            state = json.loads((await session.get(PipelineState, 'job:specials_generate')).value)
+            assert state['params'] == params
+        snapshots.append(await job_runner.get_job('specials_generate'))
+        raise ValueError('保留日志的失败任务')
+
+    monkeypatch.setitem(job_runner.HANDLERS, 'specials_generate', handler)
+    result = await job_runner.run('specials_generate', {'special_id': 12})
+    assert result['status'] == 'error'
+    assert snapshots[0]['status'] == 'running'
+    assert len(result['logs']) == job_runner.MAX_JOB_LOGS
+    assert result['logs'][0]['message'] == '记录 2'
+
+    async def rerun(params):
+        assert (await job_runner.get_job('specials_generate'))['logs'] == []
+        await job_runner.append_log('specials_generate', stage='test', message='本次的新日志')
+        return {'created': 1}
+
+    monkeypatch.setitem(job_runner.HANDLERS, 'specials_generate', rerun)
+    result = await job_runner.run('specials_generate')
+    assert result['status'] == 'ok' and len(result['logs']) == 1
+    assert result['logs'][0]['message'] == '本次的新日志'
 
 
 @pytest.mark.asyncio

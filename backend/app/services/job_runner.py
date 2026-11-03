@@ -11,6 +11,7 @@ import json
 import logging
 import os
 from datetime import date, datetime, timezone
+from functools import partial
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy import or_, select
@@ -40,6 +41,7 @@ WORKER_JOBS = frozenset({"fetch_content", "specials_generate"})
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
 _running: set[str] = set()
+MAX_JOB_LOGS = 100
 
 
 class JobBusy(Exception):
@@ -91,6 +93,7 @@ async def _read_status(name: str) -> dict[str, Any]:
         "stats": None,
         "error": None,
         "progress": None,
+        "logs": [],
     }
     async with SessionLocal() as session:
         row = await session.get(PipelineState, _state_key(name))
@@ -103,6 +106,7 @@ async def _read_status(name: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         return idle
     idle.update({k: data.get(k) for k in ("status", "started_at", "finished_at", "stats", "error", "progress")})
+    idle["logs"] = data.get("logs") or []
     if name in _running and idle["status"] != "queued":
         idle["status"] = "running"
     return idle
@@ -125,6 +129,19 @@ async def set_progress(name: str, *, done: int, total: int) -> None:
     await _write_status(name, current)
 
 
+async def append_log(name: str, *, stage: str, message: str, level: str = "info", details: dict | None = None) -> None:
+    """Persist bounded diagnostics without losing queued task parameters."""
+    async with SessionLocal() as session:
+        row = await session.scalar(select(PipelineState).where(PipelineState.key == _state_key(name)).with_for_update())
+        if row is None:
+            return
+        payload = json.loads(row.value)
+        entry = {"at": _now().isoformat(), "level": level, "stage": stage, "message": message, "details": details}
+        payload["logs"] = [*(payload.get("logs") or []), entry][-MAX_JOB_LOGS:]
+        row.value, row.updated_at = _dumps(payload), utcnow()
+        await session.commit()
+
+
 async def _execute(name: str, params: dict[str, Any]) -> dict[str, Any]:
     started = _now().isoformat()
     await _write_status(name, {
@@ -132,26 +149,31 @@ async def _execute(name: str, params: dict[str, Any]) -> dict[str, Any]:
         "status": "running", "started_at": started, "finished_at": None,
         "stats": None, "error": None, "progress": None,
         "params": params,
+        "logs": [],
     })
     try:
         handler = HANDLERS[name]
         stats = await handler(params)
+        logs = (await _read_status(name))["logs"]
         finished = _now().isoformat()
         payload = {
             "name": name, "label": JOB_LABELS.get(name, name),
             "status": "ok", "started_at": started, "finished_at": finished,
             "stats": stats or {}, "error": None, "progress": None,
+            "logs": logs,
         }
         await _write_status(name, payload)
         return payload
     except Exception as exc:
         log.exception("job %s failed", name)
+        logs = (await _read_status(name))["logs"]
         finished = _now().isoformat()
         payload = {
             "name": name, "label": JOB_LABELS.get(name, name),
             "status": "error", "started_at": started, "finished_at": finished,
             "stats": None, "error": str(exc) or exc.__class__.__name__,
             "progress": None,
+            "logs": logs,
         }
         await _write_status(name, payload)
         return payload
@@ -425,7 +447,8 @@ async def _specials_generate(params: dict[str, Any]) -> dict[str, Any]:
     from .special_service import run_once
     async with SessionLocal() as session:
         await runtime_settings.load(session)
-    return await run_once(special_id=params.get("special_id"), dry_run=bool(params.get("dry_run")))
+    return await run_once(special_id=params.get("special_id"), dry_run=bool(params.get("dry_run")),
+                          report=partial(append_log, "specials_generate"))
 
 
 HANDLERS["specials_generate"] = _specials_generate
