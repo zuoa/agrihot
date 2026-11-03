@@ -1,5 +1,5 @@
 """Validated generation documents; every factual block carries source excerpts."""
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -68,8 +68,24 @@ class Candidate(BaseModel):
         return items
 
 
+class DiscoveryItem(CandidateItem):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=5, max_length=40)
+    evidence_group: str = Field(min_length=1, max_length=24)
+
+
+class DiscoveryCandidate(Candidate):
+    """Short selection notes; composition and manual retries use the full models."""
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=5, max_length=60)
+    scope: str = Field(min_length=10, max_length=120)
+    items: list[DiscoveryItem] = Field(min_length=3, max_length=6)
+    queries: list[Annotated[str, Field(max_length=80)]] = Field(default_factory=list, max_length=1)
+
+
 class Discovery(BaseModel):
-    candidates: list[Candidate] = Field(default_factory=list, max_length=30)
+    model_config = ConfigDict(extra="forbid")
+    candidates: list[DiscoveryCandidate] = Field(default_factory=list, max_length=3)
 
 
 class SpecialPatch(BaseModel):

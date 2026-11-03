@@ -367,6 +367,193 @@ async def test_dry_run_has_no_database_side_effects(database, material, monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('overflow', ['candidates', 'items', 'reason', 'scope', 'queries', 'extra'])
+async def test_discovery_rejects_oversized_output_before_creating_drafts(database, material, monkeypatch, overflow):
+    candidate, _, _ = material
+    proposed = candidate.model_dump()
+    if overflow == 'items':
+        proposed['items'] = [{**proposed['items'][0], 'item_id': i} for i in range(1, 8)]
+    elif overflow == 'reason':
+        proposed['items'][0]['reason'] = '长' * 41
+    elif overflow == 'scope':
+        proposed['scope'] = '长' * 121
+    elif overflow == 'queries':
+        proposed['queries'] = ['检索一', '检索二']
+    elif overflow == 'extra':
+        proposed['analysis'] = '选题阶段不应输出长篇综合分析。'
+
+    async def llm(system, payload):
+        assert system == service.DISCOVER, 'oversized selections must not reach composition'
+        return {'candidates': [proposed] * (4 if overflow == 'candidates' else 1)}
+
+    monkeypatch.setattr(service, 'llm', llm)
+    with pytest.raises(ValueError):
+        await service.run_once(factory=database)
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 0
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
+async def test_discovery_applies_runtime_quota_to_prompt_schema_and_validation(database, material, monkeypatch):
+    from app.services import runtime_settings
+
+    candidate, _, _ = material
+    async with database() as session:
+        await runtime_settings.patch(session, {'specials_max_new': 1})
+        await session.commit()
+        await runtime_settings.load(session)
+
+    async def llm(system, payload):
+        assert system == service.DISCOVER
+        assert payload['existing'] == []
+        assert payload['limits']['max_candidates'] == payload['limits']['max_new'] == 1
+        assert payload['limits']['max_updates'] == 0
+        assert payload['schema']['properties']['candidates']['maxItems'] == 1
+        return {'candidates': [candidate.model_dump(), candidate.model_dump()]}
+
+    monkeypatch.setattr(service, 'llm', llm)
+    with pytest.raises(ValueError, match='输出预算'):
+        await service.run_once(factory=database)
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == 0
+
+
+@pytest.mark.asyncio
+async def test_discovery_truncation_retries_smaller_and_publishes_only_complete_output(database, material, monkeypatch):
+    import httpx
+    from app.services import job_runner
+
+    candidate, _, document = material
+    calls = {'discover': [], 'compose': [], 'verify': []}
+
+    async def handler(request):
+        body = json.loads(request.content)
+        assert body['max_tokens'] == 8192
+        system = body['messages'][0]['content']
+        payload = json.loads(body['messages'][1]['content'])
+        if system.startswith(service.DISCOVER):
+            stage = 'discover'
+            truncated = not calls[stage]
+            result = {'candidates': [candidate.model_dump()]}
+        elif system.startswith(service.COMPOSE):
+            stage, truncated, result = 'compose', False, document
+        else:
+            assert system.startswith(service.VERIFY)
+            stage, truncated, result = 'verify', False, {'approved': True, 'reason': ''}
+        calls[stage].append(payload)
+        return httpx.Response(200, json={
+            'choices': [{'finish_reason': 'length' if truncated else 'stop', 'message': {
+                'content': '{"candidates":[{"title":"不完整的选题' if truncated else json.dumps(result, ensure_ascii=False),
+            }}],
+            'usage': {'prompt_tokens': 1000, 'completion_tokens': 8192 if truncated else 200},
+        })
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(service.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(settings, 'deepseek_api_key', 'test-output-budget')
+    monkeypatch.setattr(job_runner, 'SessionLocal', database)
+    monkeypatch.setattr(service, 'SessionLocal', database)
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await job_runner.run('specials_generate')
+
+    assert result['status'] == 'ok' and result['stats']['created'] == 1 and result['stats']['failed'] == 0
+    assert len(calls['discover']) == 2 and len(calls['compose']) == len(calls['verify']) == 1
+    first, retry = calls['discover']
+    assert first['limits']['max_candidates'] == 3 and first['limits']['max_items_per_candidate'] == 6
+    assert retry['limits']['max_candidates'] == 1 and retry['limits']['max_items_per_candidate'] == 4
+    assert retry['schema']['properties']['candidates']['maxItems'] == 1
+    assert retry['schema']['$defs']['DiscoveryCandidate']['properties']['items']['maxItems'] == 4
+    assert retry['articles'] == first['articles'] and retry['existing'] == first['existing']
+    assert any(e['level'] == 'warning' and '重试' in e['message'] for e in result['logs'])
+    async with database() as session:
+        specials = (await session.scalars(select(Special))).all()
+        assert len(specials) == 1 and specials[0].title == candidate.title
+        versions = (await session.scalars(select(SpecialVersion))).all()
+        assert len(versions) == 1 and versions[0].document == document
+
+
+@pytest.mark.asyncio
+async def test_manual_regeneration_keeps_larger_existing_material(database, material, monkeypatch):
+    candidate, _, document = material
+    async with database() as session:
+        for i in range(5, 9):
+            session.add(Item(id=i, title=f'跨地域田间模型的独立研究{i}', url=f'https://research.example/{i}', url_hash=str(i),
+                             title_simhash=i, summary='跨地域测试存在性能差异，仍需更多验证。', source_name=f'机构{i}',
+                             published_at=utcnow() - timedelta(days=1), category='论文', score=80))
+        await session.commit()
+    candidate.items.extend(candidate.items[0].model_copy(update={'item_id': i, 'evidence_group': f'study-{i}'}) for i in range(4, 9))
+    candidate.scope = '比较田间视觉模型跨地域应用中的数据条件与适用边界。' * 6
+    sources = await service.prepare_sources(candidate, database)
+    special_id, _ = await service.publish(candidate, document, sources, service.input_hash(candidate, sources), database)
+    async with database() as session:
+        item = await session.get(Item, 1)
+        item.summary += ' 新增田间实验的验证条件。'
+        await session.commit()
+
+    async def llm(system, payload):
+        assert system != service.DISCOVER
+        assert len(payload['sources']) == 8 and payload['scope'] == candidate.scope
+        return document if system == service.COMPOSE else {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, special_id=special_id)
+    assert result['updated'] == 1 and result['failed'] == 0
+    async with database() as session:
+        latest = await session.scalar(select(SpecialVersion).order_by(SpecialVersion.id.desc()).limit(1))
+        assert len(latest.signatures) == 8
+
+
+@pytest.mark.asyncio
+async def test_short_discovery_response_preserves_history_and_evidence_groups(database, material, monkeypatch):
+    candidate, _, document = material
+    async with database() as session:
+        for i in range(5, 10):
+            session.add(Item(id=i, title=f'跨地域田间模型的独立研究{i}', url=f'https://research.example/{i}', url_hash=str(i),
+                             title_simhash=i, summary='跨地域测试存在性能差异，仍需更多验证。', source_name=f'机构{i}',
+                             published_at=utcnow() - timedelta(days=1), category='论文', score=80))
+        await session.commit()
+    candidate.items.extend(candidate.items[0].model_copy(update={'item_id': i, 'evidence_group': f'study-{i}'}) for i in range(4, 9))
+    sources = await service.prepare_sources(candidate, database)
+    special_id, _ = await service.publish(candidate, document, sources, service.input_hash(candidate, sources), database)
+    proposed = candidate.model_dump()
+    proposed['existing_id'] = special_id
+    proposed['items'] = [
+        {**candidate.items[0].model_dump(), 'item_id': 1, 'evidence_group': 'same-study'},
+        {**candidate.items[1].model_dump(), 'item_id': 2, 'evidence_group': 'other-study'},
+        {**candidate.items[0].model_dump(), 'item_id': 9, 'evidence_group': 'same-study'},
+    ]
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [proposed]}
+        by_id = {s['item_id']: s for s in payload['sources']}
+        assert set(by_id) == set(range(1, 10)), 'a short selection must retain all eight existing sources'
+        assert by_id[1]['evidence_group'] == by_id[9]['evidence_group']
+        assert len({s['evidence_group'] for s in by_id.values()}) == 8
+        return document if system == service.COMPOSE else {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+    assert result['updated'] == 1 and result['failed'] == 0
+    async with database() as session:
+        latest = await session.scalar(select(SpecialVersion).order_by(SpecialVersion.id.desc()).limit(1))
+        assert len(latest.signatures) == 9
+
+
+@pytest.mark.asyncio
 async def test_model_group_renaming_and_reason_changes_are_not_updates(database, material):
     candidate, sources, _ = material
     before = service.input_hash(candidate, sources)
@@ -532,6 +719,7 @@ async def test_special_job_retains_model_diagnostics_in_admin_output(database, m
         assert details['output_preview_truncated'] is True
         if failure_stage == 'discover':
             assert job['status'] == 'error' and '输出限制' in job['error']
+            assert len(requests) == 2, 'discovery must stop after one smaller retry'
         else:
             assert job['stats']['failed'] == 1
             async with database() as session:

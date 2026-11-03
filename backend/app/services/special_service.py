@@ -17,7 +17,7 @@ from sqlalchemy.orm import defer, noload
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item, SearchChunk, SearchJob, Special, SpecialItem, SpecialVersion, utcnow
-from ..special_schemas import Candidate, Discovery, SpecialDocument
+from ..special_schemas import Candidate, CandidateItem, Discovery, SpecialDocument
 from . import embedding_service, runtime_settings
 from .special_research import supplement
 
@@ -78,6 +78,10 @@ class CitationValidationError(ValueError):
         super().__init__(f"引用校验失败（共 {len(errors)} 处）：{details}")
 
 
+class ModelOutputLimitError(ValueError):
+    """A complete response is required; truncated JSON must never be published."""
+
+
 def validate_evidence(document: dict, sources: list[dict]) -> None:
     """Reject invented IDs/excerpts, misleading consensus, and orphaned comparisons."""
     SpecialDocument.model_validate(document)
@@ -124,7 +128,7 @@ async def llm(system: str, payload: dict) -> dict:
     label = {"discover": "发现选题", "compose": "撰写专题", "repair": "修正引用", "verify": "独立审查"}[stage]
     content = json.dumps(payload, ensure_ascii=False)
     await _report(stage, f"开始{label}，等待模型返回", model=settings.deepseek_model,
-                  max_tokens=MAX_OUTPUT_TOKENS, input_chars=len(content))
+                  max_tokens=MAX_OUTPUT_TOKENS, input_chars=len(content), limits=payload.get("limits"))
     started = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -156,7 +160,7 @@ async def llm(system: str, payload: dict) -> dict:
         message = (f"专题生成超出输出限制（阶段：{label}；finish_reason=length；"
                    f"输出 tokens={usage.get('completion_tokens', '未知')}，上限={MAX_OUTPUT_TOKENS}）")
         await _report(stage, message, level="error", **diagnostics, **preview)
-        raise ValueError(message)
+        raise ModelOutputLimitError(message)
     try:
         result = json.loads(output)
     except ValueError:
@@ -167,12 +171,17 @@ async def llm(system: str, payload: dict) -> dict:
 
 
 DISCOVER = """你是农业科技情报编辑，为科研与技术人员发现具体热点。输出符合 schema 的 JSON。
+本阶段只选题，不撰写专题正文、综合发现或原文引用。严格遵守 limits 及 schema 的数量、长度上限。
+每次最多3个候选，每个只选最相关的3–6篇文章；limits 更小时按较小值执行。
+title 最多60字，scope 用10–120字概括问题；每篇 reason 只用5–40字说明关联，evidence_group 用不超过24字符的短标识。
+queries 最多1条且不超过80字符；只返回 schema 字段，不回显输入资料，不附加分析或解释。
 区分 event（同一政策/成果/事件，核心材料近14天）和 research（同一研究问题，核心材料近60天）。
 只使用给定的 article id。共享宽泛标签不是关联依据，研究对象、问题、方法或事件须实际相关。
 每组至少3篇、2组独立证据，且有近7天实际发表的核心材料。资料不足则不创建。
 同一论文、成果、政策的转载和新闻解读，无论来自多少媒体，使用相同 evidence_group。
 已有专题优先填 existing_id 并维持原 scope 和 kind。合并近义选题，同一议题只返回一次。
-title 和 scope 必须具体。对核心及背景文章说明关联；外部 queries 用于补充机构官网/理论原始论文，最多3个。
+已有专题只选择当前最相关的3–6篇材料，程序会保留原有关联文章，无需重复列出全部历史文章。
+title 和 scope 必须具体。对核心及背景文章说明关联；外部 queries 用于补充机构官网/理论原始论文。
 不要把报道数量说成独立研究数；不要生成过大的农业大类。"""
 COMPOSE = """你是农业科研编辑，基于给定来源撰写专题，输出 schema 对应的 JSON。
 overview 为150–250字速览；findings 为3–5条。每个事实块均引用 source_id 和来自其 text 的原文 quote（至少8字）。
@@ -194,6 +203,54 @@ VERIFY = """独立审查这份农业专题。逐条对照 sources，检查文档
 检查标题和概述不夸大，比较不跨实验条件宣称优劣。引用摘录匹配不等于结论被支持。
 若有任何不被支持的事实、遗漏关键限定、虚假共识或无关聚类，返回 {"approved":false,"reason":"简短原因"}。
 完全通过才返回 {"approved":true,"reason":""}。这只是模型审查，不是事实认证。"""
+
+
+async def discover(articles: list[dict], prior: list[dict], now: datetime) -> list[Candidate]:
+    max_new = runtime_settings.get("specials_max_new")
+    max_updates = min(runtime_settings.get("specials_max_updates"), sum(p["status"] not in {"withdrawn", "merged"} for p in prior))
+    candidate_limit = min(3, max_new + max_updates)
+    if candidate_limit <= 0:
+        return []
+    for attempt in range(2):
+        limit, item_limit = (candidate_limit, 6) if not attempt else (1, 4)
+        # The same bounds reach the prompt, the JSON schema, and local validation.
+        schema = Discovery.model_json_schema()
+        schema["properties"]["candidates"]["maxItems"] = limit
+        schema["$defs"]["DiscoveryCandidate"]["properties"]["items"]["maxItems"] = item_limit
+        limits = {"max_candidates": limit, "max_items_per_candidate": item_limit,
+                  "max_new": min(max_new, limit), "max_updates": min(max_updates, limit)}
+        await _report("discover", "按输出预算发现选题", attempt=attempt + 1, **limits)
+        try:
+            result = Discovery.model_validate(await llm(DISCOVER, {"today": now.date().isoformat(), "articles": articles,
+                                                                   "existing": prior, "limits": limits, "schema": schema}))
+        except ModelOutputLimitError:
+            if attempt:
+                raise
+            await _report("discover", "选题输出被截断，缩减为1个候选、最多4篇文章重试", level="warning")
+            continue
+        if len(result.candidates) > limit or any(len(c.items) > item_limit for c in result.candidates):
+            raise ValueError("选题数量或关联文章数量超出本轮输出预算")
+        candidates = [Candidate.model_validate(c.model_dump()) for c in result.candidates]
+        by_id = {p["id"]: p for p in prior}
+        for candidate in candidates:
+            previous = by_id.get(candidate.existing_id)
+            if not previous:
+                continue
+            # A short discovery response must not remove a storyline's history.
+            old_items = {i["item_id"]: CandidateItem.model_validate(i) for i in previous["items"]}
+            anchors = defaultdict(set)
+            for link in candidate.items:
+                if link.item_id in old_items:
+                    anchors[link.evidence_group].add(old_items[link.item_id].evidence_group)
+            additions = []
+            for link in candidate.items:
+                if link.item_id not in old_items:
+                    groups = anchors[link.evidence_group]
+                    link.evidence_group = min(groups) if groups else f"discovery:{candidate.existing_id}:{link.evidence_group}"
+                    additions.append(link)
+            candidate.items = [*old_items.values(), *additions[:max(0, 40 - len(old_items))]]
+        return candidates
+    return []
 
 
 def eligible(candidate: Candidate, sources: list[dict], now=None) -> bool:
@@ -496,9 +553,7 @@ async def _run_once(*, factory=None, special_id=None, dry_run=False):
         await _report("skip", "近期材料不足，跳过生成", article_count=len(articles))
         return {"created": 0, "updated": 0, "skipped": 0, "failed": 0, "reason": "近期材料不足"}
     else:
-        discovery = Discovery.model_validate(await llm(DISCOVER, {"today": now.date().isoformat(), "articles": articles,
-                                                                 "existing": prior, "schema": Discovery.model_json_schema()}))
-        candidates = discovery.candidates
+        candidates = await discover(articles, prior, now)
     await _report("discover", "选题准备完成", candidate_count=len(candidates), max_new=runtime_settings.get("specials_max_new"),
                   max_updates=runtime_settings.get("specials_max_updates"))
     known = {s["id"]: s for s in prior}
