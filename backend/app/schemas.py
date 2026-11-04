@@ -106,6 +106,10 @@ class AdminSettingsPatch(BaseModel):
     literature_lookback_days: int | None = Field(default=None, ge=0, le=30)
     literature_bootstrap_days: int | None = Field(default=None, ge=1, le=90)
     literature_max_new_per_run: int | None = Field(default=None, ge=1, le=500)
+    sources_fetch_enabled: bool | None = None
+    sources_lookback_days: int | None = Field(default=None, ge=0, le=30)
+    sources_bootstrap_days: int | None = Field(default=None, ge=1, le=90)
+    sources_max_new_per_source: int | None = Field(default=None, ge=1, le=100)
     content_fetch_enabled: bool | None = None
     specials_enabled: bool | None = None
     specials_time: str | None = None

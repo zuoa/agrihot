@@ -105,6 +105,7 @@ onMounted(async () => {
 })
 
 function schedulerLabel(key) {
+  if (key === 'sources_fetch') return '固定信源'
   if (key === 'daily_generate') return '日报生成'
   if (key === 'literature_fetch') return '文献拉取'
   if (key === 'content_fetch') return '全文回补'

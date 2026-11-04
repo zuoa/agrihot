@@ -73,6 +73,10 @@ services:
       OPENALEX_MAILTO: ${OPENALEX_MAILTO:-ijedyu@gmail.com}
       LITERATURE_FETCH_ENABLED: ${LITERATURE_FETCH_ENABLED:-true}
       LITERATURE_FETCH_TIME: ${LITERATURE_FETCH_TIME:-07:30}
+      SOURCES_FETCH_ENABLED: ${SOURCES_FETCH_ENABLED:-true}
+      SOURCES_BOOTSTRAP_DAYS: ${SOURCES_BOOTSTRAP_DAYS:-7}
+      SOURCES_LOOKBACK_DAYS: ${SOURCES_LOOKBACK_DAYS:-2}
+      SOURCES_MAX_NEW_PER_SOURCE: ${SOURCES_MAX_NEW_PER_SOURCE:-20}
     depends_on:
       db:
         condition: service_healthy
@@ -89,6 +93,11 @@ services:
     command: ["python", "-m", "app.services.content_worker"]
     environment:
       AGRIHOT_PROCESS: worker
+      OPENALEX_MAILTO: ${OPENALEX_MAILTO:-ijedyu@gmail.com}
+      SOURCES_FETCH_ENABLED: ${SOURCES_FETCH_ENABLED:-true}
+      SOURCES_BOOTSTRAP_DAYS: ${SOURCES_BOOTSTRAP_DAYS:-7}
+      SOURCES_LOOKBACK_DAYS: ${SOURCES_LOOKBACK_DAYS:-2}
+      SOURCES_MAX_NEW_PER_SOURCE: ${SOURCES_MAX_NEW_PER_SOURCE:-20}
       DATABASE_URL: postgresql+asyncpg://agrihot:${DB_PASSWORD}@db:5432/agrihot
       TZ: Asia/Shanghai
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}

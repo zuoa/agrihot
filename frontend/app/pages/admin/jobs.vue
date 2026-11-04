@@ -56,6 +56,23 @@
         </div>
       </article>
     </div>
+    <section class="rounded-lg border border-stone-200 bg-white p-4">
+      <h2 class="text-sm font-bold text-stone-900">固定信源</h2>
+      <p class="mt-1 text-xs text-stone-500">按固定栏目、RSS 和期刊订阅采集。待验证的候选源暂不启用。</p>
+      <ul class="mt-3 divide-y divide-stone-100">
+        <li v-for="s in sources" :key="s.id" class="py-3 text-xs">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <a :href="s.url" target="_blank" rel="noopener noreferrer" class="text-leaf-700 hover:underline">{{ s.name }}</a>
+            <span :class="s.state.status === 'error' ? 'text-red-600' : 'text-stone-500'">{{ !s.enabled ? '待验证' : sourceStatuses[s.state.status] || '尚未运行' }}</span>
+          </div>
+          <p class="mt-1 text-stone-500">{{ s.kind }} · {{ s.enabled ? `每 ${s.interval_minutes} 分钟` : s.note }}</p>
+          <p v-if="s.state.last_checked_at" class="mt-1 text-stone-500">上次检查 {{ fmtWhen(s.state.last_checked_at) }} · 上次成功 {{ fmtWhen(s.state.last_success_at) }}</p>
+          <p v-if="s.state.stats" class="mt-1 text-stone-500">新建 {{ s.state.stats.created }} · 重复 {{ s.state.stats.duplicate }} · 过滤 {{ s.state.stats.screened_out }} · 无效 {{ s.state.stats.rejected }} · 失败 {{ s.state.stats.errors }}</p>
+          <p v-if="s.state.totals" class="mt-1 text-stone-500">累计检查 {{ s.state.totals.runs }} 次 · 失败 {{ s.state.totals.failed_runs }} 次 · 新增 {{ s.state.totals.created }} 条</p>
+          <p v-if="s.state.stats?.error" class="mt-1 break-words text-red-600">{{ s.state.stats.error }}</p>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 
@@ -70,6 +87,8 @@ definePageMeta({
 
 const api = useApi()
 const jobs = ref([])
+const sources = ref([])
+const sourceStatuses = { ok: '正常', partial: '未采完，下次续跑', error: '失败，保留断点' }
 const error = ref('')
 const busy = ref('')
 const dailyDate = ref(fmtDateKey(new Date()))
@@ -77,6 +96,7 @@ const editorialPreview = ref(true)
 let timer = null
 
 const hints = {
+  sources_fetch: '从固定 RSS、部委栏目及 Crossref 核心期刊采集，逐源记录状态',
   literature_fetch: '按关注面从 OpenAlex 增量拉取一轮论文',
   daily_generate: '生成或覆盖指定日期的农业日报',
   rescore_unscored: '只给尚未评分的条目打分（需 DeepSeek）',
@@ -122,8 +142,8 @@ function fmtWhen(iso) {
 
 function formatStats(j) {
   const s = j.stats || {}
-  if (j.name === 'literature_fetch') {
-    return `新建 ${s.created ?? 0} · 重复 ${s.duplicate ?? 0} · 筛掉 ${s.screened_out ?? 0}`
+  if (j.name === 'literature_fetch' || j.name === 'sources_fetch') {
+    return `新建 ${s.created ?? 0} · 重复 ${s.duplicate ?? 0} · 筛掉 ${s.screened_out ?? 0} · 失败 ${s.errors ?? 0}${s.truncated ? ' · 未采完，下次续跑' : ''}`
   }
   if (j.name === 'daily_generate') {
     if (s.skipped) return s.reason || '当日无资讯，已跳过'
@@ -144,6 +164,7 @@ function formatStats(j) {
 async function load() {
   try {
     jobs.value = (await api.adminJobs()).jobs
+    sources.value = (await api.adminSources()).sources
     error.value = ''
   } catch (e) {
     error.value = e.message

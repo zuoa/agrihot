@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     literature_max_new_per_run: int = 80
     # 空则使用包内 app/watchlist.yaml
     watchlist_path: str = ""
+    # Fixed RSS / official columns and Crossref journal metadata (worker-owned).
+    sources_fetch_enabled: bool = True
+    sources_lookback_days: int = Field(default=2, ge=0, le=30)
+    sources_bootstrap_days: int = Field(default=7, ge=1, le=90)
+    sources_max_new_per_source: int = Field(default=20, ge=1, le=100)
+    sources_path: str = ""
     # public site origin for canonical / sitemap / Open Graph
     site_url: str = "https://agrihot.com"
 

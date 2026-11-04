@@ -61,6 +61,17 @@
     </section>
 
     <section class="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
+      <h2 class="text-sm font-bold">固定信源采集</h2>
+      <label class="flex items-center gap-2 text-sm"><input v-model="form.sources_fetch_enabled" type="checkbox" class="accent-leaf-700">启用自动采集 {{ source('sources_fetch_enabled') }}</label>
+      <div class="grid grid-cols-3 gap-3">
+        <label class="text-xs text-stone-500">首次回看天数<input v-model.number="form.sources_bootstrap_days" type="number" min="1" max="90" class="mt-1 w-full rounded-md border border-stone-200 px-3 py-1.5"></label>
+        <label class="text-xs text-stone-500">重叠回看天数<input v-model.number="form.sources_lookback_days" type="number" min="0" max="30" class="mt-1 w-full rounded-md border border-stone-200 px-3 py-1.5"></label>
+        <label class="text-xs text-stone-500">每源每轮最多新建<input v-model.number="form.sources_max_new_per_source" type="number" min="1" max="100" class="mt-1 w-full rounded-md border border-stone-200 px-3 py-1.5"></label>
+      </div>
+      <p class="text-xs text-stone-500">各源按自身频率运行，可在任务页查看状态或手动执行。正文获取、摘要与精选评分沿用现有流程。</p>
+    </section>
+
+    <section class="bg-white border border-stone-200 rounded-lg p-4 space-y-3">
       <h2 class="text-sm font-bold">热点专题</h2>
       <label class="flex items-center gap-2 text-sm"><input v-model="form.specials_enabled" type="checkbox" class="accent-leaf-700">按计划自动发现与发布</label>
       <label class="block text-sm"><span class="text-xs text-stone-500">Cron 表达式 {{ source('specials_cron') }}</span><input v-model="form.specials_cron" type="text" maxlength="100" spellcheck="false" placeholder="0 10 * * *" aria-describedby="specials-cron-help specials-cron-error" :aria-invalid="!!cronError" class="mt-1 w-full px-3 py-2 rounded-md border border-stone-200 font-mono"></label>

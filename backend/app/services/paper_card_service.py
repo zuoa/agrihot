@@ -77,6 +77,9 @@ def has_usable_abstract(item: Item) -> bool:
     if len(summary) < 40:
         return False
     title = item.title.strip()
+    venue = item.paper.venue if item.paper else ""
+    if venue and summary == f"{title}。{venue}":
+        return False
     if summary.rstrip("。") == title.rstrip("。"):
         return False
     # map_work pads missing abstracts as "{title}。{venue}"

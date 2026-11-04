@@ -230,6 +230,18 @@ def _merge_source(item: Item, payload: IngestItemIn) -> bool:
     # Crawlers may send metadata first and the fetched body on a later push.
     if payload.content and payload.content.strip() and not (item.content or "").strip():
         item.content = payload.content
+    # Crossref may register a DOI before OpenAlex has its abstract. A later
+    # duplicate can fill that placeholder without replacing a real abstract.
+    if item.category == "论文":
+        from .paper_card_service import has_usable_abstract
+        incoming = payload.summary.strip()
+        venue = item.paper.venue if item.paper else ""
+        placeholder = f"{payload.title}。{venue}"
+        if (not has_usable_abstract(item) and len(incoming) >= 40
+                and incoming != placeholder
+                and not (incoming.startswith(payload.title) and len(incoming) - len(payload.title) < 40)):
+            item.summary = incoming
+            item.summary_zh = None
     sources = list(item.sources or [])
     incoming_url = payload.source_url or payload.url
     if not any(s.get("url") == incoming_url for s in sources):

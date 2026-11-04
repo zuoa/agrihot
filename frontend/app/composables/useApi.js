@@ -95,6 +95,7 @@ export function useApi() {
     adminBatchFetch: (ids, force = false) =>
       adminFetch('/admin/items/batch-fetch-content', { method: 'POST', body: { ids, force } }),
     adminJobs: () => adminFetch('/admin/jobs'),
+    adminSources: () => adminFetch('/admin/sources'),
     adminRunJob: (name, body = {}) => adminFetch(`/admin/jobs/${name}/run`, { method: 'POST', body }),
     adminSettings: () => adminFetch('/admin/settings'),
     adminPreviewSpecialCron: (expression) => adminFetch('/admin/settings/specials-preview', { method: 'POST', body: { expression } }),

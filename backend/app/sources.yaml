@@ -1,0 +1,71 @@
+# Collection endpoints, independent of source_publishers.yaml (publisher identity).
+# Candidate sources stay disabled until list, article, dates and pagination pass QA.
+sources:
+  - id: moa-informatization
+    name: 农业农村部市场与信息化司 · 信息化推进
+    kind: moa
+    url: https://scs.moa.gov.cn/xxhtj/
+    hosts: [scs.moa.gov.cn]
+    article_pattern: '^/(?:[^/]+/)*\d{6}/t\d{8}_\d+\.htm$'
+    interval_minutes: 1440
+  - id: moa-science
+    name: 农业农村部科学技术司 · 工作动态
+    kind: moa
+    url: https://kjs.moa.gov.cn/gzdt/
+    hosts: [kjs.moa.gov.cn]
+    article_pattern: '^/(?:[^/]+/)*\d{6}/t\d{8}_\d+\.htm$'
+    interval_minutes: 1440
+  - id: agfunder
+    name: AgFunder News
+    kind: rss
+    url: https://agfundernews.com/feed
+    hosts: [agfundernews.com, www.agfundernews.com]
+    article_pattern: '^/[^/]+/?$'
+    interval_minutes: 120
+    keywords: [agtech, agritech, breeding, robotics, drone, biotechnology, biological, biostimulant, biofertilizer, fermentation, gene editing, crop protection]
+  - id: hortidaily
+    name: HortiDaily
+    kind: rss
+    url: https://www.hortidaily.com/rss.xml
+    hosts: [www.hortidaily.com, hortidaily.com]
+    article_pattern: '^/article/\d+/[^/]+/?$'
+    interval_minutes: 120
+    keywords: [automation, robotics, autonomous, breeding, greenhouse technology, lighting, irrigation, biocontrol, biological control, crop protection, climate control]
+  - id: seed-world
+    name: Seed World
+    kind: rss
+    url: https://www.seedworld.com/feed/
+    hosts: [www.seedworld.com, seedworld.com]
+    article_pattern: '^/(?:[^/]+/)*20\d{2}/\d{2}/\d{2}/[^/]+/?$'
+    interval_minutes: 240
+    keywords: [breeding, genetics, genomic, gene editing, biotechnology, seed treatment, seed technology, climate resilience, research]
+  - id: cau-research
+    name: 中国农业大学 · 科学研究
+    kind: candidate
+    url: https://news.cau.edu.cn/kxyj/index.htm
+    enabled: false
+    note: 详情直连曾返回 403，待验证正文与分页。
+  - id: caas-cotton
+    name: 中国农科院棉花研究所 · 科研进展
+    kind: candidate
+    url: https://cri.caas.cn/sylm/kyjz/index.htm
+    enabled: false
+    note: 已验证列表；详情与分页待验收。
+  - id: caas-environment
+    name: 农业农村部环境保护科研监测所 · 科研进展
+    kind: candidate
+    url: https://aepi.caas.cn/kxyj/kyjz/index.htm
+    enabled: false
+    note: 已验证列表；详情与分页待验收。
+  - id: smart-agriculture-doaj
+    name: 《智慧农业》 · DOAJ
+    kind: candidate
+    url: https://doaj.org/api/search/articles/issn%3A2096-8094
+    enabled: false
+    note: 已返回 488 条记录；最新期次覆盖与更新延迟待验证。
+  - id: irri-news
+    name: IRRI · 正式新闻
+    kind: candidate
+    url: https://www.irri.org/news-and-events/news
+    enabled: false
+    note: 待验证详情与日期，必须排除 home-test 等非新闻页。

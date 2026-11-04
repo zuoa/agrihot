@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
     content = None
     indexer = None
     specials = None
+    sources = None
     if SERVE_CONTENT_WORKER:
         from .services.special_scheduler import start_special_scheduler
         from .services.content_scheduler import start_content_scheduler
@@ -63,13 +64,15 @@ async def lifespan(app: FastAPI):
         content = start_content_scheduler()
         indexer = asyncio.create_task(run_worker())
         specials = start_special_scheduler()
+        from .services.source_scheduler import start_source_scheduler
+        sources = start_source_scheduler()
     else:
         log.info("background indexing runs in the worker process")
     try:
         async with mcp.session_manager.run():
             yield
     finally:
-        tasks = [task for task in (scheduler, literature, content, indexer, specials) if task is not None]
+        tasks = [task for task in (scheduler, literature, content, indexer, specials, sources) if task is not None]
         for task in tasks:
             task.cancel()
         for task in tasks:

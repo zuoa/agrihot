@@ -135,6 +135,45 @@ async def test_settings_invalid_time(client):
     assert r.status_code == 422
 
 
+@pytest.mark.asyncio
+async def test_fixed_source_registry_and_runtime_settings(client):
+    assert (await client.get("/api/v1/admin/sources")).status_code == 401
+    auth = await login(client)
+    response = await client.get("/api/v1/admin/sources", headers=auth)
+    assert response.status_code == 200
+    sources = response.json()["sources"]
+    assert len([s for s in sources if s["enabled"]]) == 11
+    assert next(s for s in sources if s["id"] == "irri-news")["enabled"] is False
+    response = await client.patch("/api/v1/admin/settings", headers=auth, json={
+        "sources_fetch_enabled": False, "sources_bootstrap_days": 14,
+        "sources_lookback_days": 3, "sources_max_new_per_source": 10,
+    })
+    assert response.status_code == 200
+    assert response.json()["writable"]["sources_max_new_per_source"]["value"] == 10
+    assert (await client.patch("/api/v1/admin/settings", headers=auth,
+                              json={"sources_max_new_per_source": 0})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_crossref_filter_does_not_return_other_sources(client):
+    from app.schemas import IngestItemIn
+    from app.services.ingest_service import PaperDraft, ingest_item
+    async with TestSession() as session:
+        for title, doi, origin in [
+            ("Autonomous greenhouse robots improve tomato harvesting performance", "10.1234/robot", "crossref"),
+            ("Satellite crop phenotyping for drought monitoring across wheat fields", "10.1234/satellite", "openalex"),
+        ]:
+            await ingest_item(session, IngestItemIn(title=title, url=f"https://doi.org/{doi}",
+                              doi=doi, summary="Replicated field experiments quantify crop performance, limitations and methodology.",
+                              category="论文"), paper_draft=PaperDraft(ingested_from=origin))
+        await session.commit()
+    auth = await login(client)
+    response = await client.get("/api/v1/admin/items", headers=auth, params={"ingested_from": "crossref"})
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["doi"] == "10.1234/robot"
+
+
 # ---------- items list / batch ----------
 
 @pytest.mark.asyncio

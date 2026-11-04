@@ -1,6 +1,6 @@
 """Admin console endpoints (password login -> HMAC token)."""
 from datetime import date as date_type
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, or_, select
@@ -52,6 +52,7 @@ from ...services import (
     literature_scheduler,
     runtime_settings,
     scoring_service,
+    source_service,
     watchlist_service,
 )
 from .ingest import limiter  # shared app limiter; login keys on remote IP
@@ -127,6 +128,11 @@ async def overview(
     ).scalar_one()
     tz = settings.daily_timezone
     schedulers = {
+        "sources_fetch": SchedulerInfoOut(
+            enabled=bool(runtime_settings.get("sources_fetch_enabled")),
+            time="按信源频率，每分钟检查", timezone=tz,
+            next_run_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+        ),
         "daily_generate": SchedulerInfoOut(
             enabled=bool(runtime_settings.get("daily_generate_enabled")),
             time=str(runtime_settings.get("daily_generate_time")),
@@ -172,7 +178,7 @@ async def list_admin_items(
     scored: bool | None = None,
     min_score: int | None = Query(default=None, ge=0, le=100),
     max_score: int | None = Query(default=None, ge=0, le=100),
-    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex)$"),
+    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex|crossref)$"),
     sort: str = Query(default="created_at", pattern="^(created_at|score|view_count)$"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
@@ -220,9 +226,9 @@ async def list_admin_items(
         _apply(Item.score >= min_score)
     if max_score is not None:
         _apply(Item.score <= max_score)
-    if ingested_from == "openalex":
-        stmt = stmt.join(Item.paper).where(PaperMeta.ingested_from == "openalex")
-        count_stmt = count_stmt.join(Item.paper).where(PaperMeta.ingested_from == "openalex")
+    if ingested_from in {"openalex", "crossref"}:
+        stmt = stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
+        count_stmt = count_stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
     elif ingested_from == "agent":
         _apply(or_(Item.paper.has(PaperMeta.ingested_from == "agent"), ~Item.paper.has()))
 
@@ -398,6 +404,10 @@ async def batch_fetch_content(
 
 
 # ---------- jobs ----------
+
+@router.get("/sources")
+async def list_collection_sources(_: None = Depends(require_admin)) -> dict:
+    return {"sources": await source_service.list_sources()}
 
 @router.get("/jobs", response_model=JobListOut)
 async def list_jobs(_: None = Depends(require_admin)) -> JobListOut:

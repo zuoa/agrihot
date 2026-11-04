@@ -78,7 +78,8 @@ async def test_fetch_content_drops_the_connection_before_http(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_api_process_queues_fetch_instead_of_running_it(monkeypatch):
+@pytest.mark.parametrize("job_name", ["fetch_content", "sources_fetch"])
+async def test_api_process_queues_fetch_instead_of_running_it(monkeypatch, job_name):
     written = {}
 
     async def write(name, payload):
@@ -90,11 +91,11 @@ async def test_api_process_queues_fetch_instead_of_running_it(monkeypatch):
     monkeypatch.setattr(job_runner, "RUNS_JOBS", False)
     monkeypatch.setattr(job_runner, "_write_status", write)
     monkeypatch.setattr(job_runner, "_read_status", read)
-    assert await job_runner.spawn("fetch_content", {"item_ids": [3]}) is True
+    assert await job_runner.spawn(job_name, {"item_ids": [3]}) is True
     assert written["status"] == "queued"
     assert written["params"]["item_ids"] == [3]
     await asyncio.sleep(0)
-    assert "fetch_content" not in job_runner._running
+    assert job_name not in job_runner._running
 
 
 @pytest.mark.asyncio

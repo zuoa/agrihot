@@ -1,7 +1,7 @@
 """OpenAlex literature poll: fetch works, map to ingest payloads, no LLM.
 
-OpenAlex is the only first-party scholarly source in P0. Fetch is pure
-bookkeeping — scoring and paper cards run after ingest, in enrich_and_score.
+OpenAlex complements the fixed-source Crossref journal subscriptions. Fetch
+is pure bookkeeping; scoring and paper cards run after ingest.
 """
 from __future__ import annotations
 

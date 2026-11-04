@@ -24,6 +24,7 @@ log = logging.getLogger(__name__)
 Handler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 
 JOB_LABELS = {
+    "sources_fetch": "采集固定信源",
     "literature_fetch": "拉取文献",
     "daily_generate": "生成日报",
     "rescore_unscored": "补评未评分条目",
@@ -37,7 +38,7 @@ JOB_LABELS = {
 
 JOB_NAMES = tuple(JOB_LABELS)
 # Outbound full-text fetches. The API records them; the worker process runs them.
-WORKER_JOBS = frozenset({"fetch_content", "specials_generate", "editorial_backfill"})
+WORKER_JOBS = frozenset({"fetch_content", "specials_generate", "editorial_backfill", "sources_fetch"})
 # Unset (local and tests) keeps jobs in this process. Production API sets "api".
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
@@ -227,6 +228,12 @@ async def spawn(name: str, params: dict[str, Any] | None = None) -> bool:
 
 
 # ---------- handlers ----------
+
+async def _sources_fetch(params: dict[str, Any]) -> dict[str, Any]:
+    from .source_service import run_once
+
+    return await run_once(force=bool(params.get("force", True)), source_id=params.get("source_id"))
+
 
 async def _literature_fetch(_params: dict[str, Any]) -> dict[str, Any]:
     from .literature_scheduler import run_once
@@ -433,6 +440,7 @@ async def _taxonomy_backfill(params: dict[str, Any]) -> dict[str, Any]:
 
 
 HANDLERS: dict[str, Handler] = {
+    "sources_fetch": _sources_fetch,
     "literature_fetch": _literature_fetch,
     "daily_generate": _daily_generate,
     "rescore_unscored": _rescore_unscored,

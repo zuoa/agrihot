@@ -217,6 +217,10 @@ AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxono
 
 ## 文献雷达（OpenAlex）
 
+固定 RSS、部委栏目和核心期刊的 Crossref 补漏已接入，默认由 worker 按各源频率采集。
+后台「任务」可手动执行并查看逐源状态，「配置」可开关及调整回看窗口和新建上限。
+首批入口、过滤与断点机制、只读预览和第二批候选见[固定信源采集](docs/fixed-sources.md)。
+
 每天 `07:30`（`DAILY_TIMEZONE`）按 `backend/app/watchlist.yaml` 订阅的方向 / 期刊 / 学者，
 从 [OpenAlex](https://openalex.org/) 增量拉取论文元数据。抓取不调用 AI；入库后走现有评分，
 并对论文生成中文结构化卡片（速览 / 方法 / 发现 / 方向 / 机会点）。去重优先 DOI，
