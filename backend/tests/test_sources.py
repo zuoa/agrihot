@@ -2,6 +2,7 @@
 import gzip
 import os
 import sys
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from xml.sax.saxutils import escape
 
@@ -400,3 +401,78 @@ async def test_scheduler_respects_disable_and_source_intervals(db, monkeypatch):
         await session.commit()
     await source_scheduler.tick()
     assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_disabled_sources_are_skipped_by_manual_collection(db, monkeypatch):
+    monkeypatch.setattr(source_service, "load_sources", lambda: [FEED])
+    async with db[0]() as session:
+        await source_service.set_source_enabled(session, FEED.id, False)
+        await session.commit()
+    async def unexpected(*args, **kwargs):
+        pytest.fail("disabled source was collected")
+    monkeypatch.setattr(source_service, "collect_source", unexpected)
+    result = await source_service.run_once(force=True, now=NOW)
+    assert result["sources"] == [] and result["created"] == 0
+    with pytest.raises(ValueError, match="disabled source"):
+        await source_service.run_once(source_id=FEED.id)
+
+
+@pytest.mark.asyncio
+async def test_enabling_a_source_overrides_default_and_schedules_without_waiting_for_interval(db, monkeypatch):
+    from app.config import settings
+    source = replace(FEED, enabled=False)
+    monkeypatch.setattr(source_service, "load_sources", lambda: [source])
+    monkeypatch.setattr(source_service, "utcnow", lambda: NOW + timedelta(minutes=1))
+    monkeypatch.setattr(source_scheduler, "SessionLocal", db[0])
+    monkeypatch.setattr(source_service.job_runner, "SessionLocal", db[0])
+    monkeypatch.setattr(settings, "sources_fetch_enabled", True)
+    await source_service.write_state(source.id, {"last_checked_at": NOW.isoformat(), "watermark": NOW.isoformat()})
+    async with db[0]() as session:
+        await source_service.set_source_enabled(session, source.id, True)
+        await session.commit()
+    scheduled = []
+    async def spawn(*args):
+        scheduled.append(args)
+    monkeypatch.setattr(source_scheduler.job_runner, "spawn", spawn)
+    await source_scheduler.tick()
+    assert scheduled == [("sources_fetch", {"force": False})]
+    async_client = httpx.AsyncClient
+    requests = []
+    def handler(request):
+        requests.append(str(request.url))
+        return httpx.Response(200, content=feed())
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: async_client(
+        transport=httpx.MockTransport(handler), **kwargs,
+    ))
+    result = await source_service.run_once(force=False, now=NOW + timedelta(minutes=2))
+    assert result["created"] == 1 and requests == [FEED.url]
+
+
+@pytest.mark.asyncio
+async def test_disabling_during_collection_stops_next_page_and_preserves_resume_cursor(db, monkeypatch):
+    monkeypatch.setattr(source_service, "load_sources", lambda: [CROSSREF])
+    monkeypatch.setattr(source_service, "CROSSREF_ROWS", 1)
+    requests = []
+    async def handler(request):
+        cursor = request.url.params["cursor"]
+        requests.append(cursor)
+        if cursor == "*":
+            async with db[0]() as session:
+                await source_service.set_source_enabled(session, CROSSREF.id, False)
+                await session.commit()
+            return httpx.Response(200, json={"message": {"items": [crossref_work()], "next-cursor": "next-page"}})
+        return httpx.Response(200, json={"message": {"items": []}})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await source_service.collect_source(CROSSREF, client, now=NOW)
+        assert result["created"] == 1 and result["paused"] is True
+        state = await source_service.read_state(CROSSREF.id)
+        assert state["status"] == "paused" and state["window"]["cursor"] == "next-page"
+        assert "watermark" not in state and requests == ["*"]
+        assert await source_service.source_is_enabled(CROSSREF) is False
+        async with db[0]() as session:
+            await source_service.set_source_enabled(session, CROSSREF.id, True)
+            await session.commit()
+        await source_service.collect_source(CROSSREF, client, now=NOW + timedelta(hours=1))
+    assert requests == ["*", "next-page"]
+    assert (await source_service.read_state(CROSSREF.id))["watermark"] == NOW.isoformat()

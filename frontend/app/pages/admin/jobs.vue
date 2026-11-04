@@ -58,14 +58,25 @@
     </div>
     <section class="rounded-lg border border-stone-200 bg-white p-4">
       <h2 class="text-sm font-bold text-stone-900">固定信源</h2>
-      <p class="mt-1 text-xs text-stone-500">按固定栏目、RSS 和期刊订阅采集。待验证的候选源暂不启用。</p>
+      <p class="mt-1 text-xs text-stone-500">已启用 {{ enabledSourceCount }} 个信源。开关自动保存，停用会保留内容与进度；正在读取的页面完成后暂停。</p>
+      <p class="mt-1 text-xs text-stone-500">自动采集总开关在<router-link to="/admin/settings" class="text-leaf-700 hover:underline">配置</router-link>中，OpenAlex 文献订阅在<router-link to="/admin/watchlist" class="text-leaf-700 hover:underline">关注面</router-link>中管理。</p>
+      <p v-if="sourceError" role="alert" class="mt-2 text-xs text-red-600">{{ sourceError }}</p>
+      <p v-if="sourceMessage" role="status" class="mt-2 text-xs text-leaf-700">{{ sourceMessage }}</p>
       <ul class="mt-3 divide-y divide-stone-100">
         <li v-for="s in sources" :key="s.id" class="py-3 text-xs">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <a :href="s.url" target="_blank" rel="noopener noreferrer" class="text-leaf-700 hover:underline">{{ s.name }}</a>
-            <span :class="s.state.status === 'error' ? 'text-red-600' : 'text-stone-500'">{{ !s.enabled ? '待验证' : sourceStatuses[s.state.status] || '尚未运行' }}</span>
+            <div class="flex items-center gap-3">
+              <span :class="s.enabled && s.state.status === 'error' ? 'text-red-600' : 'text-stone-500'">{{ !s.can_toggle ? '尚未接入' : !s.enabled ? '已停用' : sourceStatuses[s.state.status] || '尚未运行' }}</span>
+              <button type="button" role="switch" :aria-checked="s.enabled" :aria-label="`${s.name}采集`"
+                :disabled="!!sourceBusy[s.id] || !s.can_toggle" :title="s.can_toggle ? '' : '该信源尚未接入采集，暂不能启用'"
+                class="rounded-md border px-3 py-1.5 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                :class="s.enabled ? 'border-leaf-700 bg-leaf-700 text-white hover:bg-leaf-800' : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'"
+                @click="toggleSource(s)">{{ sourceBusy[s.id] ? '保存中…' : s.enabled ? '已启用' : '已停用' }}</button>
+            </div>
           </div>
-          <p class="mt-1 text-stone-500">{{ s.kind }} · {{ s.enabled ? `每 ${s.interval_minutes} 分钟` : s.note }}</p>
+          <p v-if="s.can_toggle" class="mt-1 text-stone-500">{{ s.kind }} · 每 {{ s.interval_minutes }} 分钟</p>
+          <p v-if="s.note" class="mt-1 text-stone-500">{{ s.note }}</p>
           <p v-if="s.state.last_checked_at" class="mt-1 text-stone-500">上次检查 {{ fmtWhen(s.state.last_checked_at) }} · 上次成功 {{ fmtWhen(s.state.last_success_at) }}</p>
           <p v-if="s.state.stats" class="mt-1 text-stone-500">新建 {{ s.state.stats.created }} · 重复 {{ s.state.stats.duplicate }} · 过滤 {{ s.state.stats.screened_out }} · 无效 {{ s.state.stats.rejected }} · 失败 {{ s.state.stats.errors }}</p>
           <p v-if="s.state.totals" class="mt-1 text-stone-500">累计检查 {{ s.state.totals.runs }} 次 · 失败 {{ s.state.totals.failed_runs }} 次 · 新增 {{ s.state.totals.created }} 条</p>
@@ -77,7 +88,7 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 definePageMeta({
   layout: 'admin',
@@ -88,7 +99,12 @@ definePageMeta({
 const api = useApi()
 const jobs = ref([])
 const sources = ref([])
-const sourceStatuses = { ok: '正常', partial: '未采完，下次续跑', error: '失败，保留断点' }
+const enabledSourceCount = computed(() => sources.value.filter(s => s.enabled).length)
+const sourceBusy = ref({})
+const sourceError = ref('')
+const sourceMessage = ref('')
+const sourceStatuses = { ok: '正常', partial: '未采完，下次续跑', paused: '已暂停', error: '失败，保留断点' }
+let sourceRevision = 0
 const error = ref('')
 const busy = ref('')
 const dailyDate = ref(fmtDateKey(new Date()))
@@ -164,10 +180,31 @@ function formatStats(j) {
 async function load() {
   try {
     jobs.value = (await api.adminJobs()).jobs
-    sources.value = (await api.adminSources()).sources
+    const revision = sourceRevision
+    const nextSources = (await api.adminSources()).sources
+    if (revision === sourceRevision) sources.value = nextSources
     error.value = ''
   } catch (e) {
     error.value = e.message
+  }
+}
+
+async function toggleSource(source) {
+  if (!source.can_toggle || sourceBusy.value[source.id]) return
+  sourceBusy.value[source.id] = true
+  sourceError.value = ''
+  sourceMessage.value = ''
+  sourceRevision++
+  try {
+    const result = await api.adminPatchSource(source.id, !source.enabled)
+    const current = sources.value.find(s => s.id === source.id)
+    if (current) current.enabled = result.enabled
+    sourceMessage.value = `${source.name}已${result.enabled ? '启用' : '停用'}`
+  } catch (e) {
+    sourceError.value = e.message
+  } finally {
+    sourceRevision++
+    delete sourceBusy.value[source.id]
   }
 }
 

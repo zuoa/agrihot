@@ -18,7 +18,9 @@ async def tick() -> None:
         now = datetime.now(timezone.utc)
         for source in await list_sources():
             checked = parse_date(source["state"].get("last_checked_at", ""))
-            if source["enabled"] and (checked is None or now >= checked + timedelta(minutes=source["interval_minutes"])):
+            changed = parse_date(source.get("enabled_updated_at") or "")
+            if source["enabled"] and (checked is None or (changed and changed > checked)
+                                      or now >= checked + timedelta(minutes=source["interval_minutes"])):
                 await job_runner.spawn("sources_fetch", {"force": False})
                 break
 

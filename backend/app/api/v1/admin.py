@@ -24,6 +24,7 @@ from ...schemas import (
     BatchDeleteOut,
     BatchFetchIn,
     BatchIdsIn,
+    CollectionSourceUpdate,
     DailyGenerateOut,
     ItemListOut,
     ItemOut,
@@ -406,8 +407,26 @@ async def batch_fetch_content(
 # ---------- jobs ----------
 
 @router.get("/sources")
-async def list_collection_sources(_: None = Depends(require_admin)) -> dict:
-    return {"sources": await source_service.list_sources()}
+async def list_collection_sources(
+    _: None = Depends(require_admin), session: AsyncSession = Depends(get_session),
+) -> dict:
+    return {"sources": await source_service.list_sources(session)}
+
+
+@router.patch("/sources/{source_id}")
+async def update_collection_source(
+    source_id: str, payload: CollectionSourceUpdate,
+    _: None = Depends(require_admin), session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await source_service.set_source_enabled(session, source_id, payload.enabled)
+    except LookupError as exc:
+        raise problem(404, "Not Found", str(exc))
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc))
+    await session.commit()
+    return result
+
 
 @router.get("/jobs", response_model=JobListOut)
 async def list_jobs(_: None = Depends(require_admin)) -> JobListOut:

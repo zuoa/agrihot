@@ -145,6 +145,8 @@ async def test_fixed_source_registry_and_runtime_settings(client):
     assert len([s for s in sources if s["enabled"]]) == 22
     assert next(s for s in sources if s["id"] == "irri-news")["enabled"] is True
     assert next(s for s in sources if s["id"] == "cau-research")["enabled"] is False
+    assert next(s for s in sources if s["id"] == "cau-research")["can_toggle"] is False
+    assert next(s for s in sources if s["id"] == "freshplaza-technology")["can_toggle"] is True
     response = await client.patch("/api/v1/admin/settings", headers=auth, json={
         "sources_fetch_enabled": False, "sources_bootstrap_days": 14,
         "sources_lookback_days": 3, "sources_max_new_per_source": 10,
@@ -153,6 +155,57 @@ async def test_fixed_source_registry_and_runtime_settings(client):
     assert response.json()["writable"]["sources_max_new_per_source"]["value"] == 10
     assert (await client.patch("/api/v1/admin/settings", headers=auth,
                               json={"sources_max_new_per_source": 0})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_source_switches_persist_independently_without_touching_progress(client):
+    import json
+    from app.models import PipelineState
+    from app.services import source_service
+    original = {"watermark": "2026-11-03T00:00:00+00:00", "totals": {"runs": 7}}
+    async with TestSession() as session:
+        session.add(PipelineState(key="source:agfunder", value=json.dumps(original)))
+        await session.commit()
+    assert (await client.patch("/api/v1/admin/sources/agfunder", json={"enabled": False})).status_code == 401
+    auth = await login(client)
+    response = await client.patch("/api/v1/admin/sources/agfunder", headers=auth, json={"enabled": False})
+    assert response.status_code == 200 and response.json() == {"id": "agfunder", "enabled": False}
+    # A different source edit must not overwrite the first choice; supported,
+    # default-disabled RSS sources can be enabled by an operator.
+    response = await client.patch("/api/v1/admin/sources/freshplaza-technology", headers=auth, json={"enabled": True})
+    assert response.status_code == 200 and response.json()["enabled"] is True
+    sources = {s["id"]: s for s in (await client.get("/api/v1/admin/sources", headers=auth)).json()["sources"]}
+    assert sources["agfunder"]["enabled"] is False
+    assert sources["agfunder"]["state"] == original
+    assert sources["agfunder"]["enabled_updated_at"]
+    assert sources["freshplaza-technology"]["enabled"] is True
+    changed_at = sources["agfunder"]["enabled_updated_at"]
+    # A retried save must not create a new scheduling change.
+    response = await client.patch("/api/v1/admin/sources/agfunder", headers=auth, json={"enabled": False})
+    assert response.status_code == 200
+    sources = {s["id"]: s for s in (await client.get("/api/v1/admin/sources", headers=auth)).json()["sources"]}
+    assert sources["agfunder"]["enabled_updated_at"] == changed_at
+    # Factory defaults stay in the file. Fresh sessions (as in a new worker)
+    # still read the persisted operator choices.
+    assert next(s for s in source_service.load_sources() if s.id == "agfunder").enabled is True
+    async with TestSession() as session:
+        sources = {s.id: s for s in await source_service.configured_sources(session)}
+        assert sources["agfunder"].enabled is False
+        assert sources["freshplaza-technology"].enabled is True
+    response = await client.patch("/api/v1/admin/sources/agfunder", headers=auth, json={"enabled": True})
+    assert response.status_code == 200 and response.json()["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_source_switch_rejects_unknown_unimplemented_and_invalid_updates(client):
+    auth = await login(client)
+    response = await client.patch("/api/v1/admin/sources/not-a-source", headers=auth, json={"enabled": True})
+    assert response.status_code == 404
+    response = await client.patch("/api/v1/admin/sources/cau-research", headers=auth, json={"enabled": True})
+    assert response.status_code == 422 and "尚未接入" in response.text
+    for payload in ({}, {"enabled": "false"}, {"enabled": True, "url": "https://other.example/feed"}):
+        response = await client.patch("/api/v1/admin/sources/agfunder", headers=auth, json=payload)
+        assert response.status_code == 422
 
 
 @pytest.mark.asyncio

@@ -218,7 +218,7 @@ AGRIHOT_TEST_TAXONOMY_POSTGRES_URL=postgresql+asyncpg://localhost/agrihot_taxono
 ## 文献雷达（OpenAlex）
 
 固定信源已接入 14 个 RSS、2 个部委栏目和核心期刊的 Crossref 补漏，默认由 worker 按各源频率采集。
-后台「任务」可手动执行并查看逐源状态，「配置」可开关及调整回看窗口和新建上限。
+后台「任务 → 固定信源」可逐项启用/停用、手动执行并查看状态，选择保存在数据库，重启后保留；「配置」可调整总开关、回看窗口和新建上限。
 首批入口、过滤与断点机制、只读预览和第二批候选见[固定信源采集](docs/fixed-sources.md)。
 
 每天 `07:30`（`DAILY_TIMEZONE`）按 `backend/app/watchlist.yaml` 订阅的方向 / 期刊 / 学者，

@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import re
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -12,6 +13,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import yaml
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..database import SessionLocal
@@ -27,6 +29,8 @@ from .source_adapters import (
 
 log = logging.getLogger(__name__)
 STATE_PREFIX = "source:"
+ENABLED_PREFIX = "source_enabled:"
+COLLECTABLE_KINDS = {"rss", "moa", "crossref"}
 MAX_PAGES = 5
 CROSSREF_ROWS = 50
 EXCLUDED_TITLES = re.compile(r"党支部|党建|理论学习|廉政|工会活动|招聘|招聘会|nominations? (?:open|close)", re.I)
@@ -48,7 +52,7 @@ def load_sources() -> list[Source]:
         if not re.fullmatch(r"[a-z0-9-]{1,70}", source.id) or source.id in seen:
             raise ValueError(f"invalid or duplicate source id: {source.id}")
         seen.add(source.id)
-        if source.enabled and source.kind not in {"rss", "moa", "crossref"}:
+        if source.enabled and source.kind not in COLLECTABLE_KINDS:
             raise ValueError(f"source adapter not implemented: {source.id}")
         if source.interval_minutes < 1:
             raise ValueError(f"invalid source interval: {source.id}")
@@ -76,13 +80,76 @@ async def write_state(source_id: str, state: dict) -> None:
         await session.commit()
 
 
-async def list_sources() -> list[dict]:
+def _effective_enabled(source: Source, value: str | None) -> bool:
+    if source.kind not in COLLECTABLE_KINDS:
+        return False
+    try:
+        override = json.loads(value) if value is not None else None
+    except (ValueError, TypeError):
+        override = None
+    return override if isinstance(override, bool) else source.enabled
+
+
+async def configured_sources(session: AsyncSession) -> list[Source]:
+    """Read operator choices directly from DB; API and worker share no cache."""
+    await watchlist_service.load_from_db(session)
+    rows = (await session.scalars(select(PipelineState).where(
+        PipelineState.key.startswith(ENABLED_PREFIX),
+    ))).all()
+    overrides = {row.key[len(ENABLED_PREFIX):]: row.value for row in rows}
+    return [replace(source, enabled=_effective_enabled(source, overrides.get(source.id)))
+            for source in load_sources()]
+
+
+async def set_source_enabled(session: AsyncSession, source_id: str, enabled: bool) -> dict:
+    await watchlist_service.load_from_db(session)
+    source = next((source for source in load_sources() if source.id == source_id), None)
+    if source is None:
+        raise LookupError("未知信源")
+    if enabled and source.kind not in COLLECTABLE_KINDS:
+        raise ValueError("该信源尚未接入采集，暂不能启用")
+    # Separate rows from progress prevent a running collector from overwriting
+    # the switch. Atomic upsert also handles concurrent first-time edits.
+    if session.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    statement = insert(PipelineState).values(
+        key=ENABLED_PREFIX + source_id, value=json.dumps(enabled), updated_at=utcnow(),
+    )
+    await session.execute(statement.on_conflict_do_update(
+        index_elements=[PipelineState.key],
+        set_={"value": statement.excluded.value, "updated_at": statement.excluded.updated_at},
+        where=PipelineState.value != statement.excluded.value,
+    ))
+    return {"id": source_id, "enabled": enabled}
+
+
+async def source_control(source: Source) -> tuple[bool, datetime | None]:
     async with SessionLocal() as session:
-        rows = (await session.scalars(select(PipelineState).where(PipelineState.key.like("source:%")))).all()
-        states = {row.key[len(STATE_PREFIX):]: json.loads(row.value) for row in rows}
+        row = await session.get(PipelineState, ENABLED_PREFIX + source.id)
+        changed = parse_date(row.updated_at.isoformat()) if row and row.updated_at else None
+        return _effective_enabled(source, row.value if row else None), changed
+
+
+async def source_is_enabled(source: Source) -> bool:
+    return (await source_control(source))[0]
+
+
+async def list_sources(session: AsyncSession | None = None) -> list[dict]:
+    if session is None:
+        async with SessionLocal() as own_session:
+            return await list_sources(own_session)
+    sources = await configured_sources(session)
+    controls = (await session.scalars(select(PipelineState).where(PipelineState.key.startswith(ENABLED_PREFIX)))).all()
+    changed_at = {row.key[len(ENABLED_PREFIX):]: row.updated_at.isoformat() for row in controls if row.updated_at}
+    rows = (await session.scalars(select(PipelineState).where(PipelineState.key.startswith(STATE_PREFIX)))).all()
+    states = {row.key[len(STATE_PREFIX):]: json.loads(row.value) for row in rows}
     return [{"id": s.id, "name": s.name, "kind": s.kind, "url": s.url, "enabled": s.enabled,
+             "can_toggle": s.kind in COLLECTABLE_KINDS,
+             "enabled_updated_at": changed_at.get(s.id),
              "interval_minutes": s.interval_minutes, "note": s.note, "state": states.get(s.id, {})}
-            for s in load_sources()]
+            for s in sources]
 
 
 def window_start(state: dict, now: datetime) -> datetime:
@@ -149,6 +216,9 @@ async def collect_source(source: Source, client: httpx.AsyncClient, *, now: date
     complete = False
     try:
         for _ in range(MAX_PAGES):
+            if not dry_run and not await source_is_enabled(source):
+                stats["paused"] = True
+                break
             try:
                 candidates, rejected, next_cursor = await fetch_page(client, source, window)
             except httpx.HTTPStatusError as exc:
@@ -213,7 +283,7 @@ async def collect_source(source: Source, client: httpx.AsyncClient, *, now: date
                 state["window"] = window
                 await write_state(source.id, state)
             await asyncio.sleep(0.2)
-        if not complete and not dry_run:
+        if not complete and not dry_run and not stats.get("paused"):
             stats["truncated"] = True
     except Exception as exc:
         stats["errors"] += 1
@@ -234,7 +304,8 @@ async def collect_source(source: Source, client: httpx.AsyncClient, *, now: date
     for key in ("created", "duplicate", "screened_out", "rejected"):
         totals[key] = totals.get(key, 0) + stats[key]
     state["totals"] = totals
-    state.update(last_checked_at=now.isoformat(), status="error" if stats["errors"] else "partial" if stats["truncated"] else "ok", stats=stats)
+    status = "error" if stats["errors"] else "paused" if stats.get("paused") else "partial" if stats["truncated"] else "ok"
+    state.update(last_checked_at=now.isoformat(), status=status, stats=stats)
     await write_state(source.id, state)
     # Enrichment cannot undo ingested records or collection checkpoints. On a
     # restart the existing unscored/content backfill jobs handle saved records.
@@ -249,20 +320,28 @@ async def collect_source(source: Source, client: httpx.AsyncClient, *, now: date
 async def run_once(*, force: bool = True, dry_run: bool = False, source_id: str | None = None,
                    preview_limit: int = 5, now: datetime | None = None) -> dict:
     now = now or datetime.now(timezone.utc)
+    available = None
     if not dry_run:
         async with SessionLocal() as session:
             await runtime_settings.load(session)
-            await watchlist_service.load_from_db(session)
-    sources = [s for s in load_sources() if s.enabled and (source_id is None or s.id == source_id)]
+            available = await configured_sources(session)
+    sources = [s for s in (available if available is not None else load_sources())
+               if s.enabled and (source_id is None or s.id == source_id)]
     if source_id is not None and not sources:
         raise ValueError(f"unknown or disabled source: {source_id}")
     results = []
     async with httpx.AsyncClient(timeout=30, follow_redirects=True,
                                  headers={"User-Agent": f"AgriHot/1.0 (mailto:{settings.openalex_mailto})"}) as client:
         for source in sources:
+            changed = None
+            if not dry_run:
+                enabled, changed = await source_control(source)
+                if not enabled:
+                    continue
             state = {} if dry_run else await read_state(source.id)
             checked = parse_date(state.get("last_checked_at", ""))
-            if not force and checked and now < checked + timedelta(minutes=source.interval_minutes):
+            if (not force and checked and not (changed and changed > checked)
+                    and now < checked + timedelta(minutes=source.interval_minutes)):
                 continue
             result = await collect_source(source, client, now=now, dry_run=dry_run, preview_limit=preview_limit)
             results.append(result)

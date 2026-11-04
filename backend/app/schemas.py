@@ -69,6 +69,11 @@ class AdminMeOut(BaseModel):
     ok: bool = True
 
 
+class CollectionSourceUpdate(BaseModel):
+    model_config = {"extra": "forbid"}
+    enabled: bool = Field(strict=True)
+
+
 class SettingValueOut(BaseModel):
     value: bool | int | str
     source: str  # env | override

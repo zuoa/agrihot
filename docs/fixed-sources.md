@@ -25,7 +25,7 @@
 | IRRI 正式新闻 | 官方 RSS，仅正式新闻路径 | 每 12 小时 |
 | 当前关注面中的核心期刊 | Crossref 按 ISSN 获取元数据 | 每天 |
 
-当前启用 **14 个 RSS、2 个部委栏目和默认 6 本期刊的 Crossref 补漏**，共 22 个采集入口。另保存 FreshPlaza、爱荷华州立大学 RSS 为停用候选：入口可读，但项目采集器复测出现持续超时或 403。RSS 的入口与内容验证、未启用来源见 [RSS 扩充记录](rss-sources-2026-11-04.md)。
+文件默认启用 **14 个 RSS、2 个部委栏目和默认 6 本期刊的 Crossref 补漏**，共 22 个采集入口，实际启用清单以后台保存的选择为准。另保存 FreshPlaza、爱荷华州立大学 RSS 为停用候选：入口可读，但项目采集器复测出现持续超时或 403。RSS 的入口与内容验证、未启用来源见 [RSS 扩充记录](rss-sources-2026-11-04.md)。
 
 Crossref 使用后台关注面中的期刊配置，默认 6 本；不复制独立的期刊清单。OpenAlex 文献雷达继续运行，期刊 RSS 与两者通过规范化 DOI 合并。Crossref 先收录的占位摘要可在后续 OpenAlex / Agent 提供真实摘要时补齐；已存在的正文与真实摘要不会被薄元数据覆盖。Crossref 不保证提供摘要或全文，论文原文仍按现有手动获取流程处理。
 
@@ -35,7 +35,13 @@ worker 每分钟检查到期信源，执行 `sources_fetch` 任务。生产 API 
 
 ## 操作与状态
 
-后台「任务」提供「采集固定信源」，可以手动强制采集全部已启用来源；同页显示每个源的地址、频率、上次检查/成功时间、错误、过滤数和新增数，以及累计检查、失败次数和新增量。「配置」可热改自动采集开关、回看天数及每源新建上限。管理员接口 `GET /api/v1/admin/sources` 返回同一清单与状态；既有 `POST /api/v1/admin/jobs/sources_fetch/run` 触发任务。公开接口不增加权限。
+后台「任务 → 固定信源」可逐项启用、停用 RSS、部委栏目和 Crossref 期刊补漏源，开关自动保存；同页显示每个源的地址、频率、上次检查/成功时间、错误、过滤数和新增数，以及累计检查、失败次数和新增量。`can_toggle=false` 的来源尚未接入采集，页面禁用开关、接口拒绝启用；已有 RSS 适配的停用候选可由管理员手动启用，页面保留其访问验证说明。
+
+开关按信源 ID 独立保存在数据库 `pipeline_state` 的 `source_enabled:<id>`，覆盖文件默认值，容器重建或 worker 重启后保留。自动调度、手动任务、正式 CLI 采集均读取这些选择；手动强制执行也不会绕过逐源停用。API 与 worker 直接读取数据库，不依赖跨进程缓存。
+
+停用不删除内容或采集进度：任务在启动来源及读取下一页前检查开关，已开始读取的页面处理完成后暂停，之后启用可从保留的窗口和分页断点续跑。自动采集总开关开启时，重新启用的来源在下一次分钟检查时即可安排采集，无需等待原采集间隔。总开关仍在「配置」中；OpenAlex 文献订阅由「关注面」管理，关闭某期刊的 Crossref 补漏不等于取消其 OpenAlex 订阅。
+
+管理员接口：`GET /api/v1/admin/sources` 返回清单、`enabled`、`can_toggle`、开关更新时间与采集状态；`PATCH /api/v1/admin/sources/{id}` 接收 `{"enabled": true}` 或 `{"enabled": false}`，返回保存后的 ID 和开关。未知 ID 返回 404，未接入来源或无效请求返回 422；仅允许修改开关，不接受 URL 等字段。既有 `POST /api/v1/admin/jobs/sources_fetch/run` 触发采集全部已启用来源。公开读取接口不变。
 
 ```bash
 cd backend
@@ -49,7 +55,7 @@ SOURCES_BOOTSTRAP_DAYS=90 .venv/bin/python -m scripts.fetch_sources --dry-run --
 .venv/bin/python -m scripts.fetch_sources --source-id agfunder
 ```
 
-只读预览使用文件期刊配置；实际采集使用数据库关注面覆盖。`--source-id` 必须指向已启用来源；失败以非零状态退出。CLI 与部署 worker 不应同时执行实际采集，任务锁沿用当前单 worker 进程模型。
+只读预览使用文件中的默认启用清单和期刊配置，不读取后台开关或数据库；实际采集使用后台启用选择和数据库关注面覆盖。`--source-id` 必须指向相应清单中的已启用来源；失败以非零状态退出。CLI 与部署 worker 不应同时执行实际采集，任务锁沿用当前单 worker 进程模型。
 
 环境变量默认值：
 
@@ -81,4 +87,4 @@ cd backend
 .venv/bin/python -m pytest tests/test_sources.py tests/test_openalex.py tests/test_admin_console.py tests/test_pool_and_worker.py -q
 ```
 
-覆盖重复运行、新建上限后续跑、HTTP/正文失败保留断点、分页中断、游标重置、RSS 压缩、非文章路径、真实日期、期刊 DOI 合并、摘要补齐、只读预览和调度开关。另用上面的 `--dry-run` 对真实源站做只读验证。
+覆盖重复运行、新建上限后续跑、HTTP/正文失败保留断点、分页中断、游标重置、RSS 压缩、非文章路径、真实日期、期刊 DOI 合并、摘要补齐、只读预览和调度开关；另验证后台逐源选择持久化、默认停用 RSS 启用、手动任务遵守停用、重新启用及时调度、采集中停用与断点恢复。真实源站只读验证使用上面的 `--dry-run`。
