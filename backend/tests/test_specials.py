@@ -2,7 +2,7 @@
 import copy
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -265,6 +265,119 @@ async def test_generation_corrects_all_citations_before_review(database, materia
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('break_citation_after_review', [False, True])
+async def test_semantic_rejection_is_revised_and_rechecked_with_current_date(database, material, monkeypatch, break_citation_after_review):
+    candidate, _, corrected = material
+    invalid = copy.deepcopy(corrected)
+    invalid['overview']['text'] = '这些研究共同证明模型适用于所有作物，跨地域均能保持优秀性能。'
+    # Correct excerpts alone cannot establish whether a conclusion follows from them.
+    feedback = {'approved': False, 'reason': '概述遗漏适用边界并制造共同结论', 'issues': [{
+        'path': 'overview.text', 'source_ids': ['i1', 'i2', 'i3'],
+        'reason': '来源仅检验一种作物且跨地域性能下降，改为有条件的单项发现，不能外推所有作物。',
+    }]}
+    as_of = datetime(2026, 11, 4, 16, 30, tzinfo=timezone.utc)
+    monkeypatch.setattr(service, 'utcnow', lambda: as_of)
+    monkeypatch.setattr(settings, 'daily_timezone', 'Asia/Shanghai')
+    compose, reviews, supplements, logs = [], [], [], []
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        assert payload['today'] == '2026-11-05' and payload['as_of'] == as_of.isoformat()
+        if system == service.COMPOSE:
+            compose.append(copy.deepcopy(payload))
+            if len(compose) == 1:
+                return invalid
+            if break_citation_after_review and len(compose) == 2:
+                bad_quote = copy.deepcopy(corrected)
+                bad_quote['overview']['citations'][0]['quote'] = '改稿时生成的错误摘录并不存在于来源'
+                return bad_quote
+            return corrected
+        assert system == service.VERIFY
+        reviews.append(copy.deepcopy(payload))
+        return feedback if len(reviews) == 1 else {'approved': True, 'reason': '', 'issues': []}
+
+    async def supplement(queries):
+        supplements.append(queries)
+        return [], 'no_results'
+
+    async def report(**entry):
+        logs.append(entry)
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database, report=report)
+
+    assert result['created'] == 1 and result['failed'] == 0
+    assert len(compose) == (3 if break_citation_after_review else 2) and len(reviews) == 2
+    assert len(supplements) == 1
+    assert compose[1]['previous_document'] == invalid and compose[1]['review_feedback'] == feedback
+    assert all(call['sources'] == compose[0]['sources'] for call in [*compose, *reviews])
+    assert reviews[0]['document'] == invalid and reviews[1]['document'] == corrected
+    assert any(e['stage'] == 'repair' and e['details'].get('review_feedback') == feedback for e in logs)
+    if break_citation_after_review:
+        assert compose[2]['review_feedback'] == feedback
+        assert compose[2]['validation_errors'][0]['code'] == 'quote_mismatch'
+    async with database() as session:
+        versions = (await session.scalars(select(SpecialVersion))).all()
+        assert len(versions) == 1 and versions[0].document == corrected
+
+
+@pytest.mark.asyncio
+async def test_semantic_revision_cannot_bypass_citation_gate_or_retry_forever(database, material, monkeypatch):
+    candidate, _, document = material
+    invalid = copy.deepcopy(document)
+    invalid['overview']['citations'][0]['quote'] = '修正后仍然伪造的证据摘录，不属于原文'
+    calls = []
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        calls.append(system)
+        if system == service.COMPOSE:
+            return invalid if 'review_feedback' in payload else document
+        return {'approved': False, 'reason': '结论需要收窄至来源的限定条件'}
+
+    async def supplement(queries):
+        return [], 'academic_only'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+    assert result['failed'] == 1 and result['created'] == 0
+    assert calls == [service.COMPOSE, service.VERIFY, service.COMPOSE, service.COMPOSE]
+    async with database() as session:
+        special = await session.scalar(select(Special))
+        assert special.status == 'draft' and special.external_status == 'academic_only'
+        assert 'quote' in special.last_error
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('review', [
+    {'approved': 'true', 'reason': ''},
+    {'approved': True, 'reason': '', 'issues': [{'path': 'overview', 'reason': '仍存在无依据的共同结论'}]},
+])
+async def test_malformed_or_contradictory_approval_never_publishes(database, material, monkeypatch, review):
+    candidate, _, document = material
+
+    async def llm(system, payload):
+        if system == service.DISCOVER:
+            return {'candidates': [candidate.model_dump()]}
+        return document if system == service.COMPOSE else review
+
+    async def supplement(queries):
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+    assert result['failed'] == 1 and result['created'] == 0
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(SpecialVersion)) == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('problem', [
     'comparison_citation', 'comparison_item', 'shared_evidence', 'internal_evidence',
     'timeline_evidence', 'timeline_date', 'document_kind', 'schema',
@@ -389,7 +502,7 @@ async def test_failed_correction_or_review_keeps_published_content(database, mat
             return {'candidates': [candidate.model_dump()]}
         if system == service.COMPOSE:
             compose_calls.append(payload)
-            return document if review_rejects and len(compose_calls) == 2 else invalid
+            return document if review_rejects and len(compose_calls) >= 2 else invalid
         assert system == service.VERIFY and review_rejects, 'invalid citations must never reach review'
         assert payload['document'] == document
         review_calls.append(payload)
@@ -403,11 +516,12 @@ async def test_failed_correction_or_review_keeps_published_content(database, mat
     result = await service.run_once(factory=database, special_id=special_id)
 
     assert result['failed'] == 1 and result['created'] == result['updated'] == 0
-    assert len(compose_calls) == 2
-    assert len(review_calls) == int(review_rejects)
+    assert len(compose_calls) == (3 if review_rejects else 2)
+    assert len(review_calls) == 2 * int(review_rejects)
     async with database() as session:
         special = await session.scalar(select(Special))
         assert special.status == ('published' if existing else 'draft')
+        assert special.external_status == 'no_results'
         if review_rejects:
             assert special.last_error == '修正后的结论仍超出证据'
         else:
@@ -442,6 +556,77 @@ async def test_missing_or_old_dates_do_not_manufacture_hotness(database, materia
     for source in sources:
         source['published_at'] = (utcnow() - timedelta(days=61)).isoformat()
     assert not service.eligible(candidate, sources)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('repeat_title', [False, True])
+async def test_title_only_sources_cannot_support_claims_or_count_as_core(database, material, repeat_title):
+    candidate, _, document = material
+    async with database() as session:
+        item = await session.get(Item, 3)
+        item.summary = item.title if repeat_title else ' '
+        item.summary_zh = item.title if repeat_title else None
+        item.content = item.title if repeat_title else None
+        await session.commit()
+    sources = await service.prepare_sources(candidate, database)
+    title_only = next(s for s in sources if s['item_id'] == 3)
+    assert title_only['basis'] == 'title'
+    diagnostics = service.eligibility_report(candidate, sources)
+    assert diagnostics['eligible'] is False and diagnostics['core_count'] == diagnostics['recent_core_count'] == 2
+    assert diagnostics['title_only_item_ids'] == [3]
+    assert any('只有标题' in reason for reason in diagnostics['reasons'])
+    document['findings'][2]['citations'][0]['quote'] = title_only['title']
+    with pytest.raises(service.EvidenceValidationError) as caught:
+        service.validate_evidence(document, sources)
+    assert caught.value.errors == [{
+        'path': 'findings[2].citations[0].source_id', 'source_id': 'i3', 'code': 'source_title_only',
+        'reason': '该来源只有标题，不能支持正文结论；删除此引用及无其他证据支持的论断',
+    }]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('replacement_available', [False, True])
+async def test_title_only_material_is_replaced_or_skipped_before_drafting(database, material, monkeypatch, replacement_available):
+    candidate, _, document = material
+    async with database() as session:
+        for item_id in ([3] if replacement_available else [3, 4]):
+            item = await session.get(Item, item_id)
+            item.summary, item.summary_zh, item.content = '', None, None
+        await session.commit()
+    calls = []
+
+    async def llm(system, payload):
+        calls.append(system)
+        if system == service.DISCOVER:
+            articles = {a['id']: a for a in payload['articles']}
+            assert articles[3]['basis'] == 'title'
+            return {'candidates': [candidate.model_dump()]}
+        assert replacement_available, 'a pool with only two substantive articles cannot be repaired'
+        if system == service.RESELECT:
+            assert payload['material_diagnostics']['title_only_item_ids'] == [3]
+            return {'items': [*candidate.model_dump()['items'][:2], {
+                'item_id': 4, 'role': 'core', 'reason': '独立实验提供跨地域条件证据', 'evidence_group': 'study-4',
+            }]}
+        if system == service.COMPOSE:
+            assert {s['item_id'] for s in payload['sources']} == {1, 2, 4}
+            corrected = copy.deepcopy(document)
+            corrected['findings'][2]['citations'][0]['source_id'] = 'i4'
+            return corrected
+        assert system == service.VERIFY
+        return {'approved': True, 'reason': ''}
+
+    async def supplement(queries):
+        assert replacement_available
+        return [], 'no_results'
+
+    monkeypatch.setattr(service, 'llm', llm)
+    monkeypatch.setattr(service, 'supplement', supplement)
+    result = await service.run_once(factory=database)
+    assert result['failed'] == 0 and result['created'] == int(replacement_available)
+    assert result['skipped'] == int(not replacement_available)
+    assert calls == [service.DISCOVER] + ([service.RESELECT, service.COMPOSE, service.VERIFY] if replacement_available else [])
+    async with database() as session:
+        assert await session.scalar(select(func.count()).select_from(Special)) == int(replacement_available)
 
 
 @pytest.mark.asyncio

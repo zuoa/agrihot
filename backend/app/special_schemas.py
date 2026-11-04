@@ -1,7 +1,7 @@
 """Validated generation documents; every factual block carries source excerpts."""
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 
 class Citation(BaseModel):
@@ -42,6 +42,24 @@ class SpecialDocument(BaseModel):
     timeline: list[TimelineEntry] = Field(default_factory=list, max_length=15)
     comparisons: list[Comparison] = Field(default_factory=list, max_length=8)
     extensions: list[Extension] = Field(default_factory=list, max_length=4)
+
+
+class ReviewIssue(BaseModel):
+    path: str = Field(min_length=1, max_length=200)
+    source_ids: list[str] = Field(default_factory=list, max_length=8)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class EvidenceReview(BaseModel):
+    approved: StrictBool
+    reason: str = Field(default="", max_length=4000)
+    issues: list[ReviewIssue] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def consistent_approval(self):
+        if self.approved and (self.reason.strip() or self.issues):
+            raise ValueError("审查批准结果不能同时包含未解决的问题")
+        return self
 
 
 class CandidateItem(BaseModel):

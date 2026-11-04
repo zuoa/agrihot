@@ -21,8 +21,8 @@ from sqlalchemy.orm import defer, noload
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item, SearchChunk, SearchJob, Special, SpecialItem, SpecialVersion, utcnow
-from ..special_schemas import Candidate, CandidateItem, Discovery, DiscoveryProposal, MaterialSelection, SpecialDocument
-from . import embedding_service, runtime_settings
+from ..special_schemas import Candidate, CandidateItem, Discovery, DiscoveryProposal, EvidenceReview, MaterialSelection, SpecialDocument
+from . import daily_service, embedding_service, runtime_settings
 from .special_research import supplement
 
 log = logging.getLogger(__name__)
@@ -52,12 +52,21 @@ def primary_doi(item: Item):
     return item.doi or (next(iter(mentioned)).casefold().rstrip(".,。") if len(mentioned) == 1 else None)
 
 
+def item_basis(item: Item) -> str:
+    title = compact_space(item.title)
+    if compact_space(item.content or "") not in {"", title}:
+        return "fulltext"
+    if any(compact_space(text or "") not in {"", title} for text in (item.summary, item.summary_zh)):
+        return "abstract"
+    return "title"
+
+
 def item_source(item: Item) -> dict:
     # Only source facts participate: reading/scoring/indexing must not invalidate a version.
     text = f"{item.title}\n{item.summary}\n{item.summary_zh or ''}\n{item.content or ''}"[:16000]
     data = {"id": f"i{item.id}", "item_id": item.id, "kind": "internal", "title": item.title,
             "url": item.url, "publisher": item.source_name, "doi": item.doi,
-            "basis": "fulltext" if item.content else "abstract", "text": text,
+            "basis": item_basis(item), "text": text,
             "published_at": aware(item.published_at).isoformat() if item.published_at else None}
     # A paper citing another paper is independent evidence; only a report's single
     # primary DOI reference can link it to the original work deterministically.
@@ -161,6 +170,8 @@ def validate_evidence(document: dict, sources: list[dict], *, kind=None) -> None
             quote = compact_space(citation["quote"])
             if source_id not in by_id:
                 field, code, reason = "source_id", "source_missing", "引用来源不存在，必须使用 sources 中的 id"
+            elif by_id[source_id].get("basis") == "title":
+                field, code, reason = "source_id", "source_title_only", "该来源只有标题，不能支持正文结论；删除此引用及无其他证据支持的论断"
             elif not quote or quote not in texts[source_id]:
                 field, code, reason = "quote", "quote_mismatch", "证据摘录与原文不符，必须逐字复制该来源 text 中的连续原文"
             else:
@@ -169,7 +180,8 @@ def validate_evidence(document: dict, sources: list[dict], *, kind=None) -> None
     # Collect relational errors in the same pass so a repair can address all of them.
     for path, block in all_blocks(document):
         groups = {by_id[c["source_id"]].get("evidence_group", c["source_id"]) for c in block["citations"]
-                  if c["source_id"] in by_id and by_id[c["source_id"]]["kind"] == "internal"}
+                  if c["source_id"] in by_id and by_id[c["source_id"]]["kind"] == "internal"
+                  and by_id[c["source_id"]].get("basis") != "title"}
         if block.get("kind") == "shared" and len(groups) < 2:
             errors.append({"path": f"{path}.citations", "code": "shared_evidence",
                            "reason": "共同发现需要至少两组独立站内证据；证据不足时改写为有来源支撑的单项发现，不能制造共识"})
@@ -278,6 +290,8 @@ title 最多60字，scope 用10–120字概括问题；每篇 reason 只用5–4
 queries 最多1条且不超过80字符；只返回 schema 字段，不回显输入资料，不附加分析或解释。
 区分 event（同一政策/成果/事件，核心材料近14天）和 research（同一研究问题，核心材料近60天）。
 只使用给定的 article id。共享宽泛标签不是关联依据，研究对象、问题、方法或事件须实际相关。
+研究核心须直接检验 scope 中的研究问题与结果变量；研究社会化服务供给、现代化的文章不能充当碳排放效果的核心证据。
+只提供背景机制、综述性综合或只有标题（basis=title）的文章作 background，不冒充独立原始实验；优先缩小议题，不能凑成宽泛的方法/应用合集。
 每组至少3篇符合当前专题时间窗口的 core 文章、2组独立证据，且有近7天实际发表的核心材料。background 不计入这些门槛。
 先选足3篇合格的 core，再考虑 background；若总共只选3篇，必须全部为合格的 core，不能返回“2篇核心+1篇背景”。
 使用程序提供的 eligibility 日期资格：event 的 core 须 event_core=true，research 的 core 须 research_core=true，且至少一篇 core 的 fresh=true。
@@ -295,6 +309,7 @@ RESELECT = """你是农业科技情报编辑，为材料校验未通过的一个
 先选足3篇合格 core，再考虑 background；event 核心须 event_core=true，research 核心须 research_core=true，至少一篇核心 fresh=true。
 日期资格由程序给出，不虚构日期；无日期、未来日期、超期材料只作背景，背景不计入核心门槛。
 核心材料须直接研究同一问题或报道同一事件，不能为了凑数把只相关的背景改标 core；每篇用5–40字说明实际关联。
+只有标题（basis=title）、综述性综合及未检验议题结果变量的材料只能作 background；已有这类核心关联也应明确返回 background 角色。
 至少2组独立核心证据；同一论文/成果/政策的报道、转载和解读共用 evidence_group，primary_doi 相同必须合并。
 只能使用 articles 中真实存在的 id。evidence_group 不超过24字符，不回显输入资料，不附加解释。
 已有专题的历史文章由程序保留，可重新判断所选文章的角色并添加相关证据；不得把新文章与已有同一成果拆成独立组。"""
@@ -304,22 +319,38 @@ source_id 必须逐字使用 sources 的 id（如 i123、e1），不能使用 it
 正文用中文；quote 必须从对应来源的 text 逐字复制一段连续原文，保留原语言、标点和数字。
 英文来源的 quote 保留英文，不能翻译、改写、拼接句子或添加省略号；不能引用 text 之外的资料。
 若输入含 previous_document 和 validation_errors，逐项修正全部结构、引用及证据关系错误并返回完整文档；必要时改写缺乏证据的结论，不能伪造证据。
+若含 review_feedback，逐项处理独立审查指出的问题并返回完整文档；删除、缩小或明确限定无证据论断，不能只换措辞或编造新证据，不修改来源、角色、分组和议题范围。
 shared 仅用于至少2个独立研究/证据组支持的共同发现；difference 保留条件差异；question 为明确未解问题；
 inference 为延伸思考，不能写成原文结论。只有摘要的来源不能声称已阅读全文。
+先逐篇区分原始实验、综述、报道和仅标题来源，识别研究对象、实际检验的结果变量及限定条件，再写概述与发现。
+overview 只总结各来源直接支持的内容；不为凑150–250字添加共识或建议。单篇结果明确归因，不将不同结果变量拼为同一效果，更不从服务供给或现代化外推减排。
+综述中的挑战只归因于该综述，不能泛化为未检验这些挑战的原始研究的共同发现。basis=title 的来源不支持正文结论，不计入摘要或实验数量。
+研究比较逐项保留任务、数据集、指标、验证条件；准确率、OA等不同实验的数值只陈述各自结果，不能归纳为共同高精度、突出性能或共同适用性。
+申报材料、企业自述及报道转引的效率/产值必须就近注明“据申报材料/某机构称”等来源与未验证边界；没有可比成本或效率数据的案例不归纳为共同降本增效。
+同一 evidence_group 的摘要、转载和解读仅算一组，可以共同引用但不能用篇数增加独立支持。
 event 的 comparisons 必须为[]，有来源日期才填写 timeline；research 的 timeline 必须为[]，使用 comparisons 比较对象、方法、数据条件、结果、局限；
 comparisons 的 item_id 必须使用 comparison_sources 中的真实文章 ID，不是行号；该行 citations 必须包含对应 source_id，且 quote 来自该文章原文。
 例如 item_id=123 对应 source_id=i123；不能用其他文章引用代替。没有对应证据的比较行不输出。
 缺失项填“原文未提供”，不比较不同实验条件的数值高低，不伪造效果与结论。
 extensions 最多4张（主体/理论方法/延伸问题），必须解释与该专题的关系、原理或作用、适用边界。
+extensions 的每个机制环节也须有证据；未测排放的材料不能支持“服务规模化→要素错配降低→减排”。无依据时删除，有限推论标 inference 并说明前提及尚未验证之处。
+以输入 today 和 as_of 为当前审查时间；仅年份等于当前年份不构成未来日期，不以模型知识截止时间判断真实性，也不声称已联网核实来源。
 外部资料只可用于扩展解释；关键发现及overview必须由站内证据支撑。不要在正文写[1]，引用由界面生成。
 不因模板要求强行填充 timeline、comparisons 或 extensions，没有证据就返回空列表。"""
-VERIFY = """独立审查这份农业专题。逐条对照 sources，检查文档全部事实、数字、机构、实验条件和推论。
+VERIFY = """独立审查这份农业专题。输出符合 schema 的 JSON。逐条对照 sources，检查文档全部事实、数字、机构、实验条件和推论。
 检查专题所有核心文章是否确实在研究同一具体问题或报道同一事件，及 evidence_group 是否把同一成果误当独立来源。
 检查同一研究的新闻/转载不能当成多项研究；shared 必须有多个独立证据组支持。
 外部资料仅接受原始论文、政府/机构官网、权威学术资料；不合格扩展必须拒绝，不拿搜索摘要当全文。
 检查标题和概述不夸大，比较不跨实验条件宣称优劣。引用摘录匹配不等于结论被支持。
-若有任何不被支持的事实、遗漏关键限定、虚假共识或无关聚类，返回 {"approved":false,"reason":"简短原因"}。
-完全通过才返回 {"approved":true,"reason":""}。这只是模型审查，不是事实认证。"""
+逐篇核对实际检验的结果变量，不能将社会化服务供给、现代化的效果外推为碳减排；不能将综述的推论归为多项实验的共识。
+只有标题（basis=title）的来源不支持正文结论；不同任务、数据集或指标的单项结果可以并列陈述，不能据此概括共同高精度或性能优劣。
+申报或机构自述数据须明确归因并保留验证边界；如已准确归因，不仅因缺少独立验证而否决。无可比效率/成本数据，不能推出多案例共同降本增效。
+同一 evidence_group 的多篇材料允许同时引用，只算一组。已正确合并时，不因它们同源而拒绝；核对共同发现是否另有至少一组直接支持该结论的独立证据。
+extensions 中每个因果环节都须有依据；标 inference 不能豁免证据要求，但有前提、有边界且明确尚待验证的推论可以保留。
+以输入 today、as_of 为当前时间，比较具体 published_at；2026年资料在2026年审查不构成时间异常。不得用模型训练截止日期替代当前日期。
+来源真实性只能据输入中的具体矛盾判断；无法访问原站不等于来源虚假，也不声称已联网验证。
+若有任何不被支持的事实、遗漏关键限定、虚假共识或无关聚类，返回 approved=false、reason 简述，并在 issues 逐项给出 path、source_ids、reason（具体问题与修正要求）。
+完全通过才返回 {"approved":true,"reason":"","issues":[]}。这只是模型审查，不是事实认证。"""
 
 
 def merge_selection(previous: dict, selected: list[CandidateItem], *, update_roles=False) -> list[CandidateItem]:
@@ -361,7 +392,7 @@ async def discover(articles: list[dict], prior: list[dict], now: datetime) -> tu
                   "min_core_items": 3, "max_new": min(max_new, limit), "max_updates": min(max_updates, limit)}
         await _report("discover", "按输出预算发现选题", attempt=attempt + 1, **limits)
         try:
-            result = await llm(DISCOVER, {"today": now.date().isoformat(), "articles": articles,
+            result = await llm(DISCOVER, {"today": now.astimezone(daily_service.business_tz()).date().isoformat(), "articles": articles,
                                          "existing": prior, "limits": limits, "schema": schema})
         except ModelOutputLimitError:
             if attempt:
@@ -421,7 +452,8 @@ def source_eligibility(published_at, now) -> dict:
 def eligibility_report(candidate: Candidate, sources: list[dict], now=None) -> dict:
     now = aware(now or utcnow())
     internal = [s for s in sources if s.get("kind") == "internal"]
-    core = [s for s in internal if s.get("role") == "core"]
+    title_only = [s for s in internal if s.get("role") == "core" and s.get("basis") == "title"]
+    core = [s for s in internal if s.get("role") == "core" and s.get("basis") != "title"]
     window = 14 if candidate.kind == "event" else 60
     dates = {s["id"]: source_eligibility(s.get("published_at"), now) for s in internal}
     recent = [s for s in core if dates[s["id"]][f"{candidate.kind}_core"]]
@@ -431,6 +463,8 @@ def eligibility_report(candidate: Candidate, sources: list[dict], now=None) -> d
     reasons = []
     if missing:
         reasons.append(f"关联文章不存在：{missing}")
+    if title_only:
+        reasons.append(f"核心文章只有标题、缺少摘要或正文：{[s['item_id'] for s in title_only]}（不能作为核心证据）")
     if len(core) < 3:
         reasons.append(f"核心文章 {len(core)}/3 篇（背景文章不计入）")
     if group_count < 2:
@@ -442,7 +476,9 @@ def eligibility_report(candidate: Candidate, sources: list[dict], now=None) -> d
     return {"eligible": not reasons, "kind": candidate.kind, "window_days": window,
             "core_count": len(core), "independent_groups": group_count, "recent_core_count": len(recent),
             "fresh_core_count": len(fresh), "missing_item_ids": missing, "reasons": reasons,
+            "title_only_item_ids": [s["item_id"] for s in title_only],
             "articles": [{"item_id": s["item_id"], "source_id": s["id"], "role": s.get("role"),
+                          "basis": s.get("basis"),
                           "evidence_group": s.get("evidence_group"), "primary_doi": s.get("primary_doi"),
                           "published_at": s.get("published_at"), **dates[s["id"]]} for s in internal]}
 
@@ -463,9 +499,9 @@ async def reselect_materials(candidate: Candidate, sources: list[dict], articles
         # Refresh selected articles from the DB snapshot, and include older history.
         article = pool.get(source["item_id"], {"id": source["item_id"], "title": source["title"],
                                              "summary": source["text"][:350], "primary_doi": source.get("primary_doi")})
-        pool[source["item_id"]] = {**article, "published_at": source.get("published_at"),
+        pool[source["item_id"]] = {**article, "published_at": source.get("published_at"), "basis": source.get("basis"),
                                    "eligibility": source_eligibility(source.get("published_at"), now)}
-    qualified = [a for a in pool.values() if a["eligibility"][f"{candidate.kind}_core"]]
+    qualified = [a for a in pool.values() if a["eligibility"][f"{candidate.kind}_core"] and a.get("basis") != "title"]
     if len(qualified) < 3 or not any(a["eligibility"]["fresh"] for a in qualified):
         await _report("reselect", "站内候选池没有足够的日期合格材料，跳过补选", level="warning",
                       special_id=candidate.existing_id, title=candidate.title, qualified_count=len(qualified))
@@ -473,7 +509,7 @@ async def reselect_materials(candidate: Candidate, sources: list[dict], articles
     await _report("eligibility", f"{InsufficientEvidenceError(diagnostics)}；自动补选一次", level="warning",
                   special_id=candidate.existing_id, title=candidate.title, **diagnostics)
     try:
-        result = await llm(RESELECT, {"today": now.date().isoformat(), "previous_candidate": candidate.model_dump(),
+        result = await llm(RESELECT, {"today": now.astimezone(daily_service.business_tz()).date().isoformat(), "previous_candidate": candidate.model_dump(),
                                       "material_diagnostics": diagnostics, "articles": list(pool.values()),
                                       "schema": MaterialSelection.model_json_schema()})
         selection = MaterialSelection.model_validate(result)
@@ -608,7 +644,7 @@ async def load_candidates(factory):
                     break
         background = await semantic_background(session, [i.id for i in balanced if i.published_at and aware(i.published_at) >= now - timedelta(days=7)], {i.id for i in balanced})
         articles = [{"id": i.id, "title": i.title, "summary": (i.summary_zh or i.summary)[:350],
-                     "doi": i.doi, "primary_doi": primary_doi(i), "source": i.source_name, "category": i.category,
+                     "doi": i.doi, "primary_doi": primary_doi(i), "source": i.source_name, "category": i.category, "basis": item_basis(i),
                      "published_at": aware(i.published_at).isoformat() if i.published_at else None,
                      "eligibility": source_eligibility(i.published_at, now),
                      "tags": [t.name for t in i.tags]} for i in [*balanced, *background]]
@@ -720,7 +756,8 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
     await _report("sources", "准备专题来源", special_id=candidate.existing_id, title=candidate.title,
                   article_count=len(candidate.items))
     sources = await prepare_sources(candidate, factory) if prepared_sources is None else list(prepared_sources)
-    diagnostics = eligibility_report(candidate, sources)
+    as_of = utcnow()
+    diagnostics = eligibility_report(candidate, sources, as_of)
     if not diagnostics["eligible"]:
         raise InsufficientEvidenceError(diagnostics)
     fingerprint = input_hash(candidate, sources)
@@ -735,6 +772,11 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
     await _report("research", "检索外部补充资料", special_id=candidate.existing_id, query_count=len(candidate.queries))
     external, external_status = await supplement(candidate.queries)
     sources.extend(external)
+    if candidate.existing_id:
+        async with factory() as session:
+            special = await session.get(Special, candidate.existing_id)
+            special.external_status = external_status
+            await session.commit()
     await _report("research", "来源准备完成", special_id=candidate.existing_id, internal_count=len(sources) - len(external),
                   external_count=len(external), external_status=external_status)
     comparison_sources = [{"item_id": s["item_id"], "source_id": s["id"]} for s in sources if s["kind"] == "internal"]
@@ -742,27 +784,42 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
     schema["$defs"]["Comparison"]["properties"]["item_id"]["enum"] = [s["item_id"] for s in comparison_sources]
     schema["$defs"]["Citation"]["properties"]["source_id"]["enum"] = [s["id"] for s in sources]
     schema["properties"]["comparisons" if candidate.kind == "event" else "timeline"]["maxItems"] = 0
-    payload = {"title": candidate.title, "scope": candidate.scope, "kind": candidate.kind,
+    payload = {"today": as_of.astimezone(daily_service.business_tz()).date().isoformat(), "as_of": as_of.isoformat(),
+               "title": candidate.title, "scope": candidate.scope, "kind": candidate.kind,
                "sources": sources, "comparison_sources": comparison_sources, "schema": schema}
-    # One corrective pass uses the exact same source snapshot and every evidence error.
-    # The corrected document must still pass all programmatic and independent checks.
-    for attempt in range(2):
+    # Each gate gets one repair, at most three drafts and two independent reviews.
+    # Every revised draft uses the same sources and passes both gates again.
+    validation_repaired = review_repaired = False
+    while True:
         document = await llm(COMPOSE, payload)
         try:
             validate_evidence(document, sources, kind=candidate.kind)
         except EvidenceValidationError as exc:
-            if attempt:
+            if validation_repaired:
                 raise
+            validation_repaired = True
             log.info("special %s: correcting %d evidence errors", candidate.existing_id, len(exc.errors))
             await _report("repair", "文档与证据校验未通过，自动修正一次", level="warning", special_id=candidate.existing_id,
                           error_count=len(exc.errors), validation_errors=exc.errors)
             payload = {**payload, "previous_document": document, "validation_errors": exc.errors}
-        else:
+            continue
+        document = SpecialDocument.model_validate(document).model_dump()
+        review = EvidenceReview.model_validate(await llm(VERIFY, {
+            **{key: payload[key] for key in ("today", "as_of", "title", "scope", "kind", "sources")},
+            "document": document, "schema": EvidenceReview.model_json_schema(),
+        }))
+        if review.approved:
             break
-    document = SpecialDocument.model_validate(document).model_dump()
-    review = await llm(VERIFY, {"title": candidate.title, "scope": candidate.scope, "document": document, "sources": sources})
-    if review.get("approved") is not True:
-        raise ValueError(str(review.get("reason") or "证据检查未通过")[:500])
+        reason = review.reason or "；".join(issue.reason for issue in review.issues) or "证据检查未通过"
+        await _report("verify", "独立审查未通过", level="warning", special_id=candidate.existing_id,
+                      review_feedback=review.model_dump(), repair_available=not review_repaired)
+        if review_repaired:
+            raise ValueError(reason[:500])
+        review_repaired = True
+        await _report("repair", "根据独立审查意见自动修正一次", level="warning", special_id=candidate.existing_id,
+                      review_feedback=review.model_dump())
+        payload = {key: value for key, value in payload.items() if key != "validation_errors"}
+        payload.update(previous_document=document, review_feedback=review.model_dump())
     await _report("publish", "引用校验与独立审查通过，准备发布", special_id=candidate.existing_id)
     old_ids = {s["item_id"] for s in latest.sources if s["kind"] == "internal"} if latest else set()
     added = {s["item_id"] for s in sources if s["kind"] == "internal"} - old_ids
