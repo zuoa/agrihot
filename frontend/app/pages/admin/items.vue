@@ -27,6 +27,7 @@
         <option value="agent">Agent / 新闻</option>
         <option value="openalex">OpenAlex</option>
         <option value="crossref">Crossref</option>
+        <option value="rss">RSS 论文</option>
       </select>
       <select v-model="form.sort" class="px-3 py-1.5 rounded-md border border-stone-200 bg-white">
         <option value="created_at">按入库时间</option>

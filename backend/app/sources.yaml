@@ -39,6 +39,114 @@ sources:
     article_pattern: '^/(?:[^/]+/)*20\d{2}/\d{2}/\d{2}/[^/]+/?$'
     interval_minutes: 240
     keywords: [breeding, genetics, genomic, gene editing, biotechnology, seed treatment, seed technology, climate resilience, research]
+  # RSS expansion verified against live feeds on 2026-11-04.
+  - id: usda-ars
+    name: USDA ARS · 农业研究
+    kind: rss
+    url: https://www.ars.usda.gov/rss/
+    hosts: [www.ars.usda.gov, ars.usda.gov]
+    article_pattern: '^/news-events/news/research-news/\d{4}/[^/]+/?$'
+    interval_minutes: 1440
+    keywords: [agricultur, crop, soil, plant, breeding, irrigation, genetic, robot, livestock, cattle, poultry, dairy]
+    note: 总 RSS 仍更新；官网列出的 Research News 参数版本已过时，采用总入口并限定研究新闻路径。
+  - id: phys-agriculture
+    name: Phys.org · 农业科研
+    kind: rss
+    url: https://phys.org/rss-feed/biology-news/agriculture/
+    hosts: [phys.org]
+    article_pattern: '^/news/\d{4}-\d{2}-[^/]+\.html$'
+    interval_minutes: 240
+  - id: sciencedaily-agriculture
+    name: ScienceDaily · 农业与食品研究
+    kind: rss
+    url: https://www.sciencedaily.com/rss/plants_animals/agriculture_and_food.xml
+    hosts: [www.sciencedaily.com, sciencedaily.com]
+    article_pattern: '^/releases/\d{4}/\d{2}/\d+\.htm$'
+    interval_minutes: 240
+    keywords: [agricultur, crop, farming, rice, wheat, maize, soybean, breeding, irrigation, fertilizer, soil, livestock, cattle, poultry, food security]
+    note: 官方农业栏目也混有其他生物学消息，先过农业相关词预筛。
+  - id: greenhouse-grower
+    name: Greenhouse Grower · 温室技术
+    kind: rss
+    url: https://www.greenhousegrower.com/feed/
+    hosts: [www.greenhousegrower.com, greenhousegrower.com]
+    article_pattern: '^/(?:[^/]+/)+[^/]+/?$'
+    interval_minutes: 360
+    keywords: [automation, robotics, autonomous, breeding, genetics, lighting, irrigation, biocontrol, crop protection, climate control, greenhouse technology]
+  - id: growing-produce
+    name: Growing Produce · 果蔬种植技术
+    kind: rss
+    url: https://www.growingproduce.com/feed/
+    hosts: [www.growingproduce.com, growingproduce.com]
+    article_pattern: '^/(?:[^/]+/)+[^/]+/?$'
+    interval_minutes: 360
+    keywords: [automation, robotics, breeding, genetics, irrigation, biocontrol, crop protection, pest management, nutrient, soil health, disease]
+  - id: cabi-plantwise
+    name: CABI PlantwisePlus · 植物健康
+    kind: rss
+    url: https://blog.plantwise.org/feed/
+    hosts: [blog.plantwise.org]
+    article_pattern: '^/\d{4}/\d{2}/\d{2}/[^/]+/?$'
+    interval_minutes: 720
+    keywords: [pesticide, pest, disease, biocontrol, biological control, crop, digital, farmer, plant health]
+  - id: iowa-crop-management
+    name: 爱荷华州立大学 · 作物管理
+    kind: rss
+    enabled: false
+    url: https://crops.extension.iastate.edu/rss/rss.xml
+    hosts: [crops.extension.iastate.edu]
+    article_pattern: '^/(?:post/[^/]+|cropnews/\d{4}/\d{2}/[^/]+)/?$'
+    interval_minutes: 720
+    note: 2026-11-04 普通客户端可读 10 条，但项目采集器复测持续连接超时，暂不启用；文章路径已排除活动报名页。
+  - id: sciencenet-news
+    name: 科学网 · 科研新闻
+    kind: rss
+    url: https://www.sciencenet.cn/xml/news-0.aspx?news=0
+    hosts: [www.sciencenet.cn, news.sciencenet.cn]
+    article_pattern: '^/htmlnews/\d{4}/\d{1,2}/\d+\.shtm$'
+    default_timezone: Asia/Shanghai
+    interval_minutes: 30
+    keywords: [农业, 作物, 水稻, 小麦, 玉米, 大豆, 育种, 种业, 农机, 农田, 灌溉, 植保, 农药, 畜牧, 渔业, 水产, 农业机器人]
+    note: 使用持续更新的全部新闻入口；HOT 论文等旧分类 RSS 已停更，不启用。
+  - id: scidev-agriculture
+    name: SciDev.Net · 农业与发展研究
+    kind: rss
+    url: https://www.scidev.net/global/rss.xml/?type=header
+    hosts: [www.scidev.net, scidev.net]
+    article_pattern: '^/global/(?:news|features|explainer|opinion|analysis)/[^/]+/?$'
+    interval_minutes: 720
+    keywords: [agricultur, farming, crop, livestock, rice, wheat, maize, seed, irrigation, food security, soil]
+    note: 官方全站 RSS，按农业词筛选；非农业消息不入库。
+  - id: freshplaza-technology
+    name: FreshPlaza · 果蔬技术
+    kind: rss
+    enabled: false
+    url: https://www.freshplaza.com/rss.xml
+    hosts: [www.freshplaza.com, freshplaza.com]
+    article_pattern: '^/article/\d+/[^/]+/?$'
+    interval_minutes: 360
+    keywords: [robot, automation, sensor, AI-powered, machine vision, breeding, greenhouse technology, precision, irrigation, biocontrol, genetic, digital, post-harvest technology, controlled atmosphere, fruit sorting]
+    note: 2026-11-04 首次可解析 81 条，复测多次超时或返回 403，暂不启用，待部署环境复核访问稳定性。
+  - id: nature-plants-rss
+    name: Nature Plants
+    kind: rss
+    category: 论文
+    url: https://www.nature.com/nplants.rss
+    hosts: [www.nature.com, nature.com]
+    article_pattern: '^/articles/[a-z0-9-]+$'
+    interval_minutes: 720
+    keywords: [crop, rice, wheat, maize, barley, soybean, agricultur, breeding, photosynthesis, drought, root, phenotyping, plant immunity]
+    note: 保留期刊提供的 DOI、作者和摘要；评论等文章类型仍需内容证据判断。
+  - id: nature-food-rss
+    name: Nature Food
+    kind: rss
+    category: 论文
+    url: https://www.nature.com/natfood.rss
+    hosts: [www.nature.com, nature.com]
+    article_pattern: '^/articles/[a-z0-9-]+$'
+    interval_minutes: 720
+    keywords: [agricultur, crop, soil, fertilizer, carbon, food system, food security, sustainability, livestock]
+    note: 期刊 RSS 使用 DOI 去重，与 OpenAlex / Crossref 的同一论文合并。
   - id: cau-research
     name: 中国农业大学 · 科学研究
     kind: candidate
@@ -65,7 +173,9 @@ sources:
     note: 已返回 488 条记录；最新期次覆盖与更新延迟待验证。
   - id: irri-news
     name: IRRI · 正式新闻
-    kind: candidate
-    url: https://www.irri.org/news-and-events/news
-    enabled: false
-    note: 待验证详情与日期，必须排除 home-test 等非新闻页。
+    kind: rss
+    url: https://www.irri.org/rss.xml
+    hosts: [www.irri.org, irri.org]
+    article_pattern: '^/news-and-events/news/[^/]+/?$'
+    interval_minutes: 720
+    note: RSS 混有 home-test、人员和项目介绍，仅接入正式新闻路径；已实测能排除这些页面。

@@ -29,6 +29,8 @@ class Source:
     interval_minutes: int = 1440
     note: str = ""
     keywords: list[str] = field(default_factory=list)
+    category: str = "报道"
+    default_timezone: str = "UTC"
 
 
 @dataclass
@@ -41,7 +43,7 @@ class Candidate:
     doi: str | None = None
 
 
-def parse_date(value: str, *, local: bool = False) -> datetime | None:
+def parse_date(value: str, *, local: bool = False, default_timezone: str | None = None) -> datetime | None:
     try:
         result = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except (ValueError, TypeError, AttributeError):
@@ -50,7 +52,7 @@ def parse_date(value: str, *, local: bool = False) -> datetime | None:
         except (ValueError, TypeError, AttributeError):
             return None
     if result.tzinfo is None:
-        result = result.replace(tzinfo=ZoneInfo("Asia/Shanghai") if local else timezone.utc)
+        result = result.replace(tzinfo=ZoneInfo(default_timezone or ("Asia/Shanghai" if local else "UTC")))
     return result.astimezone(timezone.utc)
 
 
@@ -101,18 +103,34 @@ def parse_feed(content: bytes, source: Source) -> tuple[list[Candidate], int]:
             for name in names:
                 nodes = entry.xpath(f'./*[local-name()="{name}"]')
                 if nodes:
-                    return "".join(nodes[0].itertext()).strip()
+                    value = "".join(nodes[0].itertext()).strip()
+                    if value:
+                        return value
             return ""
 
         links = entry.xpath('./*[local-name()="link" and (not(@rel) or @rel="alternate")]/@href')
         url = article_url(source, links[0] if links else text("link"))
-        published = parse_date(text("pubDate", "published", "date"))
+        published = parse_date(text("pubDate", "published", "date"), default_timezone=source.default_timezone)
         title = plain_text(text("title"))
-        summary = plain_text(text("description", "summary", "encoded", "content"))
+        raw_summary = text("description", "summary", "encoded", "content")
+        if source.category == "论文":
+            # Nature RDF feeds prepend a citation paragraph, which is metadata
+            # rather than an abstract and must not become a paper card's evidence.
+            raw_summary = re.sub(r'^\s*<p>[^<]*Published online:.*?</p>', "", raw_summary, count=1, flags=re.S)
+        summary = plain_text(raw_summary)
         if not url or not published or len(title) < 4 or len(summary) < 40 or summary == title:
             rejected += 1
             continue
-        candidates.append(Candidate(title[:500], url, published, summary[:6000]))
+        doi, paper = None, None
+        if source.category == "论文":
+            doi = normalize_doi(text("doi", "identifier"))
+            if not doi:
+                rejected += 1
+                continue
+            authors = [{"name": "".join(node.itertext()).strip()} for node in entry.xpath('./*[local-name()="creator"]')]
+            paper = PaperDraft(venue=text("publicationName") or source.name,
+                               authors=[author for author in authors if author["name"]][:20], ingested_from="rss")
+        candidates.append(Candidate(title[:500], url, published, summary[:6000], paper, doi))
     return candidates, rejected
 
 

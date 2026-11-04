@@ -7,6 +7,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import yaml
@@ -51,6 +52,9 @@ def load_sources() -> list[Source]:
             raise ValueError(f"source adapter not implemented: {source.id}")
         if source.interval_minutes < 1:
             raise ValueError(f"invalid source interval: {source.id}")
+        if source.category not in {"报道", "论文"}:
+            raise ValueError(f"invalid source category: {source.id}")
+        ZoneInfo(source.default_timezone)
     return sources
 
 

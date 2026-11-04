@@ -178,7 +178,7 @@ async def list_admin_items(
     scored: bool | None = None,
     min_score: int | None = Query(default=None, ge=0, le=100),
     max_score: int | None = Query(default=None, ge=0, le=100),
-    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex|crossref)$"),
+    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex|crossref|rss)$"),
     sort: str = Query(default="created_at", pattern="^(created_at|score|view_count)$"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
@@ -226,7 +226,7 @@ async def list_admin_items(
         _apply(Item.score >= min_score)
     if max_score is not None:
         _apply(Item.score <= max_score)
-    if ingested_from in {"openalex", "crossref"}:
+    if ingested_from in {"openalex", "crossref", "rss"}:
         stmt = stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
         count_stmt = count_stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
     elif ingested_from == "agent":

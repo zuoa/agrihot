@@ -81,7 +81,8 @@ async def db(tmp_path, monkeypatch):
 
 def test_registry_keeps_pilots_disabled_and_uses_watchlist_journals():
     sources = source_service.load_sources()
-    assert len([s for s in sources if s.enabled and s.kind in {"rss", "moa"}]) == 5
+    assert len([s for s in sources if s.enabled and s.kind == "rss"]) == 14
+    assert len([s for s in sources if s.enabled and s.kind == "moa"]) == 2
     assert len([s for s in sources if s.enabled and s.kind == "crossref"]) == 6
     assert all(not s.enabled for s in sources if s.kind == "candidate")
     assert "crossref-0308-521x" in {s.id for s in sources}
@@ -106,6 +107,72 @@ def test_atom_feed_and_external_entity_are_not_treated_as_article_content():
     for content in [b"<html>Access denied</html>", b"<rss><channel></channel></rss>"]:
         with pytest.raises(ValueError):
             parse_feed(content, FEED)
+
+
+def test_chinese_feed_dates_use_source_timezone_and_content_can_fill_empty_description():
+    source = Source(**{**FEED.__dict__, "default_timezone": "Asia/Shanghai"})
+    content = feed().replace(b"Tue, 03 Nov 2026 00:00:00 GMT", b"2026-11-03 14:47")
+    content = content.replace(b"<description>", b"<description/><content>").replace(b"</description>", b"</content>")
+    candidates, rejected = parse_feed(content, source)
+    assert rejected == 0
+    assert candidates[0].published_at.isoformat() == "2026-11-03T06:47:00+00:00"
+    assert "replicated field trials" in candidates[0].summary
+
+
+def test_irri_feed_only_accepts_formal_news_paths():
+    source = next(s for s in source_service.load_sources() if s.id == "irri-news")
+    assert source.enabled and source.kind == "rss"
+    for path in ("/home-test", "/about-us/our-people/researcher", "/projects/palai"):
+        assert article_url(source, path) is None
+    assert article_url(source, "/news-and-events/news/rice-field-research")
+
+
+def journal_feed():
+    return b'''<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+      xmlns="http://purl.org/rss/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"
+      xmlns:prism="http://prismstandard.org/namespaces/basic/2.0/"
+      xmlns:content="http://purl.org/rss/1.0/modules/content/">
+      <item><title>Optimizing rice irrigation under climate stress</title>
+      <link>https://www.nature.com/articles/s43016-026-01234-5</link>
+      <dc:date>2026-11-03</dc:date><dc:creator>Jane Doe</dc:creator><dc:creator>John Doe</dc:creator>
+      <prism:doi>10.1038/s43016-026-01234-5</prism:doi><prism:publicationName>Nature Food</prism:publicationName>
+      <content:encoded><![CDATA[<p>Nature Food, Published online: 03 November 2026;
+      <a href="https://www.nature.com/articles/s43016-026-01234-5">doi:10.1038/s43016-026-01234-5</a></p>
+      Replicated rice field trials measure water savings, yield response and limitations of automated irrigation across soil types.
+      ]]></content:encoded></item></rdf:RDF>'''
+
+
+@pytest.mark.asyncio
+async def test_journal_rdf_preserves_doi_authors_abstract_and_merges_crossref(db):
+    source = next(s for s in source_service.load_sources() if s.id == "nature-food-rss")
+    candidates, rejected = parse_feed(journal_feed(), source)
+    assert rejected == 0 and len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.doi == "10.1038/s43016-026-01234-5"
+    assert candidate.paper.ingested_from == "rss"
+    assert candidate.paper.authors == [{"name": "Jane Doe"}, {"name": "John Doe"}]
+    assert candidate.summary.startswith("Replicated rice field trials")
+    assert "Published online" not in candidate.summary
+    async with httpx.AsyncClient() as client:
+        payload = await payload_for(candidate, source, client)
+        assert payload.category == "论文" and payload.source_name == "Nature Food"
+        work = crossref_work(DOI=candidate.doi, title=[candidate.title], **{"container-title": ["Nature Food"]})
+        other = map_crossref(work, CROSSREF)
+        other_payload = await payload_for(other, CROSSREF, client)
+    async with db[0]() as session:
+        first = await ingest_item(session, payload, paper_draft=candidate.paper)
+        duplicate = await ingest_item(session, other_payload, paper_draft=other.paper)
+        await session.commit()
+        assert duplicate.status == "duplicate" and duplicate.dup_reason == "exact_doi"
+        item = await session.get(Item, first.item_id)
+        assert item.paper.ingested_from == "rss" and item.summary == candidate.summary
+        assert await session.scalar(select(func.count(Item.id))) == 1
+
+
+def test_journal_feed_without_explicit_doi_is_rejected():
+    source = next(s for s in source_service.load_sources() if s.id == "nature-food-rss")
+    content = journal_feed().replace(b"<prism:doi>10.1038/s43016-026-01234-5</prism:doi>", b"")
+    assert parse_feed(content, source) == ([], 1)
 
 
 def test_moa_uses_displayed_date_and_rejects_non_article_urls():
