@@ -41,6 +41,7 @@
           </ol>
         </details>
         <div class="mt-auto flex items-center gap-2">
+          <label v-if="j.name === 'editorial_backfill'" class="text-xs text-stone-600 flex items-center gap-1"><input v-model="editorialPreview" type="checkbox">只预览</label>
           <input v-if="j.name === 'daily_generate'" v-model="dailyDate" type="date"
             class="px-2 py-1 text-xs rounded border border-stone-200" />
           <router-link v-if="j.name === 'fetch_content'" to="/admin/items?has_content=false"
@@ -72,6 +73,7 @@ const jobs = ref([])
 const error = ref('')
 const busy = ref('')
 const dailyDate = ref(fmtDateKey(new Date()))
+const editorialPreview = ref(true)
 let timer = null
 
 const hints = {
@@ -83,12 +85,14 @@ const hints = {
   taxonomy_backfill: '按主题规则回填历史内容；跳过人工锁定，评分和精选不变',
   fetch_content: '回补无全文的政策/报道/行业；论文不抓。也可从内容页勾选指定条目',
   specials_generate: '发现共同议题、提炼与补充引用，通过检查后自动发布',
+  editorial_backfill: '每次补全20篇近30天精选及当前专题文章，断点续跑，不改变评分和精选',
 }
 
 const stages = {
   load: '读取资料', discover: '发现选题', candidate: '处理专题', sources: '站内来源',
   eligibility: '材料检查', reselect: '补选材料', research: '外部检索', compose: '撰写专题', repair: '修正文档', verify: '独立审查',
   publish: '发布', skip: '跳过', complete: '完成',
+  editorial: '关注点与来源',
 }
 
 function fmtLogTime(iso) {
@@ -133,6 +137,7 @@ function formatStats(j) {
   if (j.name === 'taxonomy_backfill') return `已处理 ${s.processed ?? 0} · 更新 ${s.changed ?? 0} · 锁定跳过 ${s.locked ?? 0} · 待复核 ${s.needs_review ?? 0}`
   if (j.name === 'fetch_content') return `抓取 ${s.fetched ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   if (j.name === 'specials_generate') return `新建 ${s.created ?? 0} · 更新 ${s.updated ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}${s.reason ? ` · ${s.reason}` : ''}`
+  if (j.name === 'editorial_backfill') return s.dry_run ? `预览 ${s.total ?? 0} 篇，未写入数据` : `生成 ${s.generated ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   return JSON.stringify(s)
 }
 
@@ -148,7 +153,7 @@ async function load() {
 async function run(j) {
   busy.value = j.name
   try {
-    const body = j.name === 'daily_generate' && dailyDate.value ? { date: dailyDate.value } : {}
+    const body = j.name === 'daily_generate' && dailyDate.value ? { date: dailyDate.value } : j.name === 'editorial_backfill' ? { dry_run: editorialPreview.value } : {}
     await api.adminRunJob(j.name, body)
     await load()
   } catch (e) {

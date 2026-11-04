@@ -17,7 +17,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, items_near_query, parse_tag_query,
                                        related_items, resolve_topic, similar_items)
-from ...services import embedding_service, read_cache, taxonomy_service
+from ...services import editorial_service, embedding_service, read_cache, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name, tag_properties
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
@@ -32,6 +32,7 @@ def _list_load_options(compact: bool):
     return (
         defer(Item.content, raiseload=True),
         defer(Item.score_detail, raiseload=True),
+        defer(Item.editorial_meta, raiseload=True),
         noload(Item.classification),
     )
 
@@ -109,6 +110,8 @@ def _to_item_out(item: Item, *, compact: bool = False) -> ItemOut | ItemSummaryO
         embedding_ready=bool(item.search_job and item.search_job.status == "ready"
                              and item.search_job.fingerprint == embedding_service.fingerprint()),
         score=item.score,
+        attention_point=item.attention_point,
+        source_provenance=editorial_service.public_provenance(item),
         sources=[SourceOut(**s) for s in (item.sources or [])],
         tags=tags,
         primary_topic=next((taxonomy_service.topic_ref(l.topic_code) for l in item.topic_links if l.is_primary), None),

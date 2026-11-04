@@ -32,11 +32,12 @@ JOB_LABELS = {
     "taxonomy_backfill": "回填主题分类",
     "fetch_content": "批量抓取全文",
     "specials_generate": "发现与更新热点专题",
+    "editorial_backfill": "补全关注点与一手来源",
 }
 
 JOB_NAMES = tuple(JOB_LABELS)
 # Outbound full-text fetches. The API records them; the worker process runs them.
-WORKER_JOBS = frozenset({"fetch_content", "specials_generate"})
+WORKER_JOBS = frozenset({"fetch_content", "specials_generate", "editorial_backfill"})
 # Unset (local and tests) keeps jobs in this process. Production API sets "api".
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
@@ -452,3 +453,16 @@ async def _specials_generate(params: dict[str, Any]) -> dict[str, Any]:
 
 
 HANDLERS["specials_generate"] = _specials_generate
+
+
+async def _editorial_backfill(params):
+    from .editorial_backfill import backfill
+
+    async def report(stage, message, *, level="info", **details):
+        await append_log("editorial_backfill", stage=stage, message=message, level=level, details=details)
+
+    return await backfill(SessionLocal, batch_id=str(params.get("batch_id") or "editorial-v1"),
+                          limit=int(params.get("limit", 20)), dry_run=bool(params.get("dry_run")), report=report)
+
+
+HANDLERS["editorial_backfill"] = _editorial_backfill

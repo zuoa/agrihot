@@ -22,7 +22,10 @@ class Extension(BaseModel):
 
 
 class TimelineEntry(BaseModel):
+    id: str | None = Field(default=None, max_length=60)
+    title: str = Field(default="", max_length=80)
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    date_basis: Literal["event", "published", "unknown"] = "unknown"
     claim: Claim
 
 

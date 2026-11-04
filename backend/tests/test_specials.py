@@ -101,6 +101,105 @@ async def publish(database, material):
 
 
 @pytest.mark.asyncio
+async def test_event_progress_keeps_ids_through_rewrites_and_highlights_only_new_nodes(database, material, client):
+    from app.services import special_timeline
+    candidate, sources, document = material
+    candidate.kind = 'event'
+    document['timeline'] = [{'date': special_timeline.source_day(sources[0]), 'date_basis': 'published',
+                             'title': '跨地域评估结果发布', 'claim': copy.deepcopy(document['findings'][0])}]
+    special_id, _ = await publish(database, material)
+    first = (await client.get(f'/api/v1/specials/{special_id}')).json()
+    original_id = first['document']['timeline'][0]['id']
+    assert original_id and first['new_progress_ids'] == []
+    assert first['latest_progress']['title'] == '跨地域评估结果发布'
+    # A rewrite using the same evidence must not become a new progress node.
+    rewritten = copy.deepcopy(first['document'])
+    rewritten['timeline'][0].pop('id')
+    rewritten['timeline'][0]['claim']['text'] = '跨地域测试提示仍需进一步验证。'
+    rewritten = special_timeline.prepare(rewritten, first['document'], sources)
+    assert rewritten['timeline'][0]['id'] == original_id
+    assert special_timeline.new_ids(rewritten, first['document']) == []
+    # Append a genuinely later release, retaining the old node even if omitted.
+    async with database() as session:
+        item = await session.get(Item, 4)
+        item.published_at = utcnow()
+        item.summary = '新一轮试验扩大了测试地域，新增两个独立数据集进行验证。'
+        await session.commit()
+    candidate.existing_id = special_id
+    candidate.items.append(type(candidate.items[0])(item_id=4, role='core', reason='新一轮试验提供进一步验证结果', evidence_group='study-4'))
+    sources = await service.prepare_sources(candidate, database)
+    latest = copy.deepcopy(document)
+    latest['timeline'] = [{'date': special_timeline.source_day(sources[-1]), 'date_basis': 'published', 'title': '新一轮试验扩大验证范围',
+                           'claim': {'text': '新增两个独立数据集进行验证。', 'kind': 'finding',
+                                     'citations': [{'source_id': 'i4', 'quote': '新增两个独立数据集进行验证。'}]}}]
+    await service.publish(candidate, latest, sources, service.input_hash(candidate, sources), database)
+    second = (await client.get(f'/api/v1/specials/{special_id}')).json()
+    assert len(second['document']['timeline']) == 2
+    assert original_id in {row['id'] for row in second['document']['timeline']}
+    assert len(second['new_progress_ids']) == 1 and original_id not in second['new_progress_ids']
+    assert second['latest_progress']['title'] == '新一轮试验扩大验证范围'
+
+
+@pytest.mark.asyncio
+async def test_progress_date_basis_and_duplicate_reports(material):
+    from app.services import special_timeline
+    candidate, sources, document = material
+    day = special_timeline.source_day(sources[0])
+    row = {'date': day, 'date_basis': 'event', 'claim': copy.deepcopy(document['findings'][0])}
+    document['timeline'] = [row]
+    with pytest.raises(service.EvidenceValidationError) as error:
+        service.validate_evidence(document, sources, kind='event')
+    assert error.value.errors[0]['code'] == 'timeline_evidence'
+    row['date_basis'] = 'published'
+    service.validate_evidence(document, sources, kind='event')
+    document['timeline'].append(copy.deepcopy(row))
+    merged = special_timeline.prepare(document, None, sources)
+    assert len(merged['timeline']) == 1
+    legacy = copy.deepcopy(document)
+    for entry in legacy['timeline']:
+        entry.pop('date_basis', None)
+    assert special_timeline.prepare(legacy, None, sources)['timeline'][0]['date_basis'] == 'published'
+    future = copy.deepcopy(document)
+    tomorrow = (utcnow() + timedelta(days=2)).date().isoformat()
+    future['timeline'] = [{**row, 'date': tomorrow}]
+    with pytest.raises(service.EvidenceValidationError) as error:
+        service.validate_evidence(future, sources, kind='event')
+    assert any(issue['code'] == 'timeline_date' for issue in error.value.errors)
+    with pytest.raises(service.EvidenceValidationError):
+        service.validate_evidence(merged, sources, kind='research')
+
+
+@pytest.mark.asyncio
+async def test_progress_preserves_only_valid_history_and_limits_to_latest_15(material):
+    from app.services import special_timeline
+    _, sources, document = material
+    old = copy.deepcopy(document)
+    old['timeline'] = [{'date': '2026-01-01', 'claim': copy.deepcopy(document['findings'][0])}]
+    # Historical nodes with unsupported dates disappear rather than invent evidence.
+    assert special_timeline.prepare(document, old, sources)['timeline'] == []
+    rows = []
+    for day in range(1, 18):
+        rows.append({'date': f'2026-10-{day:02}', 'date_basis': 'published', 'claim': copy.deepcopy(document['findings'][0])})
+    document['timeline'] = rows
+    result = special_timeline.prepare(document, None, sources)
+    assert len(result['timeline']) == 15 and result['timeline'][0]['date'] == '2026-10-17' and result['timeline'][-1]['date'] == '2026-10-03'
+
+
+@pytest.mark.asyncio
+async def test_reading_aids_do_not_invalidate_published_facts(database, material, client):
+    from app.services.editorial_service import apply_manual
+    special_id, _ = await publish(database, material)
+    async with database() as session:
+        item = await session.get(Item, 1)
+        apply_manual(item, {'attention_point': '研究保留了跨地域性能差异，应用前仍需对照具体实验条件。',
+                            'source_provenance': {'type': 'research'}})
+        await session.commit()
+    response = await client.get(f'/api/v1/specials/{special_id}')
+    assert response.status_code == 200
+    assert response.json()['articles'][0]['item']['attention_point']
+
+
+@pytest.mark.asyncio
 async def test_publish_detail_filters_and_sitemap(database, material, client):
     special_id, changed = await publish(database, material)
     assert changed
@@ -430,7 +529,11 @@ async def test_all_document_checks_can_be_repaired_before_independent_review(dat
 
     assert result['created'] == 1 and result['failed'] == 0
     assert len(calls) == 2 and len(reviewed) == 1
-    assert reviewed[0]['document'] == corrected
+    reviewed_document = copy.deepcopy(reviewed[0]['document'])
+    for row in reviewed_document['timeline']:
+        for key in ('id', 'title', 'date_basis'):
+            row.pop(key, None)
+    assert reviewed_document == corrected
     assert calls[0]['sources'] == calls[1]['sources'] == reviewed[0]['sources']
     assert {e['code'] for e in calls[1]['validation_errors']} == {problem}
     assert calls[1]['previous_document'] == invalid
@@ -443,7 +546,7 @@ async def test_all_document_checks_can_be_repaired_before_independent_review(dat
     assert calls[0]['schema']['$defs']['Citation']['properties']['source_id']['enum'] == ['i1', 'i2', 'i3', 'e1']
     async with database() as session:
         version = await session.scalar(select(SpecialVersion))
-        assert version.document == corrected
+        assert version.document == reviewed[0]['document']
 
 
 @pytest.mark.asyncio

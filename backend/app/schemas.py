@@ -164,6 +164,9 @@ class JobRunIn(BaseModel):
     date: date_type | None = None
     item_ids: list[int] | None = Field(default=None, max_length=20)
     force: bool = False
+    dry_run: bool = False
+    limit: int = Field(default=20, ge=1, le=1000)
+    batch_id: str = Field(default="editorial-v1", min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class BatchIdsIn(BaseModel):
@@ -262,6 +265,24 @@ class TopicAssignmentIn(BaseModel):
         return self
 
 
+class SourceProvenanceIn(BaseModel):
+    type: Literal["policy", "research", "report", "announcement"] | None = None
+
+
+class SourceProvenanceOut(BaseModel):
+    status: Literal["primary", "unknown"] = "unknown"
+    type: Literal["policy", "research", "report", "announcement"] | None = None
+    label: str = ""
+    explanation: str = ""
+
+
+class EditorialPatchIn(BaseModel):
+    attention_point: str | None = Field(default=None, max_length=120)
+    source_provenance: SourceProvenanceIn | None = None
+    attention_locked: bool | None = None
+    provenance_locked: bool | None = None
+
+
 class AdminItemUpdate(BaseModel):
     """Partial update; only provided fields are applied."""
     title: str | None = Field(default=None, min_length=4, max_length=500)
@@ -278,6 +299,7 @@ class AdminItemUpdate(BaseModel):
     hotness: int | None = Field(default=None, ge=0)
     is_selected: bool | None = None
     taxonomy: TopicAssignmentIn | None = None
+    editorial: EditorialPatchIn | None = None
 
     @field_validator("tags", mode="before")
     @classmethod
@@ -368,6 +390,8 @@ class ItemSummaryOut(BaseModel):
     is_selected: bool
     embedding_ready: bool = False
     score: int | None = None
+    attention_point: str | None = None
+    source_provenance: SourceProvenanceOut = Field(default_factory=SourceProvenanceOut)
     sources: list[SourceOut]
     tags: list[str]
     primary_topic: TopicRefOut | None = None

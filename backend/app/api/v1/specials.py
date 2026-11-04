@@ -8,7 +8,7 @@ from ...database import get_session
 from ...models import Item, Special, SpecialItem, SpecialVersion, utcnow
 from ...security import require_admin
 from ...special_schemas import MergeIn, SpecialPatch
-from ...services import job_runner, special_service as service
+from ...services import job_runner, special_service as service, special_timeline
 from .public import _list_load_options, _to_item_out
 
 router = APIRouter(prefix="/api/v1", tags=["specials"])
@@ -129,6 +129,11 @@ async def edit(special_id: int, payload: SpecialPatch, session: AsyncSession = D
         version = valid[special_id]
         await session.refresh(version, attribute_names=["document", "sources"])
         document = payload.document.model_dump()
+        if special.kind == "event":
+            try:
+                document = special_timeline.prepare(document, version.document, version.sources, preserve=False)
+            except ValueError as exc:
+                raise HTTPException(422, str(exc)) from exc
         try:
             service.validate_evidence(document, version.sources, kind=special.kind)
         except ValueError as exc:

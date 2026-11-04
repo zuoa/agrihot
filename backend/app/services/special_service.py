@@ -24,6 +24,7 @@ from ..models import Item, SearchChunk, SearchJob, Special, SpecialItem, Special
 from ..special_schemas import Candidate, CandidateItem, Discovery, DiscoveryProposal, EvidenceReview, MaterialSelection, SpecialDocument
 from . import daily_service, embedding_service, runtime_settings
 from .special_research import supplement
+from . import special_timeline
 
 log = logging.getLogger(__name__)
 _reporter = ContextVar("special_generation_reporter", default=None)
@@ -205,8 +206,17 @@ def validate_evidence(document: dict, sources: list[dict], *, kind=None) -> None
         except ValueError:
             errors.append({"path": f"timeline[{index}].date", "code": "timeline_date", "reason": "时间线日期不是有效的日历日期"})
             continue
+        if row["date"] > utcnow().astimezone(daily_service.business_tz()).date().isoformat():
+            errors.append({"path": f"timeline[{index}].date", "code": "timeline_date", "reason": "时间线只记录已发生的进展；未来安排使用报道日期并保留计划措辞"})
         cited = [by_id[c["source_id"]] for c in row["claim"]["citations"] if c["source_id"] in by_id]
-        if not any(row["date"] in s["text"] or str(s.get("published_at") or "").startswith(row["date"]) for s in cited):
+        basis = row.get("date_basis", "unknown")
+        if basis == "event":
+            supported = any(special_timeline.date_in_quote(row["date"], c["quote"]) for c in row["claim"]["citations"])
+        elif basis == "published":
+            supported = any(special_timeline.source_day(s) == row["date"] for s in cited)
+        else:
+            supported = any(row["date"] in s["text"] or str(s.get("published_at") or "").startswith(row["date"]) for s in cited)
+        if not supported:
             errors.append({"path": f"timeline[{index}].date", "code": "timeline_evidence", "reason": "时间线日期没有来源依据，改用所引来源的发表日期或删除该行"})
     if kind == "event" and document["comparisons"]:
         errors.append({"path": "comparisons", "code": "document_kind", "reason": "事件专题 comparisons 必须为空列表；有依据的事件脉络使用 timeline"})
@@ -337,6 +347,14 @@ extensions 的每个机制环节也须有证据；未测排放的材料不能支
 以输入 today 和 as_of 为当前审查时间；仅年份等于当前年份不构成未来日期，不以模型知识截止时间判断真实性，也不声称已联网核实来源。
 外部资料只可用于扩展解释；关键发现及overview必须由站内证据支撑。不要在正文写[1]，引用由界面生成。
 不因模板要求强行填充 timeline、comparisons 或 extensions，没有证据就返回空列表。"""
+COMPOSE += """
+事件时间线：输入 previous_timeline 是上次发布的进展，保留仍有证据的节点ID；新节点id=null，程序分配ID。
+每个节点title为简短事实标题，claim保留进展及引用；同一进展的转载合并引用，不新增节点。
+只在出现新决定、新数据或新结果时增加进展；补充报道、换标题、措辞调整不算新增。同一事件不同阶段分别记录。
+新节点必须给出date_basis：event表示事件发生日，须在所引quote中逐字出现完整日期（YYYY-MM-DD或年月日）；
+没有完整发生日期依据时用published（所引来源published_at转业务时区日期）。不能用入库日期或猜测日期。旧unknown节点可沿用。
+保留最新15个关键进展；只使用本次sources可验证的引用，不能为保留旧节点伪造证据。
+"""
 VERIFY = """独立审查这份农业专题。输出符合 schema 的 JSON。逐条对照 sources，检查文档全部事实、数字、机构、实验条件和推论。
 检查专题所有核心文章是否确实在研究同一具体问题或报道同一事件，及 evidence_group 是否把同一成果误当独立来源。
 检查同一研究的新闻/转载不能当成多项研究；shared 必须有多个独立证据组支持。
@@ -351,6 +369,10 @@ extensions 中每个因果环节都须有依据；标 inference 不能豁免证�
 来源真实性只能据输入中的具体矛盾判断；无法访问原站不等于来源虚假，也不声称已联网验证。
 若有任何不被支持的事实、遗漏关键限定、虚假共识或无关聚类，返回 approved=false、reason 简述，并在 issues 逐项给出 path、source_ids、reason（具体问题与修正要求）。
 完全通过才返回 {"approved":true,"reason":"","issues":[]}。这只是模型审查，不是事实认证。"""
+VERIFY += """
+事件时间线须对照previous_timeline：同一进展的转载/解读/措辞改写不能制造新进展，沿用原ID；新决定、新数据、新结果才是新节点。
+检查节点标题与claim共同受到引用支持，发生日期与报道日期不能混淆。历史节点只在原引用仍有效时保留。
+"""
 
 
 def merge_selection(previous: dict, selected: list[CandidateItem], *, update_roles=False) -> list[CandidateItem]:
@@ -563,7 +585,10 @@ async def valid_versions(session, specials: list[Special]) -> dict[int, SpecialV
 
 def preview(document: dict, sources: list[dict]) -> dict:
     internal = [s for s in sources if s["kind"] == "internal"]
+    progress = special_timeline.latest(document)
     return {"summary": document["overview"]["text"], "findings": document["findings"][:2],
+            "latest_progress": ({k: progress[k] for k in ("id", "title", "date", "date_basis")} |
+                                {"text": progress["claim"]["text"]}) if progress else None,
             "item_count": len(internal),
             "source_count": len({s.get("evidence_group", s["id"]) for s in internal if s.get("role") == "core"}),
             "coverage_start": min((s["published_at"] for s in internal if s.get("published_at")), default=None),
@@ -698,8 +723,11 @@ async def prepare_sources(candidate, factory):
 
 
 def input_hash(candidate, sources):
-    return digest({"scope": candidate.scope, "kind": candidate.kind,
-                   "sources": [{k: s[k] for k in ("item_id", "hash", "role", "evidence_group")} for s in sorted(sources, key=lambda s: s["item_id"])]})
+    data = {"scope": candidate.scope, "kind": candidate.kind,
+            "sources": [{k: s[k] for k in ("item_id", "hash", "role", "evidence_group")} for s in sorted(sources, key=lambda s: s["item_id"])]}
+    if candidate.kind == "event":
+        data["timeline_version"] = 1
+    return digest(data)
 
 
 async def publish(candidate, document, sources, fingerprint, factory, *, external_status="not_run", changes="新增专题"):
@@ -737,6 +765,12 @@ async def publish(candidate, document, sources, fingerprint, factory, *, externa
             special.checked_at = utcnow()
             await session.commit()
             return special.id, False
+        previous = latest.document if latest else None
+        if candidate.kind == "event":
+            document = special_timeline.prepare(document, previous, sources)
+            validate_evidence(document, sources, kind=candidate.kind)
+        version_preview = preview(document, sources)
+        version_preview["new_progress_ids"] = special_timeline.new_ids(document, previous)
         await session.execute(delete(SpecialItem).where(SpecialItem.special_id == special.id))
         for source in internal:
             session.add(SpecialItem(special_id=special.id, item_id=source["item_id"], role=source["role"],
@@ -747,7 +781,7 @@ async def publish(candidate, document, sources, fingerprint, factory, *, externa
         special.content_updated_at = special.checked_at = utcnow()
         special.external_status, special.last_error = external_status, None
         session.add(SpecialVersion(special_id=special.id, input_hash=fingerprint, document=document, sources=sources,
-                                   signatures=signatures(sources), preview=preview(document, sources), changes=changes))
+                                   signatures=signatures(sources), preview=version_preview, changes=changes))
         await session.commit()
         return special.id, True
 
@@ -787,6 +821,8 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
     payload = {"today": as_of.astimezone(daily_service.business_tz()).date().isoformat(), "as_of": as_of.isoformat(),
                "title": candidate.title, "scope": candidate.scope, "kind": candidate.kind,
                "sources": sources, "comparison_sources": comparison_sources, "schema": schema}
+    previous_document = latest.document if latest else None
+    payload["previous_timeline"] = special_timeline.previous_nodes(previous_document) if candidate.kind == "event" else []
     # Each gate gets one repair, at most three drafts and two independent reviews.
     # Every revised draft uses the same sources and passes both gates again.
     validation_repaired = review_repaired = False
@@ -794,6 +830,10 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
         document = await llm(COMPOSE, payload)
         try:
             validate_evidence(document, sources, kind=candidate.kind)
+            document = SpecialDocument.model_validate(document).model_dump()
+            if candidate.kind == "event":
+                document = special_timeline.prepare(document, previous_document, sources)
+                validate_evidence(document, sources, kind=candidate.kind)
         except EvidenceValidationError as exc:
             if validation_repaired:
                 raise
@@ -806,6 +846,7 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
         document = SpecialDocument.model_validate(document).model_dump()
         review = EvidenceReview.model_validate(await llm(VERIFY, {
             **{key: payload[key] for key in ("today", "as_of", "title", "scope", "kind", "sources")},
+            "previous_timeline": payload["previous_timeline"],
             "document": document, "schema": EvidenceReview.model_json_schema(),
         }))
         if review.approved:
@@ -824,6 +865,9 @@ async def generate_one(candidate, factory, *, prepared_sources=None):
     old_ids = {s["item_id"] for s in latest.sources if s["kind"] == "internal"} if latest else set()
     added = {s["item_id"] for s in sources if s["kind"] == "internal"} - old_ids
     changes = f"新增 {len(added)} 篇关联文章，更新综合与引用" if latest else "建立专题，整理关联文章与研究背景"
+    if candidate.kind == "event":
+        count = len(special_timeline.new_ids(document, previous_document))
+        changes = f"新增 {len(added)} 篇关联文章，新增 {count} 条进展" if latest else f"建立专题，整理 {len(document['timeline'])} 条进展"
     return await publish(candidate, document, sources, fingerprint, factory, external_status=external_status, changes=changes)
 
 

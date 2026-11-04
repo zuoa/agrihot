@@ -87,6 +87,7 @@
               class="mt-1 w-full px-3 py-2 rounded-lg border border-leaf-200 focus:outline-none focus:border-leaf-500" />
           </label>
 
+          <ItemEditorialEditor ref="editorialEditor" :item-id="item.id" />
           <label class="flex items-center gap-2 pt-1">
             <input v-model="form.is_selected" type="checkbox" class="accent-leaf-600 w-4 h-4" />
             <span>设为精选（出现在首页）</span>
@@ -130,6 +131,7 @@ const form = reactive({
 const tagsText = ref((props.item.tags || []).join(', '))
 const error = ref('')
 const saving = ref(false)
+const editorialEditor = ref(null)
 const topics = ref([])
 const topicError = ref(false)
 const assignment = reactive({
@@ -155,6 +157,8 @@ async function save() {
     patch.content = form.content.trim() || null
     patch.summary_zh = form.summary_zh.trim() || null
     patch.tags = tagsText.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
+    const editorial = editorialEditor.value?.patch()
+    if (editorial) patch.editorial = editorial
     if (JSON.stringify(assignment) !== originalAssignment) {
       patch.taxonomy = { primary_code: assignment.primary_code || null,
         secondary_codes: assignment.secondary_codes.filter(Boolean), locked: assignment.locked }

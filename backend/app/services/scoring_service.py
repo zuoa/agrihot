@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextvars import ContextVar
 from datetime import date, timedelta
 
 import httpx
@@ -33,11 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item
-from . import runtime_settings
+from . import editorial_service, runtime_settings
 from .ingest_service import _get_or_create_tags
 from .topic_service import parse_search_phrases
 
 log = logging.getLogger(__name__)
+last_usage = ContextVar("scoring_usage", default=None)
 
 # 评分送入正文的最大字符数：控制 token 成本，4000 字已覆盖绝大多数资讯主体
 FULLTEXT_MAX_CHARS = 4000
@@ -108,7 +110,11 @@ relevant：主题是否属于三农、农业信息化、智慧农业、数字乡
 - 没有具体实体时输出 []
 
 输出格式（仅此 JSON）：
-{{"relevant": true, "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0, "tags": ["智慧农业"], "search_phrases": [], "comment": "一句话简评"}}"""
+{{"relevant": true, "impact": 0, "substance": 0, "depth": 0, "authority": 0, "freshness": 0, "tags": ["智慧农业"], "search_phrases": [], "comment": "一句话简评", "attention_point": null, "source_provenance": {{"type": "unknown", "quote": ""}}}}
+
+原文链接：{item.url}
+publisher_identity：{json.dumps(editorial_service.publisher_identity(item), ensure_ascii=False)}
+{editorial_service.model_instructions()}"""
 
 
 def parse_scores(text: str) -> dict[str, int] | None:
@@ -150,6 +156,7 @@ def parse_topic_tags(data: dict) -> list[str]:
 
 async def _call_deepseek(item: Item) -> str | None:
     """POST chat/completions; return raw message content, None on any failure."""
+    last_usage.set(None)
     url = f"{settings.deepseek_base_url.rstrip('/')}/chat/completions"
     payload = {
         "model": settings.deepseek_model,
@@ -159,7 +166,7 @@ async def _call_deepseek(item: Item) -> str | None:
         ],
         "response_format": {"type": "json_object"},
         "temperature": 0.2,
-        "max_tokens": 600,
+        "max_tokens": 1200,
     }
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -168,7 +175,11 @@ async def _call_deepseek(item: Item) -> str | None:
                 headers={"Authorization": f"Bearer {settings.deepseek_api_key}"},
             )
             resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"]
+            result = resp.json()
+            usage = result.get("usage") or {}
+            last_usage.set({"model": settings.deepseek_model,
+                            **{key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens") if isinstance(usage.get(key), int)}})
+            return result["choices"][0]["message"]["content"]
     except Exception as exc:  # network / auth / schema — all fail-closed
         log.warning("DeepSeek scoring request failed for item %s: %s", item.id, exc)
         return None
@@ -181,6 +192,7 @@ async def score_item(session: AsyncSession, item: Item) -> int | None:
     does not pin a pooled connection.
     """
     await session.commit()
+    editorial_hash = editorial_service.fingerprint(item)
     raw = await _call_deepseek(item)
     if raw is None:
         return None
@@ -189,11 +201,15 @@ async def score_item(session: AsyncSession, item: Item) -> int | None:
         log.warning("DeepSeek scoring unparsable for item %s: %.200s", item.id, raw)
         return None
     total = sum(v for k, v in scores.items() if k in DIMENSION_MAX)
-    item.score = total
     try:
         data = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         data = {}
+    # Reload editorial locks and facts after the network call. A concurrent manual
+    # edit must not be replaced by an old model response.
+    await session.refresh(item, with_for_update=True)
+    item.score = total
+    editorial_service.apply_model(item, data, expected_hash=editorial_hash)
     comment = str(data.get("comment") or "")[:200]
     item.score_detail = {k: scores[k] for k in DIMENSION_MAX} | {
         "relevant": scores["relevant"], "comment": comment,

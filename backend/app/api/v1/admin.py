@@ -256,6 +256,7 @@ async def update_item(
         raise problem(404, "Not Found", "条目不存在")
     updates = payload.model_dump(exclude_unset=True)
     updates.pop("taxonomy", None)
+    updates.pop("editorial", None)
     taxonomy = payload.taxonomy
     tags = updates.pop("tags", None)
     for field, value in updates.items():
@@ -264,6 +265,12 @@ async def update_item(
         setattr(item, field, value)
     if tags is not None:
         item.tags = await ingest_service._get_or_create_tags(session, tags)
+    if payload.editorial is not None:
+        from ...services import editorial_service
+        from sqlalchemy import inspect
+        if any(inspect(item).attrs[key].history.has_changes() for key in editorial_service.INPUT_FIELDS):
+            editorial_service.invalidate(item)
+        editorial_service.apply_manual(item, payload.editorial.model_dump(exclude_unset=True, exclude_none=False))
     if taxonomy is not None:
         from ...services.taxonomy_service import set_manual_topics
         try:
@@ -273,6 +280,15 @@ async def update_item(
     await session.commit()
     await session.refresh(item)
     return _to_item_out(item)
+
+
+@router.get("/items/{item_id}/editorial")
+async def editorial_detail(item_id: int, _: None = Depends(require_admin), session: AsyncSession = Depends(get_session)):
+    item = await session.get(Item, item_id)
+    if item is None:
+        raise problem(404, "Not Found", "条目不存在")
+    return {"attention_point": item.attention_point, "source_provenance": item.source_provenance,
+            "meta": item.editorial_meta or {}}
 
 
 @router.post("/items/{item_id}/classify", response_model=ItemOut)

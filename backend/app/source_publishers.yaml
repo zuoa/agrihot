@@ -1,0 +1,33 @@
+# Identity only: matching a domain NEVER establishes that an article is original.
+# Content evidence is required separately. Match complete hostnames/subdomains.
+publishers:
+  - domains: [moa.gov.cn]
+    name: 农业农村部
+    types: [policy, report]
+  - domains: [gov.cn]
+    name: 中国政府及政府部门
+    types: [policy, report]
+  - domains: [stats.gov.cn]
+    name: 国家统计局
+    types: [report]
+  - domains: [caas.cn]
+    name: 中国农业科学院
+    types: [report]
+  - domains: [fao.org]
+    name: 联合国粮农组织
+    types: [report]
+  - domains: [usda.gov]
+    name: 美国农业部
+    types: [policy, report]
+  - domains: [nature.com, science.org, sciencedirect.com, frontiersin.org, mdpi.com, link.springer.com, onlinelibrary.wiley.com, academic.oup.com, doi.org]
+    name: 学术出版平台
+    types: [research]
+  - domains: [syngenta.com, syngentagroup.com]
+    name: 先正达
+    types: [announcement]
+  - domains: [deere.com]
+    name: 约翰迪尔
+    types: [announcement]
+  - domains: [xag.cn]
+    name: 极飞科技
+    types: [announcement]

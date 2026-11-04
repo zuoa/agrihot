@@ -26,6 +26,7 @@
           <h1>{{ item.title }}</h1>
           <div class="article-meta">
             <span class="article-source">{{ item.source_name || '未知来源' }}</span>
+            <SourceProvenance :provenance="item.source_provenance" detail />
             <span class="meta-dot" aria-hidden="true">·</span>
             <time :datetime="item.published_at || item.created_at">{{ dateLabel }}</time>
             <span>阅读 {{ item.view_count ?? 0 }}</span>
@@ -39,6 +40,8 @@
             <p class="takeaway-label"><ArticleIcon name="insight" />核心看点</p>
             <p class="takeaway-text">{{ lede }}</p>
           </div>
+          <AttentionPoint :text="item.attention_point" />
+          <p v-if="item.source_provenance?.status === 'primary'" class="provenance-note">{{ item.source_provenance.explanation }}</p>
         </header>
 
         <nav v-if="articleSections.length > 1" aria-label="文章目录" class="article-contents">
@@ -270,7 +273,7 @@ const sourceList = computed(() => {
   if (sources?.length) return sources
   return [{ name: item.value?.source_name, url: item.value?.url }]
 })
-const primaryUrl = computed(() => sourceList.value[0]?.url || item.value?.url || '#')
+const primaryUrl = computed(() => item.value?.url || sourceList.value[0]?.url || '#')
 
 const authorItems = computed(() => {
   const authors = (item.value?.paper?.authors || []).filter((author) => author?.name)
@@ -400,6 +403,7 @@ async function remove() {
 </script>
 
 <style scoped>
+.provenance-note { margin-top: 10px; color: var(--site-muted); font-size: 11px; line-height: 1.8; }
 .item-detail {
   --article-ink: #20332a;
   --article-muted: #637168;

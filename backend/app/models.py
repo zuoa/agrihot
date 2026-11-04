@@ -50,6 +50,9 @@ class Item(Base):
     # AI 精选评分：总分（0-100）与各维度明细；NULL = 未评分（旧数据或评分被关闭）
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attention_point: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_provenance: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    editorial_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # merged multi-source reports: [{"name": ..., "url": ...}, ...]
     sources: Mapped[list] = mapped_column(JSON, default=list)
     # 阅读次数：详情页可见停留后由 POST /items/{id}/view 自增
@@ -313,3 +316,7 @@ register_queue_hooks()
 from .services.taxonomy_hooks import register_taxonomy_hooks
 
 register_taxonomy_hooks()
+
+from .services.editorial_service import register_editorial_hooks
+
+register_editorial_hooks()

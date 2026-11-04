@@ -1,11 +1,12 @@
 <template>
   <article class="item-card">
     <div class="item-card-meta">
-      <div class="item-card-source"><span class="item-card-category">{{ item.category || '资讯' }}</span><span>{{ item.source_name || '未知来源' }}</span><EmbeddingBadge v-if="item.embedding_ready" /></div>
+      <div class="item-card-source"><span class="item-card-category">{{ item.category || '资讯' }}</span><span>{{ item.source_name || '未知来源' }}</span><SourceProvenance :provenance="item.source_provenance" /><EmbeddingBadge v-if="item.embedding_ready" /></div>
       <time :datetime="item.published_at || item.created_at">{{ timeText }}</time>
     </div>
     <NuxtLink :to="`/items/${item.id}`" class="item-card-title"><h2>{{ item.title }}</h2></NuxtLink>
     <p v-if="blurb" class="item-card-blurb" :class="{ 'line-clamp-3': clamp }">{{ blurb }}</p>
+    <AttentionPoint :text="item.attention_point" compact />
     <div v-if="item.primary_topic || item.paper?.direction || item.tags?.length" class="item-card-topics">
       <NuxtLink v-if="item.primary_topic" :to="item.primary_topic.path" class="item-card-topic">{{ item.primary_topic.name }}</NuxtLink>
       <span v-else-if="item.paper?.direction" class="item-card-direction">{{ item.paper.direction }}</span>

@@ -30,6 +30,9 @@ _ITEM_COLUMN_PATCHES = (
     ("doi", "VARCHAR(200)"),
     ("summary_zh", "TEXT"),
     ("search_phrases", "JSON"),
+    ("attention_point", "TEXT"),
+    ("source_provenance", "JSON"),
+    ("editorial_meta", "JSON"),
 )
 
 

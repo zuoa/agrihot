@@ -5,7 +5,7 @@
     </PageHeading>
     <section v-if="showSpecials && specials.length" class="home-specials" aria-labelledby="home-specials-title">
       <div class="site-section-heading"><h2 id="home-specials-title">热点专题</h2><NuxtLink to="/specials" class="site-text-link">查看全部专题<ArticleIcon name="external" /></NuxtLink></div>
-      <div class="home-specials-grid" :class="{ 'home-specials-single': specials.length === 1 }"><SpecialCard :special="specials[0]" lead /><div v-if="specials.length > 1" class="home-specials-secondary"><SpecialCard v-for="special in specials.slice(1)" :key="special.id" :special="special" /></div></div>
+      <div class="home-specials-grid" :class="`home-specials-count-${specials.length}`"><SpecialCard v-for="(special, index) in specials" :key="special.id" :special="special" :lead="index === 0" /></div>
     </section>
     <div class="site-columns">
       <div class="site-column-main">
@@ -14,6 +14,8 @@
             <div class="featured-kicker"><span><ArticleIcon name="insight" />精选焦点</span><span v-if="topItem.score != null" class="featured-score">{{ topItem.score }}<span> / 100</span></span></div>
             <h2>{{ topItem.title }}</h2>
             <p>{{ topItem.paper?.card?.tldr || topItem.summary_zh || topItem.summary }}</p>
+            <AttentionPoint :text="topItem.attention_point" compact />
+            <SourceProvenance :provenance="topItem.source_provenance" />
             <div class="featured-footer"><span>{{ topItem.source_name }}<span v-if="topItem.sources?.length > 1"> · {{ topItem.sources.length }} 个信源</span></span><span class="featured-read">阅读全文<ArticleIcon name="external" /></span></div>
           </NuxtLink>
         </section>
@@ -89,11 +91,12 @@ usePageSeo(() => ({
 </script>
 
 <style scoped>
-.home-specials { margin-bottom: 36px; }
-.home-specials-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 20px; }
-.home-specials-secondary { display: grid; gap: 18px; }
-.home-specials-single { grid-template-columns: minmax(0, 1fr); }
-@media (max-width: 767px) { .home-specials-grid { grid-template-columns: minmax(0, 1fr); } .home-specials { margin-bottom: 26px; } }
+.home-specials { margin-bottom: 32px; }
+.home-specials-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.home-specials-count-1 { grid-template-columns: minmax(0, 1fr); }
+.home-specials-count-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 768px) and (max-width: 1023px) { .home-specials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .home-specials-count-3 > :first-child { grid-column: 1 / -1; } .home-specials-count-1 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 767px) { .home-specials-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } .home-specials { margin-bottom: 26px; } }
 .featured-story { margin-bottom: 24px; overflow: hidden; border: 1px solid #d3dfce; border-radius: 16px; background: white; }
 .featured-story-link { display: block; padding: 28px 30px; border-left: 3px solid #234e22; }
 .featured-kicker { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #234e22; }
