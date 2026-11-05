@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...config import settings
 from ...database import get_session
 from ...models import ApiKey, Daily, Item, PaperMeta, Tag, hash_api_key
+from ...source_schemas import SourceDefinitionIn
 from ...schemas import (
     AdminItemUpdate,
     AdminLoginIn,
@@ -179,7 +180,7 @@ async def list_admin_items(
     scored: bool | None = None,
     min_score: int | None = Query(default=None, ge=0, le=100),
     max_score: int | None = Query(default=None, ge=0, le=100),
-    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex|crossref|rss)$"),
+    ingested_from: str | None = Query(default=None, pattern="^(agent|openalex|crossref|rss|json|html)$"),
     sort: str = Query(default="created_at", pattern="^(created_at|score|view_count)$"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
@@ -227,7 +228,7 @@ async def list_admin_items(
         _apply(Item.score >= min_score)
     if max_score is not None:
         _apply(Item.score <= max_score)
-    if ingested_from in {"openalex", "crossref", "rss"}:
+    if ingested_from in {"openalex", "crossref", "rss", "json", "html"}:
         stmt = stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
         count_stmt = count_stmt.join(Item.paper).where(PaperMeta.ingested_from == ingested_from)
     elif ingested_from == "agent":
@@ -424,6 +425,55 @@ async def update_collection_source(
         raise problem(404, "Not Found", str(exc))
     except ValueError as exc:
         raise problem(422, "Unprocessable Entity", str(exc))
+    await session.commit()
+    return result
+
+
+@router.post("/sources/preview")
+async def preview_collection_source(payload: SourceDefinitionIn, _: None = Depends(require_admin)) -> dict:
+    try:
+        return await source_service.preview_source(payload)
+    except Exception as exc:
+        raise problem(422, "Unprocessable Entity", str(exc) or "预览请求超时或解析失败") from None
+
+
+@router.post("/sources", status_code=201)
+async def create_collection_source(
+    payload: SourceDefinitionIn, _: None = Depends(require_admin), session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await source_service.save_source(session, payload)
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc)) from None
+    await session.commit()
+    return result
+
+
+@router.put("/sources/{source_id}")
+async def replace_collection_source(
+    source_id: str, payload: SourceDefinitionIn,
+    _: None = Depends(require_admin), session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await source_service.save_source(session, payload, source_id)
+    except LookupError as exc:
+        raise problem(404, "Not Found", str(exc)) from None
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc)) from None
+    await session.commit()
+    return result
+
+
+@router.delete("/sources/{source_id}")
+async def remove_collection_source(
+    source_id: str, _: None = Depends(require_admin), session: AsyncSession = Depends(get_session),
+) -> dict:
+    try:
+        result = await source_service.delete_source(session, source_id)
+    except LookupError as exc:
+        raise problem(404, "Not Found", str(exc)) from None
+    except ValueError as exc:
+        raise problem(422, "Unprocessable Entity", str(exc)) from None
     await session.commit()
     return result
 

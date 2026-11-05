@@ -5,7 +5,8 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import replace
+import uuid
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -18,19 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..database import SessionLocal
 from ..models import Item, PipelineState, utcnow
-from . import content_service, job_runner, runtime_settings, watchlist_service
-from .dedup import url_hash
+from ..source_schemas import SourceDefinitionIn
+from . import content_service, job_runner, runtime_settings, watchlist_service, source_registry
+from .dedup import normalize_url, url_hash
 from .ingest_service import ingest_item
 from .openalex_service import passes_prescreen
 from .source_adapters import (
     Candidate, Source, get_document, map_crossref, moa_page_count, parse_date,
-    parse_feed, parse_moa, payload_for,
+    parse_feed, parse_moa, parse_configured, payload_for,
 )
 
 log = logging.getLogger(__name__)
 STATE_PREFIX = "source:"
 ENABLED_PREFIX = "source_enabled:"
-COLLECTABLE_KINDS = {"rss", "moa", "crossref"}
+COLLECTABLE_KINDS = {"rss", "moa", "crossref", "json", "html"}
 MAX_PAGES = 5
 CROSSREF_ROWS = 50
 EXCLUDED_TITLES = re.compile(r"党支部|党建|理论学习|廉政|工会活动|招聘|招聘会|nominations? (?:open|close)", re.I)
@@ -56,7 +58,7 @@ def load_sources() -> list[Source]:
             raise ValueError(f"source adapter not implemented: {source.id}")
         if source.interval_minutes < 1:
             raise ValueError(f"invalid source interval: {source.id}")
-        if source.category not in {"报道", "论文"}:
+        if source.category not in {"报道", "政策", "行业", "论文"}:
             raise ValueError(f"invalid source category: {source.id}")
         ZoneInfo(source.default_timezone)
     return sources
@@ -93,17 +95,17 @@ def _effective_enabled(source: Source, value: str | None) -> bool:
 async def configured_sources(session: AsyncSession) -> list[Source]:
     """Read operator choices directly from DB; API and worker share no cache."""
     await watchlist_service.load_from_db(session)
-    rows = (await session.scalars(select(PipelineState).where(
+    rows = (await session.execute(select(PipelineState.key, PipelineState.value).where(
         PipelineState.key.startswith(ENABLED_PREFIX),
     ))).all()
     overrides = {row.key[len(ENABLED_PREFIX):]: row.value for row in rows}
     return [replace(source, enabled=_effective_enabled(source, overrides.get(source.id)))
-            for source in load_sources()]
+            for source in await source_registry.merged_sources(session, load_sources())]
 
 
 async def set_source_enabled(session: AsyncSession, source_id: str, enabled: bool) -> dict:
     await watchlist_service.load_from_db(session)
-    source = next((source for source in load_sources() if source.id == source_id), None)
+    source = next((source for source in await source_registry.merged_sources(session, load_sources()) if source.id == source_id), None)
     if source is None:
         raise LookupError("未知信源")
     if enabled and source.kind not in COLLECTABLE_KINDS:
@@ -129,6 +131,16 @@ async def source_control(source: Source) -> tuple[bool, datetime | None]:
     async with SessionLocal() as session:
         row = await session.get(PipelineState, ENABLED_PREFIX + source.id)
         changed = parse_date(row.updated_at.isoformat()) if row and row.updated_at else None
+        definition = await session.get(PipelineState, source_registry.CONFIG_PREFIX + source.id)
+        if definition:
+            edited = parse_date(definition.updated_at.isoformat())
+            changed = max(changed, edited) if changed else edited
+            data = json.loads(definition.value)
+            if data.get("deleted"):
+                return False, changed
+            current = source_registry.from_definition(source.id, SourceDefinitionIn.model_validate(data))
+            if source_registry.fingerprint(current) != source_registry.fingerprint(source):
+                return False, changed
         return _effective_enabled(source, row.value if row else None), changed
 
 
@@ -143,13 +155,76 @@ async def list_sources(session: AsyncSession | None = None) -> list[dict]:
     sources = await configured_sources(session)
     controls = (await session.scalars(select(PipelineState).where(PipelineState.key.startswith(ENABLED_PREFIX)))).all()
     changed_at = {row.key[len(ENABLED_PREFIX):]: row.updated_at.isoformat() for row in controls if row.updated_at}
+    for source_id, record in (await source_registry.definitions(session)).items():
+        edited = record["updated_at"].isoformat()
+        changed_at[source_id] = max(changed_at.get(source_id, edited), edited)
     rows = (await session.scalars(select(PipelineState).where(PipelineState.key.startswith(STATE_PREFIX)))).all()
     states = {row.key[len(STATE_PREFIX):]: json.loads(row.value) for row in rows}
     return [{"id": s.id, "name": s.name, "kind": s.kind, "url": s.url, "enabled": s.enabled,
              "can_toggle": s.kind in COLLECTABLE_KINDS,
+             "can_edit": s.kind != "crossref", "can_delete": s.kind != "crossref",
+             "definition": {key: value for key, value in asdict(s).items() if key in SourceDefinitionIn.model_fields}
+                           if s.kind != "crossref" else None,
              "enabled_updated_at": changed_at.get(s.id),
              "interval_minutes": s.interval_minutes, "note": s.note, "state": states.get(s.id, {})}
             for s in sources]
+
+
+async def save_source(session: AsyncSession, definition: SourceDefinitionIn, source_id: str | None = None) -> dict:
+    sources = await configured_sources(session)
+    current = next((source for source in sources if source.id == source_id), None)
+    if source_id and current is None:
+        raise LookupError("未知信源")
+    if current and current.kind == "crossref":
+        raise ValueError("Crossref 期刊目录请在文献关注面中修改")
+    if not source_id and definition.kind not in {"rss", "json", "html"}:
+        raise ValueError("新信源请选择 RSS、JSON 或 HTML 类型")
+    if definition.enabled and definition.kind not in COLLECTABLE_KINDS:
+        raise ValueError("该信源尚未接入采集，暂不能启用")
+    if any(source.id != source_id and source.kind == definition.kind
+           and normalize_url(source.url) == normalize_url(definition.url) for source in sources):
+        raise ValueError("该采集地址已存在，请编辑已有信源")
+    source_id = source_id or f"custom-{uuid.uuid4().hex}"
+    await source_registry.store_definition(session, source_id, definition.model_dump())
+    await set_source_enabled(session, source_id, definition.enabled)
+    return {"id": source_id, "enabled": definition.enabled}
+
+
+async def delete_source(session: AsyncSession, source_id: str) -> dict:
+    sources = await configured_sources(session)
+    source = next((source for source in sources if source.id == source_id), None)
+    if source is None:
+        raise LookupError("未知信源")
+    if source.kind == "crossref":
+        raise ValueError("Crossref 期刊目录请在文献关注面中删除")
+    await set_source_enabled(session, source_id, False)
+    await source_registry.store_definition(session, source_id, {"deleted": True})
+    return {"id": source_id, "deleted": True}
+
+
+async def preview_source(definition: SourceDefinitionIn) -> dict:
+    source = source_registry.from_definition("preview", definition)
+    if source.kind not in {"rss", "json", "html", "moa"}:
+        raise ValueError("该来源尚未配置可用的采集方式")
+    now = datetime.now(timezone.utc)
+    async with asyncio.timeout(35), httpx.AsyncClient(timeout=20, follow_redirects=True,
+        headers={"User-Agent": f"AgriHot/1.0 (mailto:{settings.openalex_mailto})"}) as client:
+        candidates, rejected, next_page = await fetch_page(client, source, {
+            "since": (now - timedelta(days=90)).isoformat(), "until": now.isoformat(), "cursor": None,
+        })
+        samples = []
+        for candidate in candidates[:5]:
+            try:
+                payload = await payload_for(candidate, source, client)
+                samples.append({"title": payload.title, "url": payload.url,
+                                "published_at": payload.published_at.isoformat(), "summary": payload.summary[:1200],
+                                "category": payload.category, "doi": payload.doi, "content_chars": len(payload.content or "")})
+            except Exception as exc:
+                samples.append({"title": candidate.title, "url": candidate.url,
+                                "published_at": candidate.published_at.isoformat(), "summary": "",
+                                "category": source.category, "error": str(exc)[:300] or "无法取得摘要或正文"})
+    return {"parsed": len(candidates), "rejected": rejected, "failed": sum("error" in sample for sample in samples),
+            "next_page": next_page, "samples": samples}
 
 
 def window_start(state: dict, now: datetime) -> datetime:
@@ -183,11 +258,40 @@ async def fetch_page(client: httpx.AsyncClient, source: Source, window: dict) ->
         if len(works) == CROSSREF_ROWS and (not next_cursor or next_cursor == cursor):
             raise ValueError("crossref_cursor_stalled")
         return [c for c in mapped if c], sum(c is None for c in mapped), next_cursor
+    if source.kind in {"json", "html"}:
+        from urllib.parse import urljoin, urlsplit
+        current_url = window.get("cursor") or source.url
+        parameter = source.parser.get("page_parameter")
+        if parameter and not window.get("cursor"):
+            current_url = str(httpx.URL(current_url).copy_set_param(parameter, source.parser.get("page_start", 1)))
+        if urlsplit(current_url).hostname not in source.hosts:
+            raise ValueError("分页地址超出允许的域名")
+        response = await get_document(client, current_url, validate_public=source.managed)
+        if response.url.host not in source.hosts:
+            raise ValueError(f"采集地址跳转到了未允许的域名 {response.url.host}，请检查允许域名配置")
+        candidates, rejected, next_link, raw_count = parse_configured(response.content, source)
+        if raw_count and not candidates:
+            raise ValueError("全部条目解析失败，请检查标题、链接、日期路径和允许的原文域名")
+        if not raw_count and source.kind == "html" and not window.get("cursor"):
+            raise ValueError("列表 XPath 未匹配任何条目")
+        next_url = urljoin(str(response.url), next_link) if next_link else None
+        page_size = source.parser.get("page_size", 0)
+        if parameter and raw_count and (not page_size or raw_count >= page_size):
+            page = int(httpx.URL(current_url).params[parameter])
+            next_url = str(httpx.URL(current_url).copy_set_param(parameter, page + 1))
+        if candidates and max(c.published_at for c in candidates) < parse_date(window["since"]):
+            next_url = None
+        if next_url:
+            parts = urlsplit(next_url)
+            if (next_url == current_url or parts.hostname not in source.hosts or parts.scheme not in {"http", "https"}
+                    or parts.username or parts.password or parts.port not in (None, 80, 443)):
+                raise ValueError("下一页地址重复、无效或超出允许的域名")
+        return candidates, rejected, next_url
     page = int(window.get("cursor") or 0)
     url = source.url if not page else source.url.rstrip("/") + f"/index_{page}.htm"
-    response = await get_document(client, url)
+    response = await get_document(client, url, validate_public=source.managed)
     if response.url.host not in source.hosts:
-        raise ValueError("unexpected_source_redirect")
+        raise ValueError(f"采集地址跳转到了未允许的域名 {response.url.host}，请检查允许域名配置")
     if source.kind == "rss":
         candidates, rejected = parse_feed(response.content, source)
         if not candidates:
@@ -205,6 +309,10 @@ async def fetch_page(client: httpx.AsyncClient, source: Source, window: dict) ->
 async def collect_source(source: Source, client: httpx.AsyncClient, *, now: datetime,
                          dry_run: bool = False, preview_limit: int = 5) -> dict:
     state = {} if dry_run else await read_state(source.id)
+    config_hash = source_registry.fingerprint(source)
+    if (state.get("config_hash") and state["config_hash"] != config_hash) or (source.managed and state and not state.get("config_hash")):
+        state = {"totals": state.get("totals", {})}
+    state["config_hash"] = config_hash
     stats = {"id": source.id, "fetched": 0, "created": 0, "duplicate": 0,
              "screened_out": 0, "rejected": 0, "errors": 0, "truncated": False}
     previews = []

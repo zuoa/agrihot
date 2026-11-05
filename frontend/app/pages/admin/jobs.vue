@@ -58,6 +58,7 @@
     </div>
     <section class="rounded-lg border border-stone-200 bg-white p-4">
       <h2 class="text-sm font-bold text-stone-900">固定信源</h2>
+      <router-link to="/admin/sources" class="mt-1 inline-block text-xs text-leaf-700 hover:underline">前往信源管理，新增、编辑或删除信源 →</router-link>
       <p class="mt-1 text-xs text-stone-500">已启用 {{ enabledSourceCount }} 个信源。开关自动保存，停用会保留内容与进度；正在读取的页面完成后暂停。</p>
       <p class="mt-1 text-xs text-stone-500">自动采集总开关在<router-link to="/admin/settings" class="text-leaf-700 hover:underline">配置</router-link>中，OpenAlex 文献订阅在<router-link to="/admin/watchlist" class="text-leaf-700 hover:underline">关注面</router-link>中管理。</p>
       <p v-if="sourceError" role="alert" class="mt-2 text-xs text-red-600">{{ sourceError }}</p>

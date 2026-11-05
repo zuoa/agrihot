@@ -5,7 +5,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from urllib.parse import urljoin, urlsplit, urlunsplit
+from functools import lru_cache
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -13,6 +14,8 @@ from lxml import etree, html
 
 from ..schemas import IngestItemIn
 from .doi import normalize_doi
+from .dedup import normalize_url
+from .fulltext import base as fulltext_base
 from .fulltext.extractors import extract_html
 from .ingest_service import PaperDraft
 
@@ -31,6 +34,8 @@ class Source:
     keywords: list[str] = field(default_factory=list)
     category: str = "报道"
     default_timezone: str = "UTC"
+    parser: dict = field(default_factory=dict)
+    managed: bool = False
 
 
 @dataclass
@@ -41,6 +46,7 @@ class Candidate:
     summary: str = ""
     paper: PaperDraft | None = None
     doi: str | None = None
+    content: str | None = None
 
 
 def parse_date(value: str, *, local: bool = False, default_timezone: str | None = None) -> datetime | None:
@@ -63,20 +69,33 @@ def plain_text(value: str) -> str:
 
 
 def article_url(source: Source, value: str) -> str | None:
+    if not value.strip():
+        return None
     parts = urlsplit(urljoin(source.url, value))
     if (parts.scheme not in {"http", "https"} or parts.hostname not in source.hosts
             or parts.username or parts.password or parts.port not in (None, 80, 443)):
         return None
     if not source.article_pattern or not re.fullmatch(source.article_pattern, parts.path):
         return None
-    # Feeds often append tracking queries. Article identity comes from its path.
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    if parts.path in ("", "/") and not parts.query:
+        return None
+    # Keep article IDs in query parameters; remove only known tracking keys.
+    query = urlsplit(normalize_url(urlunsplit(parts))).query
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
 
 
 MAX_RESPONSE_BYTES = 8_000_000
 
 
-async def get_document(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+async def get_document(client: httpx.AsyncClient, url: str, *, validate_public: bool = False, **kwargs) -> httpx.Response:
+    if validate_public:
+        target = httpx.URL(url).copy_merge_params(kwargs.pop("params", {}))
+        context = fulltext_base.FetchContext(client, fulltext_base.FetchOptions(
+            timeout=30, max_bytes=MAX_RESPONSE_BYTES,
+        ), validator=fulltext_base.validate_public_source)
+        response = await context.get(str(target), **kwargs)
+        response.raise_for_status()
+        return response
     async with client.stream("GET", url, **kwargs) as response:
         response.raise_for_status()
         body = bytearray()
@@ -159,6 +178,85 @@ def moa_page_count(content: bytes) -> int:
     return max(1, int(found[1])) if found else 1
 
 
+@lru_cache(maxsize=256)
+def json_expression(expression: str):
+    from jsonpath_ng.ext import parse
+    return parse(expression)
+
+
+def _selected_value(node, expression: str, kind: str):
+    if not expression:
+        return ""
+    if kind == "json":
+        found = json_expression(expression).find(node)
+        value = found[0].value if found else ""
+    else:
+        found = node.xpath(expression)
+        value = found[0] if isinstance(found, list) and found else "" if isinstance(found, list) else found
+        if isinstance(value, html.HtmlElement):
+            value = value.text_content()
+    return value if isinstance(value, (str, int, float)) and not isinstance(value, bool) else ""
+
+
+def _mapped_date(value, source: Source) -> datetime | None:
+    try:
+        if isinstance(value, (int, float)) or re.fullmatch(r"\d{10}|\d{13}", str(value)):
+            number = float(value)
+            return datetime.fromtimestamp(number / 1000 if abs(number) >= 1e11 else number, tz=timezone.utc)
+        if source.parser.get("date_format"):
+            parsed = datetime.strptime(str(value).strip(), source.parser["date_format"])
+            return parse_date(parsed.isoformat(), default_timezone=source.default_timezone)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+    return parse_date(str(value), default_timezone=source.default_timezone)
+
+
+def parse_configured(content: bytes, source: Source) -> tuple[list[Candidate], int, str, int]:
+    rules = source.parser
+    if source.kind == "json":
+        import json
+        root = json.loads(content)
+        matches = json_expression(rules["items"]).find(root)
+        if not matches:
+            parents = json_expression(rules["items"][:-3]).find(root) if rules["items"].endswith("[*]") else []
+            if not parents or not all(match.value == [] for match in parents):
+                raise ValueError("列表 JSONPath 未匹配数据，请检查列表路径")
+        items = matches[0].value if len(matches) == 1 and isinstance(matches[0].value, list) else [m.value for m in matches]
+        if not all(isinstance(item, dict) for item in items):
+            raise ValueError("列表 JSONPath 必须指向对象数组")
+    else:
+        try:
+            root = html.fromstring(content.decode("utf-8"))
+        except UnicodeDecodeError:
+            root = html.fromstring(content)
+        items = root.xpath(rules["items"])
+        if not isinstance(items, list) or not all(isinstance(item, html.HtmlElement) for item in items):
+            raise ValueError("列表 XPath 必须选中文章条目元素")
+    if len(items) > 500:
+        raise ValueError("每页最多支持 500 个条目，请减小接口每页数量")
+    candidates, rejected = [], 0
+    for item in items:
+        values = {key: _selected_value(item, rules.get(key, ""), source.kind)
+                  for key in ("title", "url", "published_at", "summary", "content", "doi")}
+        title = plain_text(str(values["title"]))
+        link_value = str(values["url"])
+        if rules.get("url_template"):
+            link_value = rules["url_template"].replace("{value}", quote(link_value, safe=""))
+        url = article_url(source, link_value)
+        published = _mapped_date(values["published_at"], source)
+        summary = plain_text(str(values["summary"]))
+        body = plain_text(str(values["content"]))
+        doi = normalize_doi(str(values["doi"]))
+        if not url or not published or len(title) < 4 or (source.category == "论文" and not doi):
+            rejected += 1
+            continue
+        paper = PaperDraft(venue=source.name, ingested_from=source.kind) if source.category == "论文" else None
+        candidates.append(Candidate(title[:500], url, published, summary[:6000], paper, doi,
+                                    body if len(body) >= 200 else None))
+    next_page = str(_selected_value(root, rules.get("next_page", ""), source.kind)).strip()
+    return candidates, rejected, next_page, len(items)
+
+
 def map_crossref(work: dict, source: Source) -> Candidate | None:
     if work.get("type") != "journal-article":
         return None
@@ -186,19 +284,23 @@ def map_crossref(work: dict, source: Source) -> Candidate | None:
 
 
 async def payload_for(candidate: Candidate, source: Source, client: httpx.AsyncClient) -> IngestItemIn:
-    content = None
-    category = "论文" if candidate.paper else "报道"
+    content = candidate.content
+    category = "论文" if candidate.paper else source.category
     summary = candidate.summary
-    if source.kind == "moa":
-        response = await get_document(client, candidate.url)
+    if source.kind == "moa" or (source.kind in {"json", "html"} and len(summary) < 40 and not content):
+        response = await get_document(client, candidate.url, validate_public=source.managed)
         if not article_url(source, str(response.url)):
             raise ValueError("unexpected_article_redirect")
         content = extract_html(response.content, candidate.url)
         if len(content) < 200:
             raise ValueError("article_body_missing")
         summary = plain_text(content)[:1500]
-        if re.search(r"通知|办法|指导意见|规划|公告|实施方案", candidate.title):
+        if source.kind == "moa" and re.search(r"通知|办法|指导意见|规划|公告|实施方案", candidate.title):
             category = "政策"
+    if len(summary) < 40 and content:
+        summary = plain_text(content)[:1500]
+    if len(summary) < 40 and candidate.paper is None:
+        raise ValueError("摘要不足 40 字符且未取得可用正文")
     return IngestItemIn(title=candidate.title, url=candidate.url, summary=summary,
                         content=content, source_name=candidate.paper.venue if candidate.paper else source.name,
                         source_url=candidate.url, published_at=candidate.published_at,

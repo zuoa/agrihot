@@ -47,6 +47,7 @@ const links = [
   { to: '/admin/items', label: '内容' },
   { to: '/admin/specials', label: '热点专题' },
   { to: '/admin/jobs', label: '任务' },
+  { to: '/admin/sources', label: '信源管理' },
   { to: '/admin/settings', label: '配置' },
   { to: '/admin/watchlist', label: '关注面' },
   { to: '/admin/keys', label: 'API Key' },
