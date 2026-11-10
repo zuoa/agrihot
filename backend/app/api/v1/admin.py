@@ -495,7 +495,7 @@ async def run_job(
     body = payload or JobRunIn()
     if name == "daily_generate" and body.date is not None:
         params["date"] = body.date.isoformat()
-    if name == "fetch_content":
+    if name in {"fetch_content", "fetch_paper_pdfs"}:
         params["item_ids"] = body.item_ids or []
         params["force"] = body.force
     try:

@@ -368,6 +368,12 @@ class PaperMetaOut(BaseModel):
     ingested_from: str = "agent"
 
 
+class PaperPdfOut(BaseModel):
+    status: str
+    size_bytes: int | None = None
+    source_url: str | None = None
+
+
 class TopicRefOut(BaseModel):
     code: str
     slug: str
@@ -410,6 +416,7 @@ class ItemSummaryOut(BaseModel):
     view_count: int = 0
     doi: str | None = None
     paper: PaperMetaOut | None = None
+    pdf: PaperPdfOut | None = None
     created_at: datetime
 
 

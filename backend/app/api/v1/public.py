@@ -3,6 +3,7 @@ from datetime import date as date_type
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, noload, raiseload, selectinload
@@ -12,7 +13,7 @@ from ...models import Daily, Item, ItemClassification, PaperMeta, Tag
 from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         DirectionOut, ItemListOut, ItemOut, ItemSummaryListOut,
                         ItemSummaryOut, PaperAuthorOut, PaperCardOut,
-                        PaperMetaOut, SourceOut, StatsOut, TagMetaOut, TagOut, TopicOut,
+                        PaperMetaOut, PaperPdfOut, SourceOut, StatsOut, TagMetaOut, TagOut, TopicOut,
                         TopicSummaryOut, ViewOut)
 from ...services.topic_service import (apply_tag_match, effective_phrases,
                                        item_slug, items_near_query, parse_tag_query,
@@ -21,6 +22,17 @@ from ...services import editorial_service, embedding_service, read_cache, taxono
 from ...services.taxonomy_catalog import canonical_name, tag_properties
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
+
+
+@router.get("/items/{item_id}/pdf")
+async def download_paper_pdf(item_id: int, session: AsyncSession = Depends(get_detail_session)):
+    from ...services.paper_pdf import pdf_path
+
+    item = await session.get(Item, item_id)
+    path = pdf_path(item.pdf.sha256) if item and item.pdf and item.pdf.status == "ready" and item.pdf.sha256 else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="论文 PDF 尚不可下载")
+    return FileResponse(path, media_type="application/pdf", filename=f"paper-{item_id}.pdf")
 
 PAGE_SIZE_MAX = 100
 
@@ -42,6 +54,7 @@ def _detail_load_options():
     return (
         selectinload(Item.tags),
         selectinload(Item.paper),
+        selectinload(Item.pdf),
         selectinload(Item.topic_links),
         selectinload(Item.search_job),
         selectinload(Item.classification).load_only(
@@ -121,6 +134,8 @@ def _to_item_out(item: Item, *, compact: bool = False) -> ItemOut | ItemSummaryO
         view_count=item.view_count,
         doi=item.doi,
         paper=_to_paper_out(item),
+        pdf=(PaperPdfOut(status=item.pdf.status, size_bytes=item.pdf.size_bytes,
+                         source_url=item.pdf.source_url) if item.pdf else None),
         created_at=item.created_at,
     )
 

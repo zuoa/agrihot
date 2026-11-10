@@ -1,0 +1,96 @@
+"""PDF discovery validates downloaded bytes and keeps publisher URLs explicit."""
+import httpx
+import pytest
+
+from app.services.paper_pdf import download_pdf, plugin_for, is_pdf, validate_pdf
+from app.services.fulltext.base import FulltextFetchError
+
+
+PDF = b"%PDF-1.4\n1 0 obj\nendobj\n%%EOF\n"
+PAGE = b'<html><head><meta name="citation_pdf_url" content="/cn/article/pdf/preview/sample.pdf"></head></html>'
+
+
+@pytest.mark.asyncio
+async def test_aeeisp_metadata_downloads_real_pdf():
+    visited = []
+
+    def handler(request):
+        visited.append(str(request.url))
+        if request.url.path.endswith("sample.pdf"):
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(200, content=PAGE, headers={"content-type": "text/html"})
+
+    result = await download_pdf(
+        ["https://www.aeeisp.com/nygcxb/article/doi/10.11975/sample"],
+        transport=httpx.MockTransport(handler), validator=lambda _: _valid(),
+    )
+    assert result.plugin == "aeeisp" and result.data == PDF
+    assert visited[-1] == "https://www.aeeisp.com/cn/article/pdf/preview/sample.pdf"
+
+
+async def _valid():
+    return None
+
+
+@pytest.mark.asyncio
+async def test_pdf_labeled_html_is_rejected():
+    def handler(request):
+        if request.url.path.endswith(".pdf"):
+            return httpx.Response(200, content=b"<html>access denied</html>", headers={"content-type": "application/pdf"})
+        return httpx.Response(200, content=PAGE, headers={"content-type": "text/html"})
+
+    with pytest.raises(FulltextFetchError):
+        await download_pdf(["https://www.aeeisp.com/article/123"],
+                           transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert not is_pdf(b"<html>access denied</html>")
+
+
+def test_pdf_with_fake_header_and_eof_is_rejected_before_storage():
+    with pytest.raises(FulltextFetchError):
+        validate_pdf(PDF)
+
+
+def test_site_plugins_are_selected_by_publisher_host():
+    assert plugin_for("https://arxiv.org/abs/2611.02862").name == "arxiv"
+    assert plugin_for("https://www.nature.com/articles/example").name == "nature"
+    assert plugin_for("https://www.mdpi.com/2077-0472/16/8/846").name == "mdpi"
+    assert plugin_for("https://www.frontiersin.org/articles/example/full").name == "frontiers"
+
+
+@pytest.mark.asyncio
+async def test_openalex_open_pdf_fallback():
+    def handler(request):
+        if request.url.host == "api.openalex.org":
+            return httpx.Response(200, json={"best_oa_location": {
+                "is_oa": True, "pdf_url": "https://repository.example/paper.pdf"}})
+        if request.url.path.endswith("paper.pdf"):
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(200, content=b"<html>Abstract only</html>", headers={"content-type": "text/html"})
+
+    result = await download_pdf(["https://publisher.example/article"], doi="10.1234/example",
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == "https://repository.example/paper.pdf"
+
+
+@pytest.mark.asyncio
+async def test_known_pdf_route_survives_blocked_landing_page():
+    def handler(request):
+        if request.url.path.endswith("/pdf"):
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(403)
+
+    result = await download_pdf(["https://www.mdpi.com/2077-0472/16/8/846"],
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url.endswith("/pdf")
+
+
+@pytest.mark.asyncio
+async def test_aeeisp_preview_route_survives_blocked_article_page():
+    def handler(request):
+        if request.url.path.endswith("/10.11975/sample.pdf"):
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(403)
+
+    result = await download_pdf(["https://www.aeeisp.com/nygcxb/article/doi/10.11975/sample"],
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == "https://www.aeeisp.com/nygcxb/cn/article/pdf/preview/10.11975/sample.pdf"

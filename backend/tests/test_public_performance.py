@@ -111,6 +111,38 @@ async def test_compact_reads_match_cards_without_loading_heavy_fields(public_cli
 
 
 @pytest.mark.asyncio
+async def test_paper_pdf_job_preserves_existing_text_and_serves_saved_file(public_client, public_db, tmp_path, monkeypatch):
+    import io
+    from pypdf import PdfWriter
+    from app.config import settings
+    from app.services import paper_pdf, paper_pdf_job
+
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    pdf_buffer = io.BytesIO()
+    writer.write(pdf_buffer)
+    pdf_bytes = pdf_buffer.getvalue()
+
+    async def downloaded(*args, **kwargs):
+        return paper_pdf.PdfDownload(pdf_bytes, "https://publisher.example/article.pdf", "example")
+
+    async def no_text(data):
+        return None
+
+    monkeypatch.setattr(paper_pdf, "download_pdf", downloaded)
+    monkeypatch.setattr(paper_pdf, "extract_pdf_text", no_text)
+    assert await paper_pdf_job.fetch_one(1) == "downloaded"
+    detail = await public_client.get("/api/v1/items/1")
+    assert detail.json()["pdf"]["status"] == "ready"
+    assert detail.json()["content"].startswith("水稻遥感")
+    response = await public_client.get("/api/v1/items/1/pdf")
+    assert response.status_code == 200 and response.content.startswith(b"%PDF-")
+
+
+@pytest.mark.asyncio
 async def test_compact_pagination_and_full_detail(public_client):
     pages = [await public_client.get("/api/v1/items", params={"compact": True, "mode": "selected",
                                                             "category": "论文", "page_size": 1, "page": page})

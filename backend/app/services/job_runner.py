@@ -32,13 +32,14 @@ JOB_LABELS = {
     "retag": "重切标签",
     "taxonomy_backfill": "回填主题分类",
     "fetch_content": "批量抓取全文",
+    "fetch_paper_pdfs": "下载论文 PDF",
     "specials_generate": "发现与更新热点专题",
     "editorial_backfill": "补全关注点与一手来源",
 }
 
 JOB_NAMES = tuple(JOB_LABELS)
 # Outbound full-text fetches. The API records them; the worker process runs them.
-WORKER_JOBS = frozenset({"fetch_content", "specials_generate", "editorial_backfill", "sources_fetch"})
+WORKER_JOBS = frozenset({"fetch_content", "fetch_paper_pdfs", "specials_generate", "editorial_backfill", "sources_fetch"})
 # Unset (local and tests) keeps jobs in this process. Production API sets "api".
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
@@ -449,6 +450,14 @@ HANDLERS: dict[str, Handler] = {
     "taxonomy_backfill": _taxonomy_backfill,
     "fetch_content": _fetch_content,
 }
+
+
+async def _fetch_paper_pdfs(params: dict[str, Any]) -> dict[str, Any]:
+    from .paper_pdf_job import run
+    return await run(params)
+
+
+HANDLERS["fetch_paper_pdfs"] = _fetch_paper_pdfs
 
 
 async def _specials_generate(params: dict[str, Any]) -> dict[str, Any]:

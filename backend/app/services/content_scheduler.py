@@ -39,6 +39,15 @@ async def _loop() -> None:
                 log.info("content fetch already running, skip this tick")
             except Exception:
                 log.exception("content fetch tick failed")
+            try:
+                if job_runner.RUNS_JOBS:
+                    await job_runner.run("fetch_paper_pdfs", {})
+                else:
+                    await job_runner.enqueue("fetch_paper_pdfs", {})
+            except job_runner.JobBusy:
+                log.info("paper PDF fetch already running, skip this tick")
+            except Exception:
+                log.exception("paper PDF fetch tick failed")
         _next_run = datetime.now(timezone.utc) + timedelta(seconds=INTERVAL_SECONDS)
         await asyncio.sleep(INTERVAL_SECONDS)
 

@@ -78,7 +78,7 @@ async def test_fetch_content_drops_the_connection_before_http(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("job_name", ["fetch_content", "sources_fetch"])
+@pytest.mark.parametrize("job_name", ["fetch_content", "fetch_paper_pdfs", "sources_fetch"])
 async def test_api_process_queues_fetch_instead_of_running_it(monkeypatch, job_name):
     written = {}
 

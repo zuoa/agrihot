@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     content_fetch_enabled: bool = True
     content_fetch_timeout: float = Field(default=60, ge=5, le=180, allow_inf_nan=False)
     content_max_chars: int = Field(default=100000, ge=200, le=1000000)
+    paper_pdf_dir: str = "/data/paper-pdfs"
+    paper_pdf_timeout: float = Field(default=180, ge=10, le=600, allow_inf_nan=False)
     jina_api_key: str = ""
     jina_reader_base_url: str = "https://r.jina.ai"
     # total score (0-100) at or above which an item becomes 精选

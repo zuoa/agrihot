@@ -72,6 +72,9 @@ class Item(Base):
         back_populates="item", uselist=False,
         cascade="all, delete-orphan", lazy="selectin",
     )
+    pdf: Mapped["PaperPdf | None"] = relationship(
+        back_populates="item", uselist=False, cascade="all, delete-orphan", lazy="joined",
+    )
     topic_links: Mapped[list["ItemTopic"]] = relationship(
         back_populates="item", cascade="all, delete-orphan", lazy="selectin",
     )
@@ -103,6 +106,23 @@ class PaperMeta(Base):
     ingested_from: Mapped[str] = mapped_column(String(20), default="agent")
 
     item: Mapped[Item] = relationship(back_populates="paper")
+
+
+class PaperPdf(Base):
+    """Download state is independent of extracted article text."""
+    __tablename__ = "paper_pdfs"
+
+    item_id: Mapped[int] = mapped_column(ForeignKey("items.id", ondelete="CASCADE"), primary_key=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plugin: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    item: Mapped[Item] = relationship(back_populates="pdf")
 
 
 class PipelineState(Base):

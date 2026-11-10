@@ -121,6 +121,7 @@ const hints = {
   retag: '把历史标签再切成短词并清理空标签',
   taxonomy_backfill: '按主题规则回填历史内容；跳过人工锁定，评分和精选不变',
   fetch_content: '回补无全文的政策/报道/行业；论文不抓。也可从内容页勾选指定条目',
+  fetch_paper_pdfs: '分批下载论文 PDF，包括已有文字正文的论文；可在论文详情页单篇重试',
   specials_generate: '发现共同议题、提炼与补充引用，通过检查后自动发布',
   editorial_backfill: '每次补全20篇近30天精选及当前专题文章，断点续跑，不改变评分和精选',
 }
@@ -173,6 +174,7 @@ function formatStats(j) {
   if (j.name === 'retag') return `条目 ${s.items ?? 0}，改动 ${s.changed ?? 0}`
   if (j.name === 'taxonomy_backfill') return `已处理 ${s.processed ?? 0} · 更新 ${s.changed ?? 0} · 锁定跳过 ${s.locked ?? 0} · 待复核 ${s.needs_review ?? 0}`
   if (j.name === 'fetch_content') return `抓取 ${s.fetched ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
+  if (j.name === 'fetch_paper_pdfs') return `下载 ${s.downloaded ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   if (j.name === 'specials_generate') return `新建 ${s.created ?? 0} · 更新 ${s.updated ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}${s.reason ? ` · ${s.reason}` : ''}`
   if (j.name === 'editorial_backfill') return s.dry_run ? `预览 ${s.total ?? 0} 篇，未写入数据` : `生成 ${s.generated ?? 0} · 跳过 ${s.skipped ?? 0} · 失败 ${s.failed ?? 0}`
   return JSON.stringify(s)

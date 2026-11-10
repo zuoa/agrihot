@@ -85,6 +85,7 @@ export function useApi() {
     adminItemEditorial: (id) => adminFetch(`/admin/items/${id}/editorial`),
     adminDeleteItem: (id) => adminFetch(`/admin/items/${id}`, { method: 'DELETE' }),
     adminFetchContent: (id) => adminFetch(`/admin/items/${id}/fetch-content`, { method: 'POST' }),
+    adminFetchPaperPdf: (id) => adminFetch('/admin/jobs/fetch_paper_pdfs/run', { method: 'POST', body: { item_ids: [id], force: true } }),
     adminGenerateDaily: (date) => adminFetch(`/admin/dailies/${date}/generate`, { method: 'POST' }),
     adminMe: () => adminFetch('/admin/me'),
     adminOverview: () => adminFetch('/admin/overview'),

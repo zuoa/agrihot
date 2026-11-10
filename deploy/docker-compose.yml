@@ -30,6 +30,8 @@ services:
 
   backend:
     image: ghcr.io/zuoa/agrihot-backend:latest
+    volumes:
+      - paperpdfs:/data/paper-pdfs:ro
     logging: *json-log
     environment:
       AGRIHOT_PROCESS: api
@@ -60,6 +62,7 @@ services:
       # 原文多策略获取；Jina Reader 兜底，API Key 可选
       CONTENT_FETCH_ENABLED: ${CONTENT_FETCH_ENABLED:-true}
       CONTENT_FETCH_TIMEOUT: ${CONTENT_FETCH_TIMEOUT:-60}
+      PAPER_PDF_TIMEOUT: ${PAPER_PDF_TIMEOUT:-180}
       CONTENT_MAX_CHARS: ${CONTENT_MAX_CHARS:-100000}
       JINA_API_KEY: ${JINA_API_KEY:-}
       # 每日日报定时生成（时刻与「收录日期」日界都按 DAILY_TIMEZONE 业务时区，
@@ -89,6 +92,8 @@ services:
 
   worker:
     image: ghcr.io/zuoa/agrihot-backend:latest
+    volumes:
+      - paperpdfs:/data/paper-pdfs
     logging: *json-log
     command: ["python", "-m", "app.services.content_worker"]
     environment:
@@ -113,6 +118,7 @@ services:
       DAILY_TIMEZONE: ${DAILY_TIMEZONE:-Asia/Shanghai}
       CONTENT_FETCH_ENABLED: ${CONTENT_FETCH_ENABLED:-true}
       CONTENT_FETCH_TIMEOUT: ${CONTENT_FETCH_TIMEOUT:-60}
+      PAPER_PDF_TIMEOUT: ${PAPER_PDF_TIMEOUT:-180}
       CONTENT_MAX_CHARS: ${CONTENT_MAX_CHARS:-100000}
       JINA_API_KEY: ${JINA_API_KEY:-}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
@@ -150,3 +156,4 @@ services:
 
 volumes:
   pgdata:
+  paperpdfs:

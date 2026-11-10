@@ -34,6 +34,7 @@
           </div>
           <div class="article-actions">
             <a :href="primaryUrl" target="_blank" rel="noopener" class="original-link">阅读原文<ArticleIcon name="external" /></a>
+            <a v-if="item.pdf?.status === 'ready'" :href="`/api/v1/items/${item.id}/pdf`" class="original-link">下载 PDF<ArticleIcon name="document" /></a>
             <span class="reading-time"><ArticleIcon name="clock" />{{ readingTimeLabel }}</span>
           </div>
           <div v-if="lede" class="article-takeaway">
@@ -66,7 +67,7 @@
             </div>
             <div v-if="item.doi || item.paper?.oa_url || item.paper?.openalex_id" class="paper-links">
               <a v-if="item.doi" :href="`https://doi.org/${item.doi}`" target="_blank" rel="noopener" class="doi-link">DOI: {{ item.doi }}<ArticleIcon name="external" /></a>
-              <a v-if="item.paper?.oa_url" :href="item.paper.oa_url" target="_blank" rel="noopener">开放获取 PDF<ArticleIcon name="external" /></a>
+              <a v-if="item.paper?.oa_url" :href="item.paper.oa_url" target="_blank" rel="noopener">开放获取地址<ArticleIcon name="external" /></a>
               <a v-if="item.paper?.openalex_id" :href="`https://openalex.org/${item.paper.openalex_id}`" target="_blank" rel="noopener">OpenAlex 档案<ArticleIcon name="external" /></a>
             </div>
           </section>
@@ -122,6 +123,7 @@
             <span>内容管理</span>
             <EmbeddingBadge v-if="item.embedding_ready" />
             <button type="button" @click="fetchContent" :disabled="fetching">{{ fetching ? '抓取中…' : (item.content ? '重新获取全文' : '获取全文') }}</button>
+            <button v-if="isPaper" type="button" @click="fetchPaperPdf" :disabled="fetchingPdf">{{ fetchingPdf ? '排队中…' : '下载论文 PDF' }}</button>
             <button type="button" @click="showEdit = true">编辑</button>
             <button type="button" @click="remove" :disabled="deleting" class="delete-action">{{ deleting ? '删除中…' : '删除' }}</button>
           </div>
@@ -179,6 +181,7 @@ const absLang = ref('zh')
 const showEdit = ref(false)
 const deleting = ref(false)
 const fetching = ref(false)
+const fetchingPdf = ref(false)
 const coverFailed = ref(false)
 
 const { data, pending, error, refresh } = await useAsyncData(
@@ -384,6 +387,18 @@ async function fetchContent() {
     alert(e.message)
   } finally {
     fetching.value = false
+  }
+}
+
+async function fetchPaperPdf() {
+  fetchingPdf.value = true
+  try {
+    await api.adminFetchPaperPdf(item.value.id)
+    alert('已加入论文 PDF 下载队列，可在管理任务页查看进度。')
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    fetchingPdf.value = false
   }
 }
 

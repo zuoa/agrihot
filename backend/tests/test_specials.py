@@ -374,7 +374,7 @@ async def test_semantic_rejection_is_revised_and_rechecked_with_current_date(dat
         'path': 'overview.text', 'source_ids': ['i1', 'i2', 'i3'],
         'reason': '来源仅检验一种作物且跨地域性能下降，改为有条件的单项发现，不能外推所有作物。',
     }]}
-    as_of = datetime(2026, 11, 4, 16, 30, tzinfo=timezone.utc)
+    as_of = datetime.now(timezone.utc).replace(hour=16, minute=30, second=0, microsecond=0)
     monkeypatch.setattr(service, 'utcnow', lambda: as_of)
     monkeypatch.setattr(settings, 'daily_timezone', 'Asia/Shanghai')
     compose, reviews, supplements, logs = [], [], [], []
@@ -382,7 +382,7 @@ async def test_semantic_rejection_is_revised_and_rechecked_with_current_date(dat
     async def llm(system, payload):
         if system == service.DISCOVER:
             return {'candidates': [candidate.model_dump()]}
-        assert payload['today'] == '2026-11-05' and payload['as_of'] == as_of.isoformat()
+        assert payload['today'] == (as_of + timedelta(hours=8)).date().isoformat() and payload['as_of'] == as_of.isoformat()
         if system == service.COMPOSE:
             compose.append(copy.deepcopy(payload))
             if len(compose) == 1:
