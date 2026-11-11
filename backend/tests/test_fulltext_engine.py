@@ -18,7 +18,7 @@ from app.services.fulltext import (
     HtmlFetcher, JatsXmlFetcher, JinaFetcher, PdfFetcher,
 )
 from app.services.fulltext.base import FetchContext, validate_public_source
-from app.services.fulltext.extractors import extract_jats
+from app.services.fulltext.extractors import extract_jats, extract_pdf
 
 BODY = 'Agricultural research measures productivity, farm income, and rural development. ' * 12
 XML = (f'<article><front><article-meta><title-group><article-title>Rural prosperity</article-title>'
@@ -324,6 +324,16 @@ async def test_scanned_or_invalid_pdfs_fail_without_saving_garbage():
         with pytest.raises(FulltextFetchError) as exc:
             await engine_for(lambda request: httpx.Response(200, content=content), [PdfFetcher()]).fetch('https://source.example/paper.pdf')
         assert exc.value.reason == reason
+
+
+def test_pdf_text_removes_nul_before_validating_length():
+    text = extract_pdf(pdf_bytes(BODY[:250] + '\x00' + BODY[250:]))
+    assert '\x00' not in text
+    assert text.replace('\n', ' ').startswith(BODY[:100])
+
+    with pytest.raises(FulltextFetchError) as exc:
+        extract_pdf(pdf_bytes('\x00' * 300))
+    assert exc.value.reason == 'pdf_no_text'
 
 
 @pytest.mark.asyncio

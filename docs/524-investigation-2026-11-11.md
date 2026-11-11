@@ -1,5 +1,46 @@
 # agrihot.com 524 排查记录（2026-11-11）
 
+## 源站复核与在线缓解（UTC 04:24–04:33）
+
+经 SSH 检查 `46.224.26.74`，确认这次持续故障由大量随机筛选 URL 的请求造成。Nginx 最近 3 万条访问日志中，`/topic` 占 29,284 条，499 占 26,032 条，502 占 3,687 条；每分钟约 2,000–4,500 条请求，通常携带 3–5 个随机 `technology` 参数。约 2.6 万条请求的 Referer 为 `www.md2we.com`。最近 5,000 条 Nginx 错误日志中，4,237 条 Host 为 `www.md2we.com`，但被转发到了 AgriHot；原因是 `/etc/nginx/conf.d/agrihot.conf` 在 Nginx 全局默认站点之前加载，使 AgriHot 意外成为未匹配 Host 的默认站点。Referer 和 User-Agent 均可伪造，不能用于确认真实访客身份。
+
+当时 Nuxt 容器约占 89% CPU，主机已使用约 2.4 GB swap；源站本机 `/healthz`、`/api/health`、静态图标均在 8 秒内无响应，前端健康检查失败。Nginx 错误日志有 `upstream timed out` 和 `upstream prematurely closed connection`。这说明 524 是源站服务被请求洪水拖垮后的结果，而不是 EdgeOne 单独变慢。
+
+在源站已实施并通过 `nginx -t` 验证的临时规则：
+
+1. `/etc/nginx/nginx.conf` 的默认虚拟主机明确使用 `listen 80 default_server` 和 `listen [::]:80 default_server`，对未匹配 Host 返回 404，并关闭这部分访问日志；其他已命名站点按原来的 Host 匹配。
+2. `/etc/nginx/conf.d/agrihot.conf` 对 `/topic` 中同时带有 **4 个及以上** `technology` 参数的请求直接返回 429。0–3 个筛选仍可访问。另对主题页设定全站每秒 6 次请求、突发 30 次的 Nginx 上限，防止异常请求改用更少的筛选参数后再次耗尽 Nuxt。超过上限的真实访问也可能收到 429。该规则会限制少数真实用户选择 4 项以上技术，属于流量攻击期间的临时保护；后续应在 EdgeOne 配置针对异常筛选 URL 的限频或挑战，再评估是否放宽。
+3. 重启 AgriHot 前端容器，清理已积压的 SSR 请求。原配置备份为相同目录下带 `.before-agrihot-524-20261111T042815Z` 后缀的文件；新增主题页总速率上限前，还备份了 `agrihot.conf.before-topic-rate-limit-20261111`。
+
+当前 `agrihot.conf` 的入口保护核心配置为：
+
+```nginx
+limit_req_zone $server_name zone=agrihot_topic_global:1m rate=6r/s;
+
+server {
+    server_name agrihot.com www.agrihot.com;
+    listen 80;
+    location ^~ /topic {
+        limit_req zone=agrihot_topic_global burst=30 nodelay;
+        limit_req_status 429;
+        if ($args ~* "technology=.*&technology=.*&technology=.*&technology=") {
+            return 429;
+        }
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_pass http://127.0.0.1:5820;
+    }
+    # 其他原有 location 保留在源站配置中。
+}
+```
+
+全局默认虚拟主机显式监听 `80 default_server` 与 `[::]:80 default_server`，设置 `access_log off; return 404;`。若需回滚入口保护，可从上述备份恢复两个配置文件，先执行 `nginx -t`，成功后再执行 `systemctl reload nginx`；删除规则前应确认异常请求已经在 EdgeOne 被拦截。
+
+复测：错误 Host 返回 404 约 0.5 毫秒；4 技术筛选返回 429 约 1 毫秒；3 技术筛选返回 200 约 0.52 秒。源站本机 `/healthz` 约 14 毫秒、`/api/health` 约 11 毫秒、首页约 0.34 秒；公开域名 `/`、`/feed`、`/topic`、`/api/health` 均返回 200，总耗时约 1.1–2.7 秒。前端健康检查恢复为 healthy，后续采样前端 CPU 降至 1% 以下，数据库 CPU 降至约 23%。攻击请求仍持续到达，规则继续在 Nginx 层挡掉。这里的正常访问实测是短时采样，仍需观察 524 和 5xx 的长期趋势。
+
+在 UTC 04:34–04:36 的源站日志样本中，每分钟约 130–190 个异常主题筛选请求被快速返回 429，已没有 499、502 或 504；未知 Host 请求关闭访问日志后不再占用大文件写入。公开域名复测四条正常路径均为 200。
+
 ## 现场证据
 
 本站 DNS 接入腾讯云 EdgeOne，响应头出现 `eo-log-uuid`、`eo-cache-status`。EdgeOne 的 524 表示节点已经连接源站，但源站没有在应答超时时间内返回数据；默认 HTTP 应答超时为 15 秒。[腾讯云排障文档](https://cloud.tencent.com/document/product/1552/118268)、[回源超时说明](https://cloud.tencent.com/document/product/1552/104992)。

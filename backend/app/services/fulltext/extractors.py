@@ -85,7 +85,8 @@ def extract_pdf(content: bytes) -> str:
             raise FulltextFetchError("content_access_denied")
         if len(reader.pages) > 100:
             raise FulltextFetchError("content_too_large")
-        text = "\n\n".join(page.extract_text() or "" for page in reader.pages).strip()
+        # PDF text layers can contain NUL characters; PostgreSQL text columns reject them.
+        text = "\n\n".join(page.extract_text() or "" for page in reader.pages).replace("\x00", "").strip()
     except FulltextFetchError:
         raise
     except Exception:

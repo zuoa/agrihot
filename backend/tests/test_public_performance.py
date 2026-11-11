@@ -143,6 +143,47 @@ async def test_paper_pdf_job_preserves_existing_text_and_serves_saved_file(publi
 
 
 @pytest.mark.asyncio
+async def test_paper_pdf_job_saves_text_layer_containing_nul(public_client, public_db, tmp_path, monkeypatch):
+    import io
+    from pypdf import PdfWriter
+    from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
+    from app.config import settings
+    from app.services import paper_pdf, paper_pdf_job
+
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        await session.execute(update(Item).where(Item.id == 2).values(content=None))
+        await session.commit()
+
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject({NameObject("/Type"): NameObject("/Font"),
+                             NameObject("/Subtype"): NameObject("/Type1"),
+                             NameObject("/BaseFont"): NameObject("/Helvetica")})
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/Font"): DictionaryObject({
+        NameObject("/F1"): writer._add_object(font),
+    })})
+    stream = DecodedStreamObject()
+    stream.set_data(b"BT /F1 12 Tf 36 750 Td (" + b"Agricultural research on groundwater " * 10
+                    + b"\x00 continues after this character." + b") Tj ET")
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    output = io.BytesIO()
+    writer.write(output)
+
+    async def downloaded(*args, **kwargs):
+        return paper_pdf.PdfDownload(output.getvalue(), "https://publisher.example/article.pdf", "example")
+
+    monkeypatch.setattr(paper_pdf, "download_pdf", downloaded)
+    assert await paper_pdf_job.fetch_one(2) == "downloaded"
+    detail = (await public_client.get("/api/v1/items/2")).json()
+    assert detail["pdf"]["status"] == "ready"
+    assert "\x00" not in detail["content"]
+    assert "continues after this character" in detail["content"]
+    assert (await public_client.get("/api/v1/items/2/pdf")).status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_compact_pagination_and_full_detail(public_client):
     pages = [await public_client.get("/api/v1/items", params={"compact": True, "mode": "selected",
                                                             "category": "论文", "page_size": 1, "page": page})
