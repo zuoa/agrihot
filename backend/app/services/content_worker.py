@@ -83,15 +83,18 @@ async def serve() -> None:
         await watchlist_service.load_from_db(session)
         await session.commit()
     await _recover_interrupted()
+    from .daily_scheduler import start_daily_scheduler
+    from .literature_scheduler import start_literature_scheduler
     from .content_scheduler import start_content_scheduler
     from .search_index_service import run_worker
 
+    daily = start_daily_scheduler()
+    literature = start_literature_scheduler()
     scheduler = start_content_scheduler()
     from .special_scheduler import start_special_scheduler
     specials = start_special_scheduler()
     from .source_scheduler import start_source_scheduler
     sources = start_source_scheduler()
-    # The API process keeps this loop unless production disables it.
     indexer = None if os.environ.get("AGRIHOT_PROCESS") != "worker" else asyncio.create_task(
         run_worker(), name="search-index",
     )
@@ -99,7 +102,7 @@ async def serve() -> None:
     try:
         await _serve_until_stopped()
     finally:
-        tasks = [task for task in (scheduler, indexer, specials, sources) if task is not None]
+        tasks = [task for task in (daily, literature, scheduler, indexer, specials, sources) if task is not None]
         for task in tasks:
             task.cancel()
         for task in tasks:

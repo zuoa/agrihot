@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select
+from sqlalchemy import bindparam, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Item, PaperMeta, Tag, item_tags
@@ -190,25 +190,30 @@ async def retag_all_items(session: AsyncSession, *, dry_run: bool = False) -> di
 
 async def maybe_backfill_doi(session: AsyncSession) -> int:
     """Startup helper: fill Item.doi from url / source_url when missing."""
-    items = (
-        await session.execute(select(Item).where(Item.doi.is_(None)))
-    ).scalars().all()
-    filled = 0
+    # Startup runs on every API restart. Loading full ORM items also loads their
+    # large content and eager relationships, even when there is no work to do.
+    items = (await session.execute(
+        select(Item.id, Item.url, Item.source_url).where(Item.doi.is_(None))
+    )).all()
     seen: set[str] = set()
     existing = (
         await session.execute(select(Item.doi).where(Item.doi.is_not(None)))
     ).scalars().all()
     seen.update(d for d in existing if d)
-    for item in items:
-        doi = normalize_doi(item.url) or normalize_doi(item.source_url)
+    changes = []
+    for item_id, url, source_url in items:
+        doi = normalize_doi(url) or normalize_doi(source_url)
         if not doi or doi in seen:
             continue
-        item.doi = doi
+        changes.append({"item_id": item_id, "new_doi": doi})
         seen.add(doi)
-        filled += 1
-    if filled:
-        log.info("backfilled doi on %s existing items", filled)
-    return filled
+    if changes:
+        statement = Item.__table__.update().where(
+            Item.__table__.c.id == bindparam("item_id")
+        ).values(doi=bindparam("new_doi"))
+        await session.execute(statement, changes)
+        log.info("backfilled doi on %s existing items", len(changes))
+    return len(changes)
 
 
 async def maybe_retag_existing(session: AsyncSession) -> dict | None:

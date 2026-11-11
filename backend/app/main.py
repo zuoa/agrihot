@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import time
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
@@ -45,29 +46,30 @@ async def lifespan(app: FastAPI):
         await sync_catalog(session)
         await session.commit()
 
-    from .services.daily_scheduler import start_daily_scheduler
-    from .services.literature_scheduler import start_literature_scheduler
-
-    # Daily and literature ticks stay here. Content fetch is the worker's
-    # job: its HTTP calls must not share this process's database pool.
-    scheduler = start_daily_scheduler()
-    literature = start_literature_scheduler()
+    # The production API does not start schedulers. Scheduled jobs belong to
+    # the worker so their outbound requests cannot stall the HTTP event loop.
+    scheduler = None
+    literature = None
     content = None
     indexer = None
     specials = None
     sources = None
     if SERVE_CONTENT_WORKER:
+        from .services.daily_scheduler import start_daily_scheduler
+        from .services.literature_scheduler import start_literature_scheduler
         from .services.special_scheduler import start_special_scheduler
         from .services.content_scheduler import start_content_scheduler
         from .services.search_index_service import run_worker
 
+        scheduler = start_daily_scheduler()
+        literature = start_literature_scheduler()
         content = start_content_scheduler()
         indexer = asyncio.create_task(run_worker())
         specials = start_special_scheduler()
         from .services.source_scheduler import start_source_scheduler
         sources = start_source_scheduler()
     else:
-        log.info("background indexing runs in the worker process")
+        log.info("scheduled jobs and background indexing run in the worker process")
     try:
         async with mcp.session_manager.run():
             yield
@@ -171,7 +173,18 @@ def _public_cache_control(path: str) -> str | None:
 
 @app.middleware("http")
 async def private_cache_headers(request: Request, call_next):
-    response = await call_next(request)
+    started = time.monotonic()
+    try:
+        response = await call_next(request)
+    except Exception:
+        log.exception("HTTP request failed %s %s duration_ms=%.1f",
+                      request.method, request.url.path, (time.monotonic() - started) * 1000)
+        raise
+    duration_ms = (time.monotonic() - started) * 1000
+    response.headers["Server-Timing"] = f"api;dur={duration_ms:.1f}"
+    if duration_ms >= 1000:
+        log.warning("slow HTTP %s %s status=%s duration_ms=%.1f",
+                    request.method, request.url.path, response.status_code, duration_ms)
     path = request.url.path
     if path.startswith("/api/v1/specials"):
         # Evidence changes and withdrawals must be visible on the next public read.

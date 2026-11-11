@@ -3,10 +3,14 @@ import time
 import asyncio
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event, select
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.main import pool_timeout_handler
-from app.services import content_service, job_runner, read_cache
+from app.main import app, pool_timeout_handler
+from app.models import Base, Item
+from app.services import content_service, ingest_service, job_runner, read_cache
 
 
 class _Request:
@@ -46,6 +50,44 @@ async def test_pool_timeout_is_503_without_traceback():
 
 
 @pytest.mark.asyncio
+async def test_health_reports_backend_duration():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/health")
+    assert response.status_code == 200
+    assert response.headers["server-timing"].startswith("api;dur=")
+
+
+@pytest.mark.asyncio
+async def test_startup_doi_backfill_reads_only_needed_columns():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        session.add(Item(title="DOI paper", url="https://doi.org/10.1234/example",
+                         url_hash="doi-backfill", title_simhash=1, summary="abstract",
+                         content="large body " * 1000))
+        await session.commit()
+    queries = []
+
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        queries.append(statement.lower())
+
+    event.listen(engine.sync_engine, "before_cursor_execute", capture)
+    try:
+        async with factory() as session:
+            assert await ingest_service.maybe_backfill_doi(session) == 1
+            await session.commit()
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", capture)
+    async with factory() as session:
+        assert (await session.scalar(select(Item.doi))) == "10.1234/example"
+        assert await ingest_service.maybe_backfill_doi(session) == 0
+    assert all("items.content" not in sql and "paper_pdfs" not in sql for sql in queries)
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_fetch_content_drops_the_connection_before_http(monkeypatch):
     checked_out = []
 
@@ -78,7 +120,7 @@ async def test_fetch_content_drops_the_connection_before_http(monkeypatch):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("job_name", ["fetch_content", "fetch_paper_pdfs", "sources_fetch"])
+@pytest.mark.parametrize("job_name", sorted(job_runner.WORKER_JOBS))
 async def test_api_process_queues_fetch_instead_of_running_it(monkeypatch, job_name):
     written = {}
 

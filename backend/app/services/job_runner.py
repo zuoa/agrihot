@@ -38,8 +38,8 @@ JOB_LABELS = {
 }
 
 JOB_NAMES = tuple(JOB_LABELS)
-# Outbound full-text fetches. The API records them; the worker process runs them.
-WORKER_JOBS = frozenset({"fetch_content", "fetch_paper_pdfs", "specials_generate", "editorial_backfill", "sources_fetch"})
+# All named jobs are potentially expensive. Keep them off the HTTP event loop.
+WORKER_JOBS = frozenset(JOB_NAMES)
 # Unset (local and tests) keeps jobs in this process. Production API sets "api".
 RUNS_JOBS = os.environ.get("AGRIHOT_PROCESS", "all") != "api"
 
