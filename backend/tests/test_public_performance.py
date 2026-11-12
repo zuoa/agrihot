@@ -184,6 +184,75 @@ async def test_paper_pdf_job_saves_text_layer_containing_nul(public_client, publ
 
 
 @pytest.mark.asyncio
+async def test_paper_pdf_job_replaces_invalid_unicode_text(public_db, tmp_path, monkeypatch):
+    import io
+    from pypdf import PdfWriter
+    from app.config import settings
+    from app.services import paper_pdf, paper_pdf_job
+
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        await session.execute(update(Item).where(Item.id == 1).values(content=None))
+        await session.commit()
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    output = io.BytesIO()
+    writer.write(output)
+
+    async def downloaded(*args, **kwargs):
+        return paper_pdf.PdfDownload(output.getvalue(), "https://publisher.example/paper.pdf", "direct")
+
+    async def extracted(*args, **kwargs):
+        return "Agricultural research " * 20 + "\ud800"
+
+    monkeypatch.setattr(paper_pdf, "download_pdf", downloaded)
+    monkeypatch.setattr(paper_pdf, "extract_pdf_text", extracted)
+    assert await paper_pdf_job.fetch_one(1) == "downloaded"
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        item = await session.get(Item, 1)
+        assert item.pdf.status == "ready" and "\ud800" not in item.content
+
+
+@pytest.mark.asyncio
+async def test_paper_pdf_is_kept_when_text_classification_fails(public_db, tmp_path, monkeypatch):
+    import io
+    from pypdf import PdfWriter
+    from app.config import settings
+    from app.services import paper_pdf, paper_pdf_job, taxonomy_service
+
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        await session.execute(update(Item).where(Item.id == 1).values(content=None))
+        await session.execute(update(ItemClassification).where(ItemClassification.item_id == 1).values(locked=False))
+        await session.commit()
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    output = io.BytesIO()
+    writer.write(output)
+
+    async def downloaded(*args, **kwargs):
+        return paper_pdf.PdfDownload(output.getvalue(), "https://publisher.example/paper.pdf", "direct")
+
+    async def extracted(*args, **kwargs):
+        return "Agricultural research " * 20
+
+    def broken_hash(*args, **kwargs):
+        raise ValueError("classification failed")
+
+    monkeypatch.setattr(paper_pdf, "download_pdf", downloaded)
+    monkeypatch.setattr(paper_pdf, "extract_pdf_text", extracted)
+    monkeypatch.setattr(taxonomy_service, "input_hash", broken_hash)
+    assert await paper_pdf_job.fetch_one(1) == "downloaded"
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        item = await session.get(Item, 1)
+        assert item.pdf.status == "ready" and item.content is None
+
+
+@pytest.mark.asyncio
 async def test_missing_pdfs_precede_cursor_scan_without_advancing_it(public_db, monkeypatch):
     from app.services import paper_pdf_job
 

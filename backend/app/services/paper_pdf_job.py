@@ -100,9 +100,23 @@ async def fetch_one(item_id: int, *, force: bool = False) -> str:
         record.sha256, record.size_bytes = digest, size
         record.source_url, record.plugin = result.url, result.plugin
         record.updated_at = utcnow()
-        if extracted and not (item.content and item.content.strip()):
-            item.content = extracted[:100_000]
-        await session.commit()
+        saved_text = bool(extracted and not (item.content and item.content.strip()))
+        if saved_text:
+            item.content = extracted[:100_000].replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
+        try:
+            await session.commit()
+        except Exception:
+            if not saved_text:
+                raise
+            log.exception("paper PDF text could not be saved for item %s; keeping the PDF", item_id)
+            await session.rollback()
+            async with SessionLocal() as retry:
+                record = await retry.get(PaperPdf, item_id)
+                record.status, record.error = "ready", None
+                record.sha256, record.size_bytes = digest, size
+                record.source_url, record.plugin = result.url, result.plugin
+                record.updated_at = utcnow()
+                await retry.commit()
     return "downloaded"
 
 
