@@ -284,6 +284,42 @@ def _aeeisp_curl_download(url: str, max_bytes: int) -> bytes:
         os.unlink(name)
 
 
+def _nature_standard_download(url: str, max_bytes: int) -> bytes:
+    """Nature serves its public reference manuscript to urllib while challenging httpx."""
+    parsed = urlsplit(url)
+    if (parsed.scheme != "https" or parsed.hostname != "www.nature.com"
+            or parsed.username or parsed.password or parsed.port is not None
+            or not re.fullmatch(r"/articles/[a-zA-Z0-9-]+_reference\.pdf", parsed.path)):
+        raise FulltextFetchError("invalid_url")
+
+    class SameHostRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, newurl):
+            target = urlsplit(urljoin(request.full_url, newurl))
+            if (target.scheme != "https" or target.hostname != "www.nature.com"
+                    or target.username or target.password or target.port is not None):
+                raise FulltextFetchError("source_not_public")
+            return super().redirect_request(request, fp, code, msg, headers, newurl)
+
+    opener = urllib.request.build_opener(SameHostRedirect())
+    try:
+        with opener.open(url, timeout=settings.paper_pdf_timeout) as response:
+            declared = response.headers.get("Content-Length", "")
+            if declared.isdecimal() and int(declared) > max_bytes:
+                raise FulltextFetchError("content_too_large")
+            data = response.read(max_bytes + 1)
+    except FulltextFetchError:
+        raise
+    except urllib.error.HTTPError as exc:
+        raise FulltextFetchError("source_http_error", exc.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise FulltextFetchError("source_unavailable") from None
+    if len(data) > max_bytes:
+        raise FulltextFetchError("content_too_large")
+    if not is_pdf(data):
+        raise FulltextFetchError("content_access_denied" if is_access_challenge(data) else "unsupported_content")
+    return data
+
+
 async def download_pdf(urls: list[str], *, doi: str | None = None, transport: httpx.AsyncBaseTransport | None = None,
                        validator=None) -> PdfDownload:
     """Try known OA links and publisher pages without trusting URL suffixes."""
@@ -324,6 +360,12 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                     continue
                 seen.add(source)
                 candidates.extend(target for target in plugin_for(source).candidates(source, b"") if target not in seen)
+                if transport is None and urlsplit(source).hostname == "www.nature.com" and urlsplit(source).path.endswith("_reference.pdf"):
+                    try:
+                        data = await asyncio.to_thread(_nature_standard_download, source, options.max_bytes)
+                        return PdfDownload(data, source, "nature")
+                    except FulltextFetchError as exc:
+                        remember(exc)
                 if transport is None and urlsplit(source).hostname == "www.aeeisp.com" and urlsplit(source).path.lower().endswith(".pdf"):
                     try:
                         data = await asyncio.to_thread(_aeeisp_standard_download, source, options.max_bytes)
@@ -344,6 +386,9 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                     plugin = plugin_for(resolved)
                     for target in plugin.candidates(resolved, page.content):
                         try:
+                            if transport is None and plugin.name == "nature" and urlsplit(target).path.endswith("_reference.pdf"):
+                                data = await asyncio.to_thread(_nature_standard_download, target, options.max_bytes)
+                                return PdfDownload(data, target, "nature")
                             headers = ({"Referer": resolved, "User-Agent": "Mozilla/5.0"}
                                        if plugin.name == "aeeisp" else None)
                             response = await context.get(target, headers=headers)

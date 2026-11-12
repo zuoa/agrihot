@@ -81,6 +81,30 @@ async def test_nature_reference_manuscript_follows_html_pdf_route():
 
 
 @pytest.mark.asyncio
+async def test_nature_reference_uses_restricted_standard_client(monkeypatch):
+    from app.services import paper_pdf
+
+    seen = []
+
+    def downloaded(url, max_bytes):
+        seen.append((url, max_bytes))
+        return PDF
+
+    monkeypatch.setattr(paper_pdf, "_nature_standard_download", downloaded)
+    source = "https://www.nature.com/articles/s41598-026-66501-5_reference.pdf"
+    result = await download_pdf([source])
+    assert result.url == source and result.plugin == "nature" and seen[0][0] == source
+
+
+def test_nature_standard_client_rejects_other_hosts():
+    from app.services.paper_pdf import _nature_standard_download
+
+    with pytest.raises(FulltextFetchError) as error:
+        _nature_standard_download("https://private.example/articles/s41598-026-66501-5_reference.pdf", 1000)
+    assert error.value.reason == "invalid_url"
+
+
+@pytest.mark.asyncio
 async def test_automatic_pdf_job_pauses_before_reserving_items_on_low_disk(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from app.config import settings
