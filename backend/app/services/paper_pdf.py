@@ -150,34 +150,75 @@ def validate_pdf(data: bytes) -> None:
         raise FulltextFetchError("unsupported_content") from None
 
 
+def _mdpi_record_urls(record: dict) -> list[str]:
+    doi = normalize_doi(record.get("DOI"))
+    if not doi or not doi.startswith("10.3390/"):
+        return []
+    volume = str(record.get("volume") or "")
+    number = str(record.get("article-number") or record.get("page") or "").split("-", 1)[0]
+    if not volume.isdecimal() or not number.isdecimal():
+        return []
+    title = str((record.get("container-title") or [""])[0]).lower()
+    doi_code = re.match(r"10\.3390/([a-z]+)\d", doi)
+    slugs = dict.fromkeys(filter(None, (
+        MDPI_SLUGS.get(title), re.sub(r"[^a-z0-9]", "", title),
+        doi_code.group(1) if doi_code else None,
+    )))
+    return [
+        f"https://mdpi-res.com/d_attachment/{slug}/{slug}-{int(volume):02d}-{int(number):05d}"
+        f"/article_deploy/{slug}-{int(volume):02d}-{int(number):05d}.pdf"
+        for slug in slugs
+    ]
+
+
 async def _mdpi_cdn_candidates(context: FetchContext, doi: str) -> list[str]:
     """Find MDPI's public PDF CDN path when its article host blocks this server."""
     if not doi.startswith("10.3390/"):
         return []
     try:
-        response = await context.get("https://api.crossref.org/works/" + quote(doi, safe="/"))
+        response = await context.get("https://api.crossref.org/works/" + quote(doi, safe="/"),
+                                     headers={"User-Agent": f"AgriHot/1.0 (mailto:{settings.openalex_mailto})"})
         if response.status_code != 200:
             return []
         record = response.json()["message"]
         if normalize_doi(record.get("DOI")) != doi:
             return []
-        volume = str(record.get("volume") or "")
-        number = str(record.get("article-number") or record.get("page") or "").split("-", 1)[0]
-        if not volume.isdecimal() or not number.isdecimal():
-            return []
-        title = str((record.get("container-title") or [""])[0]).lower()
-        doi_code = re.match(r"10\.3390/([a-z]+)\d", doi)
-        slugs = dict.fromkeys(filter(None, (
-            MDPI_SLUGS.get(title), re.sub(r"[^a-z0-9]", "", title),
-            doi_code.group(1) if doi_code else None,
-        )))
-        return [
-            f"https://mdpi-res.com/d_attachment/{slug}/{slug}-{int(volume):02d}-{int(number):05d}"
-            f"/article_deploy/{slug}-{int(volume):02d}-{int(number):05d}.pdf"
-            for slug in slugs
-        ]
+        return _mdpi_record_urls(record)
     except (FulltextFetchError, ValueError, KeyError, TypeError, AttributeError):
         return []
+
+
+async def _mdpi_url_cdn_candidates(context: FetchContext, urls: list[str]) -> list[str]:
+    """Resolve an MDPI article without a stored DOI using exact Crossref metadata."""
+    for url in urls:
+        if not MdpiPlugin().supports(url):
+            continue
+        match = re.fullmatch(r"/(\d{4}-\d{3}[\dXx])/(\d+)/(\d+)/(\d+)(?:/pdf)?/?", urlsplit(url).path)
+        if not match:
+            continue
+        issn, volume, issue, number = match.groups()
+        try:
+            query = quote(f"{volume} {issue} {number}")
+            response = await context.get(
+                f"https://api.crossref.org/journals/{issn}/works?query.bibliographic={query}&rows=5",
+                headers={"User-Agent": f"AgriHot/1.0 (mailto:{settings.openalex_mailto})"},
+            )
+            if response.status_code != 200:
+                continue
+            for record in response.json()["message"]["items"]:
+                candidate_number = str(record.get("article-number") or record.get("page") or "").split("-", 1)[0]
+                if ("mdpi" in str(record.get("publisher") or "").lower()
+                        and issn.upper() in [str(value).upper() for value in record.get("ISSN") or []]
+                        and str(record.get("volume") or "").isdecimal()
+                        and str(record.get("issue") or "").isdecimal()
+                        and candidate_number.isdecimal()
+                        and int(record["volume"]) == int(volume)
+                        and int(record["issue"]) == int(issue)
+                        and int(candidate_number) == int(number)):
+                    return _mdpi_record_urls(record)
+        except (FulltextFetchError, ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return []
 
 
 def _aeeisp_standard_download(url: str, max_bytes: int) -> bytes:
@@ -252,7 +293,8 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
             last = FulltextFetchError("unsupported_content")
             seen: set[str] = set()
             normalized = normalize_doi(doi)
-            candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []), *urls]
+            candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []),
+                          *(await _mdpi_url_cdn_candidates(context, urls) if not normalized else []), *urls]
             checked_openalex = False
             index = 0
             while index < len(candidates) or (doi and not checked_openalex):

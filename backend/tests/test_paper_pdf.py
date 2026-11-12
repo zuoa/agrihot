@@ -107,6 +107,30 @@ async def test_mdpi_cdn_downloads_when_publisher_blocks(doi, journal, slug, numb
 
 
 @pytest.mark.asyncio
+async def test_mdpi_url_without_doi_uses_matching_crossref_record():
+    visited = []
+
+    def handler(request):
+        visited.append(str(request.url))
+        if request.url.host == "api.crossref.org":
+            base = {"publisher": "MDPI AG", "ISSN": ["2077-0472"],
+                    "container-title": ["Agriculture"], "volume": "16", "issue": "2"}
+            return httpx.Response(200, json={"message": {"items": [
+                {**base, "DOI": "10.3390/agriculture16020142", "page": "142"},
+                {**base, "DOI": "10.3390/agriculture16020141", "page": "141"},
+            ]}})
+        if request.url.host == "mdpi-res.com":
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(403)
+
+    result = await download_pdf(["https://www.mdpi.com/2077-0472/16/2/141"],
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == ("https://mdpi-res.com/d_attachment/agriculture/agriculture-16-00141"
+                          "/article_deploy/agriculture-16-00141.pdf")
+    assert "journals/2077-0472/works" in visited[0]
+
+
+@pytest.mark.asyncio
 async def test_client_challenge_has_access_denied_reason():
     def handler(request):
         return httpx.Response(200, content=b"<html><title>Client Challenge</title></html>",

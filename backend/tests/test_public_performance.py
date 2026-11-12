@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import ensure_schema, get_session
 from app.main import app
-from app.models import Base, Daily, Item, ItemClassification, PaperMeta, SearchJob, Tag
+from app.models import Base, Daily, Item, ItemClassification, PaperMeta, PaperPdf, PipelineState, SearchJob, Tag
 from app.services import embedding_service
 from app.services.taxonomy_service import sync_catalog
 
@@ -181,6 +181,22 @@ async def test_paper_pdf_job_saves_text_layer_containing_nul(public_client, publ
     assert "\x00" not in detail["content"]
     assert "continues after this character" in detail["content"]
     assert (await public_client.get("/api/v1/items/2/pdf")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_missing_pdfs_precede_cursor_scan_without_advancing_it(public_db, monkeypatch):
+    from app.services import paper_pdf_job
+
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        session.add(PaperPdf(item_id=1, status="pending", error="pdf_file_missing", attempts=0))
+        session.add(PipelineState(key=paper_pdf_job.CURSOR, value="1"))
+        await session.commit()
+
+    monkeypatch.setattr(paper_pdf_job, "BATCH", 1)
+    assert await paper_pdf_job._batch_ids() == ([1], None)
+    monkeypatch.setattr(paper_pdf_job, "BATCH", 2)
+    assert await paper_pdf_job._batch_ids() == ([1, 2], 2)
 
 
 @pytest.mark.asyncio

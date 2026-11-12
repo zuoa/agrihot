@@ -15,21 +15,29 @@ CURSOR = "paper_pdf:last_item_id"
 BATCH = 20
 
 
-async def _batch_ids() -> list[int]:
+async def _batch_ids() -> tuple[list[int], int | None]:
     async with SessionLocal() as session:
         cursor = await session.get(PipelineState, CURSOR)
         after = int(cursor.value) if cursor and cursor.value.isdecimal() else 0
+        priority = (select(Item.id).join(PaperPdf, PaperPdf.item_id == Item.id)
+                    .where(or_(Item.category == "论文", Item.paper.has()),
+                           PaperPdf.status == "pending", PaperPdf.error == "pdf_file_missing")
+                    .order_by(Item.id).limit(BATCH))
+        recovery_ids = list((await session.scalars(priority)).all())
+        if len(recovery_ids) == BATCH:
+            return recovery_ids, None
         retry_before = datetime.now(timezone.utc) - timedelta(hours=24)
         eligible = or_(PaperPdf.item_id.is_(None), PaperPdf.status == "pending",
                        (PaperPdf.status == "running") & (PaperPdf.updated_at < datetime.now(timezone.utc) - timedelta(minutes=20)),
                        (PaperPdf.status == "failed") & (PaperPdf.attempts < 3) & (PaperPdf.updated_at < retry_before))
         query = (select(Item.id).outerjoin(PaperPdf, PaperPdf.item_id == Item.id)
-                 .where(or_(Item.category == "论文", Item.paper.has()), eligible)
-                 .order_by(Item.id).limit(BATCH))
+                 .where(or_(Item.category == "论文", Item.paper.has()), eligible,
+                        Item.id.not_in(recovery_ids))
+                 .order_by(Item.id).limit(BATCH - len(recovery_ids)))
         ids = list((await session.scalars(query.where(Item.id > after))).all())
         if not ids and after:
             ids = list((await session.scalars(query)).all())
-        return ids
+        return recovery_ids + ids, max(ids) if ids else None
 
 
 async def _cursor(item_id: int) -> None:
@@ -94,8 +102,9 @@ async def run(params: dict) -> dict:
         raise RuntimeError("全文抓取功能未启用")
     ids = [int(x) for x in (params.get("item_ids") or [])]
     automatic = not ids
+    scanned_through = None
     if automatic:
-        ids = await _batch_ids()
+        ids, scanned_through = await _batch_ids()
     stats = {"requested": len(ids), "downloaded": 0, "failed": 0, "skipped": 0}
     semaphore = asyncio.Semaphore(3)
 
@@ -118,6 +127,6 @@ async def run(params: dict) -> dict:
                 task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-    if automatic and ids:
-        await _cursor(max(ids))
+    if automatic and scanned_through is not None:
+        await _cursor(scanned_through)
     return stats
