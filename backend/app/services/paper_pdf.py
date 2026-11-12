@@ -286,23 +286,24 @@ def _aeeisp_curl_download(url: str, max_bytes: int) -> bytes:
         os.unlink(name)
 
 
-def _nature_standard_download(url: str, max_bytes: int) -> bytes:
-    """Nature serves its public reference manuscript to urllib while challenging httpx."""
+def _publisher_standard_download(url: str, max_bytes: int, *, host: str, identity_host: str,
+                                 path_pattern: str) -> bytes:
+    """Fetch a public PDF through a publisher's bounded identity redirect."""
     parsed = urlsplit(url)
-    if (parsed.scheme != "https" or parsed.hostname != "www.nature.com"
+    if (parsed.scheme != "https" or parsed.hostname != host
             or parsed.username or parsed.password or parsed.port is not None
-            or not re.fullmatch(r"/articles/[a-zA-Z0-9-]+_reference\.pdf", parsed.path)):
+            or not re.fullmatch(path_pattern, parsed.path)):
         raise FulltextFetchError("invalid_url")
 
-    class NatureRedirect(urllib.request.HTTPRedirectHandler):
+    class PublisherRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, request, fp, code, msg, headers, newurl):
             target = urlsplit(urljoin(request.full_url, newurl))
-            if (target.scheme != "https" or target.hostname not in {"www.nature.com", "idp.nature.com"}
+            if (target.scheme != "https" or target.hostname not in {host, identity_host}
                     or target.username or target.password or target.port is not None):
                 raise FulltextFetchError("source_not_public")
             return super().redirect_request(request, fp, code, msg, headers, newurl)
 
-    opener = urllib.request.build_opener(NatureRedirect())
+    opener = urllib.request.build_opener(PublisherRedirect())
     try:
         with opener.open(url, timeout=settings.paper_pdf_timeout) as response:
             declared = response.headers.get("Content-Length", "")
@@ -320,6 +321,16 @@ def _nature_standard_download(url: str, max_bytes: int) -> bytes:
     if not is_pdf(data):
         raise FulltextFetchError("content_access_denied" if is_access_challenge(data) else "unsupported_content")
     return data
+
+
+def _nature_standard_download(url: str, max_bytes: int) -> bytes:
+    return _publisher_standard_download(url, max_bytes, host="www.nature.com", identity_host="idp.nature.com",
+                                        path_pattern=r"/articles/[a-zA-Z0-9-]+_reference\.pdf")
+
+
+def _springer_standard_download(url: str, max_bytes: int) -> bytes:
+    return _publisher_standard_download(url, max_bytes, host="link.springer.com", identity_host="idp.springer.com",
+                                        path_pattern=r"/content/pdf/10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\.pdf")
 
 
 async def download_pdf(urls: list[str], *, doi: str | None = None, transport: httpx.AsyncBaseTransport | None = None,
@@ -368,6 +379,12 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                         return PdfDownload(data, source, "nature")
                     except FulltextFetchError as exc:
                         remember(exc)
+                if transport is None and urlsplit(source).hostname == "link.springer.com" and urlsplit(source).path.startswith("/content/pdf/"):
+                    try:
+                        data = await asyncio.to_thread(_springer_standard_download, source, options.max_bytes)
+                        return PdfDownload(data, source, "springer")
+                    except FulltextFetchError as exc:
+                        remember(exc)
                 if transport is None and urlsplit(source).hostname == "www.aeeisp.com" and urlsplit(source).path.lower().endswith(".pdf"):
                     try:
                         data = await asyncio.to_thread(_aeeisp_standard_download, source, options.max_bytes)
@@ -391,6 +408,9 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                             if transport is None and plugin.name == "nature" and urlsplit(target).path.endswith("_reference.pdf"):
                                 data = await asyncio.to_thread(_nature_standard_download, target, options.max_bytes)
                                 return PdfDownload(data, target, "nature")
+                            if transport is None and urlsplit(target).hostname == "link.springer.com" and urlsplit(target).path.startswith("/content/pdf/"):
+                                data = await asyncio.to_thread(_springer_standard_download, target, options.max_bytes)
+                                return PdfDownload(data, target, "springer")
                             headers = ({"Referer": resolved, "User-Agent": "Mozilla/5.0"}
                                        if plugin.name == "aeeisp" else None)
                             response = await context.get(target, headers=headers)

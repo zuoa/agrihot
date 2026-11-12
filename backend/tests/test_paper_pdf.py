@@ -108,6 +108,30 @@ def test_nature_standard_client_rejects_other_hosts():
 
 
 @pytest.mark.asyncio
+async def test_springer_pdf_uses_restricted_standard_client(monkeypatch):
+    from app.services import paper_pdf
+
+    seen = []
+
+    def downloaded(url, max_bytes):
+        seen.append((url, max_bytes))
+        return PDF
+
+    monkeypatch.setattr(paper_pdf, "_springer_standard_download", downloaded)
+    source = "https://link.springer.com/content/pdf/10.1007/s11119-026-10436-4.pdf"
+    result = await download_pdf([source])
+    assert result.url == source and result.plugin == "springer" and seen[0][0] == source
+
+
+def test_springer_standard_client_rejects_other_hosts():
+    from app.services.paper_pdf import _springer_standard_download
+
+    with pytest.raises(FulltextFetchError) as error:
+        _springer_standard_download("https://private.example/content/pdf/10.1007/sample.pdf", 1000)
+    assert error.value.reason == "invalid_url"
+
+
+@pytest.mark.asyncio
 async def test_automatic_pdf_job_pauses_before_reserving_items_on_low_disk(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from app.config import settings
