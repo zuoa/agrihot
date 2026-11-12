@@ -78,6 +78,8 @@ class NaturePlugin(PdfPlugin):
         if article_path.startswith("/articles/") and not article_path.endswith(".pdf"):
             article_url = url.split("?", 1)[0].rstrip("/")
             paths.extend((article_url + ".pdf", article_url + "_reference.pdf"))
+        elif article_path.startswith("/articles/") and article_path.endswith(".pdf") and not article_path.endswith("_reference.pdf"):
+            paths.append(url.split("?", 1)[0][:-4] + "_reference.pdf")
         return list(dict.fromkeys(paths))
 
 

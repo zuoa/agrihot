@@ -65,6 +65,9 @@ def test_site_plugins_are_selected_by_publisher_host():
     assert plugin_for("https://www.nature.com/articles/example").name == "nature"
     assert plugin_for("https://www.mdpi.com/2077-0472/16/8/846").name == "mdpi"
     assert plugin_for("https://www.frontiersin.org/articles/example/full").name == "frontiers"
+    assert plugin_for("https://www.nature.com/articles/example.pdf").candidates(
+        "https://www.nature.com/articles/example.pdf", b""
+    ) == ["https://www.nature.com/articles/example_reference.pdf"]
 
 
 @pytest.mark.asyncio
