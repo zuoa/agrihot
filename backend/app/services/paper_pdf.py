@@ -131,9 +131,21 @@ class SmartagPlugin(PdfPlugin):
     def supports(self, url: str) -> bool:
         return urlsplit(url).hostname == "www.smartag.net.cn"
 
+    def mirror_url(self, url: str) -> str | None:
+        parsed = urlsplit(url)
+        if not self.supports(url):
+            return None
+        match = re.fullmatch(r"/CN/(?:rich_html/)?(10\.12133/j\.smartag\.SA\d+)", parsed.path, re.IGNORECASE)
+        if not match:
+            return None
+        doi = re.sub(r"sa(?=\d+$)", "SA", match.group(1), flags=re.IGNORECASE)
+        return f"http://journals.caass.org.cn/zhny/CN/PDF/{doi}"
+
     def candidates(self, url: str, page: bytes) -> list[str]:
         paths = super().candidates(url, page)
         parsed = urlsplit(url)
+        if mirror := self.mirror_url(url):
+            paths.insert(0, mirror)
         if parsed.path.startswith("/CN/rich_html/10.12133/"):
             paths.append(urljoin(url, parsed.path.replace("/CN/rich_html/", "/CN/", 1)))
         return list(dict.fromkeys(paths))
@@ -364,8 +376,10 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
 
             seen: set[str] = set()
             normalized = normalize_doi(doi)
+            smartag = SmartagPlugin()
             candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []),
-                          *(await _mdpi_url_cdn_candidates(context, urls) if not normalized else []), *urls]
+                          *(await _mdpi_url_cdn_candidates(context, urls) if not normalized else []),
+                          *(mirror for url in urls if (mirror := smartag.mirror_url(url))), *urls]
             checked_openalex = False
             index = 0
             while index < len(candidates) or (doi and not checked_openalex):

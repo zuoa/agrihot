@@ -94,6 +94,22 @@ async def test_smartag_pdf_download_uses_article_referer(rich_html):
 
 
 @pytest.mark.asyncio
+async def test_smartag_pdf_uses_public_mirror_before_slow_article_page():
+    source = "https://www.smartag.net.cn/CN/10.12133/j.smartag.SA202602002"
+    mirror = "http://journals.caass.org.cn/zhny/CN/PDF/10.12133/j.smartag.SA202602002"
+    visited = []
+
+    def handler(request):
+        visited.append(str(request.url))
+        if str(request.url) == mirror:
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/octet-stream"})
+        raise AssertionError("The slow publisher page should not be needed")
+
+    result = await download_pdf([source], transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == mirror and visited == [mirror]
+
+
+@pytest.mark.asyncio
 async def test_nature_reference_manuscript_follows_html_pdf_route():
     def handler(request):
         if request.url.path.endswith("_reference.pdf"):
