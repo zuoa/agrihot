@@ -359,6 +359,16 @@ def _springer_standard_download(url: str, max_bytes: int) -> bytes:
                                         path_pattern=r"/content/pdf/10\.\d{4,9}/[-._;()/:A-Za-z0-9]+\.pdf")
 
 
+def _doi_pdf_candidates(doi: str | None) -> list[str]:
+    normalized = normalize_doi(doi)
+    if normalized and re.fullmatch(r"10\.1007/[-._;()/:A-Za-z0-9]+", normalized):
+        return [f"https://link.springer.com/content/pdf/{normalized}.pdf"]
+    if normalized and re.fullmatch(r"10\.1038/[a-z0-9-]+", normalized):
+        article = f"https://www.nature.com/articles/{normalized.split('/', 1)[1]}"
+        return [article + "_reference.pdf", article + ".pdf"]
+    return []
+
+
 async def download_pdf(urls: list[str], *, doi: str | None = None, transport: httpx.AsyncBaseTransport | None = None,
                        validator=None) -> PdfDownload:
     """Try known OA links and publisher pages without trusting URL suffixes."""
@@ -379,7 +389,8 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
             smartag = SmartagPlugin()
             candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []),
                           *(await _mdpi_url_cdn_candidates(context, urls) if not normalized else []),
-                          *(mirror for url in urls if (mirror := smartag.mirror_url(url))), *urls]
+                          *(mirror for url in urls if (mirror := smartag.mirror_url(url))),
+                          *_doi_pdf_candidates(normalized), *urls]
             checked_openalex = False
             index = 0
             while index < len(candidates) or (doi and not checked_openalex):

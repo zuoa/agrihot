@@ -162,6 +162,25 @@ async def test_springer_pdf_uses_restricted_standard_client(monkeypatch):
     assert result.url == source and result.plugin == "springer" and seen[0][0] == source
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("doi,expected", [
+    ("10.1007/s44327-026-00358-1", "https://link.springer.com/content/pdf/10.1007/s44327-026-00358-1.pdf"),
+    ("10.1038/s41598-026-67553-3", "https://www.nature.com/articles/s41598-026-67553-3_reference.pdf"),
+])
+async def test_publisher_doi_pdf_is_tried_before_challenged_article_page(doi, expected):
+    visited = []
+
+    def handler(request):
+        visited.append(str(request.url))
+        if str(request.url) == expected:
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(403)
+
+    result = await download_pdf(["https://doi.org/" + doi], doi=doi,
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == expected and visited == [expected]
+
+
 def test_springer_standard_client_rejects_other_hosts():
     from app.services.paper_pdf import _springer_standard_download
 
