@@ -125,7 +125,21 @@ class AeeispPlugin(PdfPlugin):
         return list(dict.fromkeys(paths))
 
 
-PLUGINS = (ArxivPlugin(), NaturePlugin(), MdpiPlugin(), FrontiersPlugin(), AeeispPlugin(), PdfPlugin())
+class SmartagPlugin(PdfPlugin):
+    name = "smartag"
+
+    def supports(self, url: str) -> bool:
+        return urlsplit(url).hostname == "www.smartag.net.cn"
+
+    def candidates(self, url: str, page: bytes) -> list[str]:
+        paths = super().candidates(url, page)
+        parsed = urlsplit(url)
+        if parsed.path.startswith("/CN/rich_html/10.12133/"):
+            paths.append(urljoin(url, parsed.path.replace("/CN/rich_html/", "/CN/", 1)))
+        return list(dict.fromkeys(paths))
+
+
+PLUGINS = (ArxivPlugin(), NaturePlugin(), MdpiPlugin(), FrontiersPlugin(), AeeispPlugin(), SmartagPlugin(), PdfPlugin())
 MDPI_SLUGS = {"applied sciences": "applsci"}
 
 
@@ -412,7 +426,8 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                                 data = await asyncio.to_thread(_springer_standard_download, target, options.max_bytes)
                                 return PdfDownload(data, target, "springer")
                             headers = ({"Referer": resolved, "User-Agent": "Mozilla/5.0"}
-                                       if plugin.name == "aeeisp" else None)
+                                       if plugin.name in {"aeeisp", "smartag"}
+                                       and urlsplit(target).hostname == urlsplit(resolved).hostname else None)
                             response = await context.get(target, headers=headers)
                             require_success(response)
                             if is_pdf(response.content):

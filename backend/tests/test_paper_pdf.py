@@ -65,9 +65,32 @@ def test_site_plugins_are_selected_by_publisher_host():
     assert plugin_for("https://www.nature.com/articles/example").name == "nature"
     assert plugin_for("https://www.mdpi.com/2077-0472/16/8/846").name == "mdpi"
     assert plugin_for("https://www.frontiersin.org/articles/example/full").name == "frontiers"
+    assert plugin_for("https://www.smartag.net.cn/CN/10.12133/example").name == "smartag"
     assert plugin_for("https://www.nature.com/articles/example.pdf").candidates(
         "https://www.nature.com/articles/example.pdf", b""
     ) == ["https://www.nature.com/articles/example_reference.pdf"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rich_html", [False, True])
+async def test_smartag_pdf_download_uses_article_referer(rich_html):
+    canonical = "https://www.smartag.net.cn/CN/10.12133/j.smartag.SA202512008"
+    pdf = "https://www.smartag.net.cn/CN/article/downloadArticleFile.do?attachType=PDF&id=22704"
+
+    def handler(request):
+        if str(request.url) == pdf:
+            if request.headers.get("referer") == canonical and request.headers.get("user-agent") == "Mozilla/5.0":
+                return httpx.Response(200, content=PDF, headers={"content-type": "application/octet-stream"})
+            return httpx.Response(403)
+        if str(request.url) == canonical:
+            return httpx.Response(200, content=(
+                f'<html><head><meta name="citation_pdf_url" content="{pdf}"></head></html>'.encode()),
+                headers={"content-type": "text/html"})
+        return httpx.Response(200, content=b"<html>Full text</html>", headers={"content-type": "text/html"})
+
+    source = canonical.replace("/CN/", "/CN/rich_html/", 1) if rich_html else canonical
+    result = await download_pdf([source], transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == pdf and result.plugin == "smartag"
 
 
 @pytest.mark.asyncio
