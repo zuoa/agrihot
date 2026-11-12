@@ -292,15 +292,15 @@ def _nature_standard_download(url: str, max_bytes: int) -> bytes:
             or not re.fullmatch(r"/articles/[a-zA-Z0-9-]+_reference\.pdf", parsed.path)):
         raise FulltextFetchError("invalid_url")
 
-    class SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    class NatureRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, request, fp, code, msg, headers, newurl):
             target = urlsplit(urljoin(request.full_url, newurl))
-            if (target.scheme != "https" or target.hostname != "www.nature.com"
+            if (target.scheme != "https" or target.hostname not in {"www.nature.com", "idp.nature.com"}
                     or target.username or target.password or target.port is not None):
                 raise FulltextFetchError("source_not_public")
             return super().redirect_request(request, fp, code, msg, headers, newurl)
 
-    opener = urllib.request.build_opener(SameHostRedirect())
+    opener = urllib.request.build_opener(NatureRedirect())
     try:
         with opener.open(url, timeout=settings.paper_pdf_timeout) as response:
             declared = response.headers.get("Content-Length", "")
