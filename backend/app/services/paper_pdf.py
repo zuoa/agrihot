@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import io
 import os
+import re
 import subprocess
 import tempfile
 import urllib.error
@@ -121,6 +122,7 @@ class AeeispPlugin(PdfPlugin):
 
 
 PLUGINS = (ArxivPlugin(), NaturePlugin(), MdpiPlugin(), FrontiersPlugin(), AeeispPlugin(), PdfPlugin())
+MDPI_SLUGS = {"applied sciences": "applsci"}
 
 
 def plugin_for(url: str) -> PdfPlugin:
@@ -129,6 +131,11 @@ def plugin_for(url: str) -> PdfPlugin:
 
 def is_pdf(data: bytes) -> bool:
     return data.lstrip().startswith(b"%PDF-") and b"%%EOF" in data[-2048:]
+
+
+def is_access_challenge(data: bytes) -> bool:
+    sample = data[:4096].lower()
+    return b"<title>client challenge" in sample or b"_fs-ch-" in sample
 
 
 def validate_pdf(data: bytes) -> None:
@@ -141,6 +148,36 @@ def validate_pdf(data: bytes) -> None:
         raise
     except Exception:
         raise FulltextFetchError("unsupported_content") from None
+
+
+async def _mdpi_cdn_candidates(context: FetchContext, doi: str) -> list[str]:
+    """Find MDPI's public PDF CDN path when its article host blocks this server."""
+    if not doi.startswith("10.3390/"):
+        return []
+    try:
+        response = await context.get("https://api.crossref.org/works/" + quote(doi, safe="/"))
+        if response.status_code != 200:
+            return []
+        record = response.json()["message"]
+        if normalize_doi(record.get("DOI")) != doi:
+            return []
+        volume = str(record.get("volume") or "")
+        number = str(record.get("article-number") or record.get("page") or "").split("-", 1)[0]
+        if not volume.isdecimal() or not number.isdecimal():
+            return []
+        title = str((record.get("container-title") or [""])[0]).lower()
+        doi_code = re.match(r"10\.3390/([a-z]+)\d", doi)
+        slugs = dict.fromkeys(filter(None, (
+            MDPI_SLUGS.get(title), re.sub(r"[^a-z0-9]", "", title),
+            doi_code.group(1) if doi_code else None,
+        )))
+        return [
+            f"https://mdpi-res.com/d_attachment/{slug}/{slug}-{int(volume):02d}-{int(number):05d}"
+            f"/article_deploy/{slug}-{int(volume):02d}-{int(number):05d}.pdf"
+            for slug in slugs
+        ]
+    except (FulltextFetchError, ValueError, KeyError, TypeError, AttributeError):
+        return []
 
 
 def _aeeisp_standard_download(url: str, max_bytes: int) -> bytes:
@@ -208,19 +245,19 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                        validator=None) -> PdfDownload:
     """Try known OA links and publisher pages without trusting URL suffixes."""
     from .fulltext.base import validate_public_source
-    options = FetchOptions(timeout=settings.paper_pdf_timeout)
+    options = FetchOptions(timeout=settings.paper_pdf_timeout, max_bytes=settings.paper_pdf_max_bytes)
     async with httpx.AsyncClient(transport=transport, headers={"User-Agent": "AgriHot/1.0 (+https://agrihot.com)"}) as client:
         context = FetchContext(client, options, validator=validator or validate_public_source)
         async with asyncio.timeout(options.timeout):
             last = FulltextFetchError("unsupported_content")
             seen: set[str] = set()
-            candidates = list(urls)
+            normalized = normalize_doi(doi)
+            candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []), *urls]
             checked_openalex = False
             index = 0
             while index < len(candidates) or (doi and not checked_openalex):
                 if index >= len(candidates):
                     checked_openalex = True
-                    normalized = normalize_doi(doi)
                     if normalized:
                         try:
                             metadata = await context.get("https://api.openalex.org/works/https://doi.org/" + quote(normalized, safe="/"))
@@ -249,6 +286,9 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                     resolved = str(page.url)
                     if is_pdf(page.content):
                         return PdfDownload(page.content, resolved, "direct")
+                    if is_access_challenge(page.content):
+                        last = FulltextFetchError("content_access_denied")
+                        continue
                     if "html" not in page.headers.get("content-type", "").lower() and not page.content.lstrip().lower().startswith((b"<!doctype", b"<html")):
                         continue
                     plugin = plugin_for(resolved)
@@ -260,6 +300,9 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                             require_success(response)
                             if is_pdf(response.content):
                                 return PdfDownload(response.content, str(response.url), plugin.name)
+                            if is_access_challenge(response.content):
+                                last = FulltextFetchError("content_access_denied")
+                                continue
                             if transport is None and plugin.name == "aeeisp" and urlsplit(target).hostname == "www.aeeisp.com":
                                 try:
                                     data = await asyncio.to_thread(_aeeisp_standard_download, target, options.max_bytes)

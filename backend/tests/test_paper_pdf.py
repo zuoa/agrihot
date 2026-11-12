@@ -85,6 +85,40 @@ async def test_known_pdf_route_survives_blocked_landing_page():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("doi,journal,slug,number", [
+    ("10.3390/app16178869", "Applied Sciences", "applsci", "08869"),
+    ("10.3390/su18179186", "Sustainability", "sustainability", "09186"),
+])
+async def test_mdpi_cdn_downloads_when_publisher_blocks(doi, journal, slug, number):
+    def handler(request):
+        if request.url.host == "api.crossref.org":
+            return httpx.Response(200, json={"message": {
+                "DOI": doi, "container-title": [journal], "volume": "16" if slug == "applsci" else "18",
+                "page": str(int(number)),
+            }})
+        if request.url.host == "mdpi-res.com":
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(403)
+
+    result = await download_pdf(["https://doi.org/" + doi], doi=doi,
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    name = f"{slug}-{'16' if slug == 'applsci' else '18'}-{number}"
+    assert result.url == f"https://mdpi-res.com/d_attachment/{slug}/{name}/article_deploy/{name}.pdf"
+
+
+@pytest.mark.asyncio
+async def test_client_challenge_has_access_denied_reason():
+    def handler(request):
+        return httpx.Response(200, content=b"<html><title>Client Challenge</title></html>",
+                              headers={"content-type": "text/html"})
+
+    with pytest.raises(FulltextFetchError) as error:
+        await download_pdf(["https://www.nature.com/articles/example.pdf"],
+                           transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert error.value.reason == "content_access_denied"
+
+
+@pytest.mark.asyncio
 async def test_aeeisp_preview_route_survives_blocked_article_page():
     def handler(request):
         if request.url.path.endswith("/10.11975/sample.pdf"):
