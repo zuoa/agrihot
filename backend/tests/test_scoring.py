@@ -4,6 +4,8 @@ import sys
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -21,8 +23,8 @@ os.environ["LITERATURE_FETCH_ENABLED"] = "false"
 from app.config import settings  # noqa: E402
 from app.database import get_session  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models import ApiKey, Base, hash_api_key  # noqa: E402
-from app.services import content_service, scoring_service  # noqa: E402
+from app.models import ApiKey, Base, Item, hash_api_key  # noqa: E402
+from app.services import content_service, job_runner, scoring_service  # noqa: E402
 
 TEST_KEY = "agri_test_key_scoring"
 
@@ -164,6 +166,60 @@ def mock_deepseek(monkeypatch, scores: dict):
 
     monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
     monkeypatch.setattr(scoring_service, "_call_deepseek", fake_call)
+
+
+@pytest.mark.asyncio
+async def test_scoring_locks_only_item_with_joined_pdf(monkeypatch):
+    mock_deepseek(monkeypatch, {
+        "relevant": True, "impact": 26, "substance": 22, "depth": 16,
+        "authority": 12, "freshness": 9,
+    })
+    locked_sql = []
+
+    def capture_lock(conn, cursor, statement, parameters, context, executemany):
+        query = context.compiled.statement if context.compiled else None
+        if getattr(query, "_for_update_arg", None) is not None:
+            locked_sql.append(str(query.compile(dialect=postgresql.dialect())))
+
+    event.listen(engine.sync_engine, "before_cursor_execute", capture_lock)
+    try:
+        async with TestSession() as session:
+            item = _prompt_item()
+            session.add(item)
+            await session.commit()
+            assert await scoring_service.score_item(session, item) == 85
+            await session.commit()
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", capture_lock)
+
+    assert len(locked_sql) == 1
+    assert "LEFT OUTER JOIN paper_pdfs" in locked_sql[0]
+    assert locked_sql[0].endswith("FOR UPDATE OF items")
+
+
+@pytest.mark.asyncio
+async def test_unscored_job_scores_only_missing_items(monkeypatch):
+    monkeypatch.setattr(job_runner, "SessionLocal", TestSession)
+    monkeypatch.setattr(settings, "deepseek_api_key", "fake-key")
+    called = []
+
+    async def fake_call(item):
+        called.append(item.id)
+        return '{"relevant": true, "impact": 26, "substance": 22, "depth": 16, "authority": 12, "freshness": 9}'
+
+    monkeypatch.setattr(scoring_service, "_call_deepseek", fake_call)
+    async with TestSession() as session:
+        missing = _prompt_item()
+        scored = _prompt_item(title="t2", url="https://x2", url_hash="h2", score=40)
+        session.add_all([missing, scored])
+        await session.commit()
+        missing_id, scored_id = missing.id, scored.id
+
+    assert await job_runner._rescore_unscored({}) == {"total": 1, "scored": 1, "failed": 0}
+    assert called == [missing_id]
+    async with TestSession() as session:
+        assert (await session.get(Item, missing_id)).score == 85
+        assert (await session.get(Item, scored_id)).score == 40
 
 
 @pytest.mark.asyncio

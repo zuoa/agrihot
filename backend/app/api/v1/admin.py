@@ -259,7 +259,7 @@ async def update_item(
     _: None = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> ItemOut:
-    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update())).scalar_one_or_none()
+    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update(of=Item))).scalar_one_or_none()
     if item is None:
         raise problem(404, "Not Found", "条目不存在")
     updates = payload.model_dump(exclude_unset=True)
@@ -304,7 +304,7 @@ async def classify_item(item_id: int, use_model: bool = False, _: None = Depends
                         session: AsyncSession = Depends(get_session)):
     from ...services.taxonomy_service import classify_one
 
-    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update())).scalar_one_or_none()
+    item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update(of=Item))).scalar_one_or_none()
     if item is None:
         raise problem(404, "Not Found", "条目不存在")
     if item.classification and item.classification.locked:

@@ -45,7 +45,7 @@ async def backfill(factory, *, dry_run=False, batch_id=None, batch_size=100, aft
         for item_id in ids:
             async with factory() as session:
                 # One article per transaction keeps the admin editor responsive.
-                item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update())).scalar_one_or_none()
+                item = (await session.execute(select(Item).where(Item.id == item_id).with_for_update(of=Item))).scalar_one_or_none()
                 if item is None:
                     counts["missing"] += 1
                 elif item.classification and item.classification.locked:
@@ -84,7 +84,7 @@ async def rollback(factory, batch_id):
     for change_id in ids:
         async with factory() as session:
             change = await session.get(ClassificationChange, change_id)
-            item = (await session.execute(select(Item).where(Item.id == change.item_id).with_for_update())).scalar_one_or_none()
+            item = (await session.execute(select(Item).where(Item.id == change.item_id).with_for_update(of=Item))).scalar_one_or_none()
             if not item or (item.classification and item.classification.locked) or snapshot(item) != change.after:
                 skipped += 1
                 continue

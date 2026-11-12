@@ -207,7 +207,9 @@ async def score_item(session: AsyncSession, item: Item) -> int | None:
         data = {}
     # Reload editorial locks and facts after the network call. A concurrent manual
     # edit must not be replaced by an old model response.
-    await session.refresh(item, with_for_update=True)
+    # Item.pdf is joined eagerly with an outer join. PostgreSQL cannot lock
+    # that nullable join side, so restrict the row lock to items.
+    await session.refresh(item, with_for_update={"of": Item})
     item.score = total
     editorial_service.apply_model(item, data, expected_hash=editorial_hash)
     comment = str(data.get("comment") or "")[:200]

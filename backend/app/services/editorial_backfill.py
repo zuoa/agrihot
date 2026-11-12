@@ -47,7 +47,7 @@ async def backfill(factory, *, batch_id="editorial-v1", limit=20, dry_run=False,
                     data = json.loads(raw) if raw else None
                     if not isinstance(data, dict) or "attention_point" not in data or "source_provenance" not in data:
                         raise ValueError("模型未返回完整阅读辅助字段")
-                    await session.refresh(item, with_for_update=True)
+                    await session.refresh(item, with_for_update={"of": Item})
                     if editorial.apply_model(item, data, expected_hash=expected):
                         await session.commit()
                         stats["generated"] += 1
