@@ -68,6 +68,19 @@ def test_site_plugins_are_selected_by_publisher_host():
 
 
 @pytest.mark.asyncio
+async def test_nature_reference_manuscript_follows_html_pdf_route():
+    def handler(request):
+        if request.url.path.endswith("_reference.pdf"):
+            return httpx.Response(200, content=PDF, headers={"content-type": "application/pdf"})
+        return httpx.Response(200, content=b"<html>Article page</html>",
+                              headers={"content-type": "text/html"})
+
+    result = await download_pdf(["https://www.nature.com/articles/s41598-026-66501-5"],
+                                transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert result.url == "https://www.nature.com/articles/s41598-026-66501-5_reference.pdf"
+
+
+@pytest.mark.asyncio
 async def test_automatic_pdf_job_pauses_before_reserving_items_on_low_disk(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from app.config import settings
