@@ -2,7 +2,7 @@
 import httpx
 import pytest
 
-from app.services.paper_pdf import download_pdf, plugin_for, is_pdf, validate_pdf
+from app.services.paper_pdf import download_pdf, plugin_for, is_pdf, store_pdf, validate_pdf
 from app.services.fulltext.base import FulltextFetchError
 
 
@@ -50,11 +50,43 @@ def test_pdf_with_fake_header_and_eof_is_rejected_before_storage():
         validate_pdf(PDF)
 
 
+def test_worker_refuses_to_store_pdf_without_shared_volume(tmp_path, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setenv("AGRIHOT_PROCESS", "worker")
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    with pytest.raises(OSError, match="volume is not mounted"):
+        store_pdf(PDF)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_site_plugins_are_selected_by_publisher_host():
     assert plugin_for("https://arxiv.org/abs/2611.02862").name == "arxiv"
     assert plugin_for("https://www.nature.com/articles/example").name == "nature"
     assert plugin_for("https://www.mdpi.com/2077-0472/16/8/846").name == "mdpi"
     assert plugin_for("https://www.frontiersin.org/articles/example/full").name == "frontiers"
+
+
+@pytest.mark.asyncio
+async def test_automatic_pdf_job_pauses_before_reserving_items_on_low_disk(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.config import settings
+    from app.services import paper_pdf_job, runtime_settings
+
+    monkeypatch.setattr(settings, "paper_pdf_dir", str(tmp_path))
+    monkeypatch.setattr(runtime_settings, "get", lambda _: True)
+    monkeypatch.setattr(paper_pdf_job.shutil, "disk_usage", lambda _: SimpleNamespace(free=1))
+
+    async def unexpected_batch():
+        raise AssertionError("Low disk space must leave the queue untouched")
+
+    async def logged(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(paper_pdf_job, "_batch_ids", unexpected_batch)
+    monkeypatch.setattr(paper_pdf_job.job_runner, "append_log", logged)
+    stats = await paper_pdf_job.run({})
+    assert stats["storage_paused"] and stats["requested"] == 0
 
 
 @pytest.mark.asyncio
@@ -128,6 +160,21 @@ async def test_mdpi_url_without_doi_uses_matching_crossref_record():
     assert result.url == ("https://mdpi-res.com/d_attachment/agriculture/agriculture-16-00141"
                           "/article_deploy/agriculture-16-00141.pdf")
     assert "journals/2077-0472/works" in visited[0]
+
+
+@pytest.mark.asyncio
+async def test_oversized_pdf_reason_survives_later_blocked_source():
+    from app.config import settings
+
+    def handler(request):
+        if request.url.path.endswith(".pdf"):
+            return httpx.Response(200, headers={"content-length": str(settings.paper_pdf_max_bytes + 1)})
+        return httpx.Response(403)
+
+    with pytest.raises(FulltextFetchError) as error:
+        await download_pdf(["https://publisher.example/large.pdf", "https://publisher.example/blocked"],
+                           transport=httpx.MockTransport(handler), validator=lambda _: _valid())
+    assert error.value.reason == "content_too_large"
 
 
 @pytest.mark.asyncio

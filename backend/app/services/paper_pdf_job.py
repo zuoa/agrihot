@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import shutil
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import or_, select
 
@@ -13,6 +16,7 @@ from .fulltext.base import FulltextFetchError
 
 CURSOR = "paper_pdf:last_item_id"
 BATCH = 20
+MIN_FREE_BYTES = 1024 * 1024 * 1024
 
 
 async def _batch_ids() -> tuple[list[int], int | None]:
@@ -98,12 +102,27 @@ async def fetch_one(item_id: int, *, force: bool = False) -> str:
 
 async def run(params: dict) -> dict:
     from . import runtime_settings
+    from ..config import settings
     if not runtime_settings.get("content_fetch_enabled"):
         raise RuntimeError("全文抓取功能未启用")
     ids = [int(x) for x in (params.get("item_ids") or [])]
     automatic = not ids
     scanned_through = None
     if automatic:
+        pdf_dir = Path(settings.paper_pdf_dir)
+        if os.environ.get("AGRIHOT_PROCESS") == "worker" and not pdf_dir.is_mount():
+            await job_runner.append_log("fetch_paper_pdfs", stage="pdf", level="warning",
+                                        message="PDF 共享卷未挂载，暂停自动下载")
+            return {"requested": 0, "downloaded": 0, "failed": 0, "skipped": 0,
+                    "storage_paused": True, "reason": "volume_missing"}
+        if pdf_dir.is_dir():
+            free_bytes = shutil.disk_usage(pdf_dir).free
+            required_bytes = MIN_FREE_BYTES + BATCH * settings.paper_pdf_max_bytes
+            if free_bytes < required_bytes:
+                await job_runner.append_log("fetch_paper_pdfs", stage="pdf", level="warning",
+                                            message="PDF 存储空间不足，暂停自动下载")
+                return {"requested": 0, "downloaded": 0, "failed": 0, "skipped": 0,
+                        "storage_paused": True, "free_bytes": free_bytes}
         ids, scanned_through = await _batch_ids()
     stats = {"requested": len(ids), "downloaded": 0, "failed": 0, "skipped": 0}
     semaphore = asyncio.Semaphore(3)

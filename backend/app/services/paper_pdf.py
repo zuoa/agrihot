@@ -291,6 +291,12 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
         context = FetchContext(client, options, validator=validator or validate_public_source)
         async with asyncio.timeout(options.timeout):
             last = FulltextFetchError("unsupported_content")
+
+            def remember(error: FulltextFetchError) -> None:
+                nonlocal last
+                if last.reason != "content_too_large" or error.reason == "content_too_large":
+                    last = error
+
             seen: set[str] = set()
             normalized = normalize_doi(doi)
             candidates = [*(await _mdpi_cdn_candidates(context, normalized) if normalized else []),
@@ -321,7 +327,7 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                         data = await asyncio.to_thread(_aeeisp_standard_download, source, options.max_bytes)
                         return PdfDownload(data, source, "aeeisp")
                     except FulltextFetchError as exc:
-                        last = exc
+                        remember(exc)
                 try:
                     page = await context.get(source)
                     require_success(page)
@@ -329,7 +335,7 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                     if is_pdf(page.content):
                         return PdfDownload(page.content, resolved, "direct")
                     if is_access_challenge(page.content):
-                        last = FulltextFetchError("content_access_denied")
+                        remember(FulltextFetchError("content_access_denied"))
                         continue
                     if "html" not in page.headers.get("content-type", "").lower() and not page.content.lstrip().lower().startswith((b"<!doctype", b"<html")):
                         continue
@@ -343,32 +349,34 @@ async def download_pdf(urls: list[str], *, doi: str | None = None, transport: ht
                             if is_pdf(response.content):
                                 return PdfDownload(response.content, str(response.url), plugin.name)
                             if is_access_challenge(response.content):
-                                last = FulltextFetchError("content_access_denied")
+                                remember(FulltextFetchError("content_access_denied"))
                                 continue
                             if transport is None and plugin.name == "aeeisp" and urlsplit(target).hostname == "www.aeeisp.com":
                                 try:
                                     data = await asyncio.to_thread(_aeeisp_standard_download, target, options.max_bytes)
                                     return PdfDownload(data, target, plugin.name)
                                 except FulltextFetchError as exc:
-                                    last = exc
+                                    remember(exc)
                             else:
-                                last = FulltextFetchError("unsupported_content")
+                                remember(FulltextFetchError("unsupported_content"))
                         except FulltextFetchError as exc:
-                            last = exc
+                            remember(exc)
                             if transport is None and plugin.name == "aeeisp" and urlsplit(target).hostname == "www.aeeisp.com":
                                 try:
                                     data = await asyncio.to_thread(_aeeisp_standard_download, target, options.max_bytes)
                                     return PdfDownload(data, target, plugin.name)
                                 except FulltextFetchError as fallback_error:
-                                    last = fallback_error
+                                    remember(fallback_error)
                 except FulltextFetchError as exc:
-                    last = exc
+                    remember(exc)
             raise last
 
 
 def store_pdf(data: bytes) -> tuple[str, int]:
     digest = hashlib.sha256(data).hexdigest()
     root = Path(settings.paper_pdf_dir)
+    if os.environ.get("AGRIHOT_PROCESS") == "worker" and not root.is_mount():
+        raise OSError("paper PDF volume is not mounted")
     destination = root / digest[:2] / f"{digest}.pdf"
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists():
