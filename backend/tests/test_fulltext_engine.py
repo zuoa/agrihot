@@ -253,6 +253,21 @@ async def test_cross_origin_redirect_does_not_forward_authorization():
 
 
 @pytest.mark.asyncio
+async def test_source_header_with_utf8_filename_does_not_break_download():
+    def handler(request):
+        return httpx.Response(200, content=b"%PDF-1.4\n", headers=[
+            (b"content-type", b"application/pdf"),
+            (b"content-disposition", 'attachment; filename="农学.pdf"'.encode()),
+        ])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        context = FetchContext(client, FetchOptions(), validator=allow_test_url)
+        response = await context.get("https://publisher.example/paper.pdf")
+        assert response.content.startswith(b"%PDF-")
+        assert any(k == b"content-disposition" for k, _ in response.headers.raw)
+
+
+@pytest.mark.asyncio
 async def test_total_deadline_and_cancellation_are_preserved():
     async def slow(request):
         await asyncio.sleep(1)

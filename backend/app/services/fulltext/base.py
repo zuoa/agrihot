@@ -132,8 +132,9 @@ class FetchContext:
                             raise FulltextFetchError("content_too_large")
                         parts.append(part)
                     response = httpx.Response(raw.status_code, request=raw.request, content=b"".join(parts),
-                                              headers={k: v for k, v in raw.headers.items()
-                                                       if k not in {"content-encoding", "transfer-encoding", "content-length"}})
+                                              headers=[(k, v) for k, v in raw.headers.raw
+                                                       if k.lower() not in {b"content-encoding", b"transfer-encoding",
+                                                                            b"content-length"}])
             except httpx.TimeoutException:
                 error = FulltextFetchError("reader_timeout" if trusted else "source_timeout")
                 self.failures[key] = error

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
@@ -17,6 +18,7 @@ from .fulltext.base import FulltextFetchError
 CURSOR = "paper_pdf:last_item_id"
 BATCH = 20
 MIN_FREE_BYTES = 1024 * 1024 * 1024
+log = logging.getLogger(__name__)
 
 
 async def _batch_ids() -> tuple[list[int], int | None]:
@@ -32,7 +34,8 @@ async def _batch_ids() -> tuple[list[int], int | None]:
             return recovery_ids, None
         retry_before = datetime.now(timezone.utc) - timedelta(hours=24)
         eligible = or_(PaperPdf.item_id.is_(None), PaperPdf.status == "pending",
-                       (PaperPdf.status == "running") & (PaperPdf.updated_at < datetime.now(timezone.utc) - timedelta(minutes=20)),
+                       (PaperPdf.status == "running") & (PaperPdf.attempts < 3) &
+                       (PaperPdf.updated_at < datetime.now(timezone.utc) - timedelta(minutes=20)),
                        (PaperPdf.status == "failed") & (PaperPdf.attempts < 3) & (PaperPdf.updated_at < retry_before))
         query = (select(Item.id).outerjoin(PaperPdf, PaperPdf.item_id == Item.id)
                  .where(or_(Item.category == "论文", Item.paper.has()), eligible,
@@ -77,11 +80,14 @@ async def fetch_one(item_id: int, *, force: bool = False) -> str:
         await asyncio.to_thread(paper_pdf.validate_pdf, result.data)
         digest, size = await asyncio.to_thread(paper_pdf.store_pdf, result.data)
         extracted = await paper_pdf.extract_pdf_text(result.data)
-    except (FulltextFetchError, TimeoutError, OSError) as exc:
+    except Exception as exc:
+        if not isinstance(exc, (FulltextFetchError, TimeoutError, OSError)):
+            log.exception("paper PDF fetch failed unexpectedly for item %s", item_id)
         async with SessionLocal() as session:
             record = await session.get(PaperPdf, item_id)
             record.status, record.error = "failed", (exc.reason if isinstance(exc, FulltextFetchError)
-                                                       else "fetch_timeout" if isinstance(exc, TimeoutError) else "storage_error")
+                                                       else "fetch_timeout" if isinstance(exc, TimeoutError)
+                                                       else "storage_error" if isinstance(exc, OSError) else "fetcher_failed")
             record.updated_at = utcnow()
             await session.commit()
         return "failed"

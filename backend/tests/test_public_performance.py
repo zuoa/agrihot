@@ -1,7 +1,7 @@
 """Compact public reads preserve cards and avoid fetching full-text columns."""
 import gzip
 import os
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -197,6 +197,35 @@ async def test_missing_pdfs_precede_cursor_scan_without_advancing_it(public_db, 
     assert await paper_pdf_job._batch_ids() == ([1], None)
     monkeypatch.setattr(paper_pdf_job, "BATCH", 2)
     assert await paper_pdf_job._batch_ids() == ([1, 2], 2)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_pdf_fetch_error_records_failure(public_db, monkeypatch):
+    from app.services import paper_pdf, paper_pdf_job
+
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+
+    async def broken(*args, **kwargs):
+        raise ValueError("malformed upstream header")
+
+    monkeypatch.setattr(paper_pdf, "download_pdf", broken)
+    assert await paper_pdf_job.fetch_one(1) == "failed"
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        record = await session.get(PaperPdf, 1)
+        assert record.status == "failed" and record.error == "fetcher_failed"
+
+
+@pytest.mark.asyncio
+async def test_interrupted_pdf_at_retry_limit_is_not_selected(public_db, monkeypatch):
+    from app.services import paper_pdf_job
+
+    monkeypatch.setattr(paper_pdf_job, "SessionLocal", async_sessionmaker(public_db, expire_on_commit=False))
+    async with async_sessionmaker(public_db, expire_on_commit=False)() as session:
+        session.add(PaperPdf(item_id=1, status="running", attempts=3,
+                             updated_at=datetime.now(timezone.utc) - timedelta(hours=1)))
+        await session.commit()
+    ids, _ = await paper_pdf_job._batch_ids()
+    assert ids == [2]
 
 
 @pytest.mark.asyncio
