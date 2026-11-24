@@ -4,7 +4,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
-from ...database import get_session
+from ...database import get_detail_session, get_session
 from ...models import Item, Special, SpecialItem, SpecialVersion, utcnow
 from ...security import require_admin
 from ...special_schemas import MergeIn, SpecialPatch
@@ -16,8 +16,8 @@ router = APIRouter(prefix="/api/v1", tags=["specials"])
 
 @router.get("/specials/featured")
 async def featured(session: AsyncSession = Depends(get_session)):
-    rows = await service.public_specials(session, featured=True)
-    return {"specials": [service.brief(s, v) for s, v in rows[:3]]}
+    rows = await service.public_specials(session, featured=True, limit=3)
+    return {"specials": [service.brief(s, v) for s, v in rows]}
 
 
 @router.get("/specials")
@@ -36,7 +36,7 @@ async def list_specials(
 @router.get("/specials/{special_id}")
 async def detail(
     special_id: int, page: int = Query(1, ge=1), page_size: int = Query(12, ge=1, le=50),
-    category: str | None = Query(None, max_length=20), session: AsyncSession = Depends(get_session),
+    category: str | None = Query(None, max_length=20), session: AsyncSession = Depends(get_detail_session),
 ):
     special = await session.get(Special, special_id)
     if special and special.status == "merged" and special.merged_into:

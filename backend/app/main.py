@@ -154,6 +154,8 @@ _PUBLIC_CACHE = {
     "/api/v1/tags": "public, max-age=300, stale-while-revalidate=3600",
     "/api/v1/stats": "public, max-age=60, stale-while-revalidate=600",
     "/api/v1/paper-directions": "public, max-age=300, stale-while-revalidate=3600",
+    "/sitemap.xml": "public, max-age=300, stale-while-revalidate=3600",
+    "/robots.txt": "public, max-age=3600, stale-while-revalidate=86400",
 }
 
 

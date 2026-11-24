@@ -52,6 +52,7 @@ from ...services import (
     ingest_service,
     job_runner,
     literature_scheduler,
+    read_cache,
     runtime_settings,
     scoring_service,
     source_service,
@@ -286,6 +287,7 @@ async def update_item(
         except ValueError as exc:
             raise problem(422, "Unprocessable Entity", str(exc))
     await session.commit()
+    read_cache.reset()
     await session.refresh(item)
     return _to_item_out(item)
 
@@ -313,6 +315,7 @@ async def classify_item(item_id: int, use_model: bool = False, _: None = Depends
         raise problem(503, "Service Unavailable", "未配置 DEEPSEEK_API_KEY，不能启用模型补判")
     await classify_one(session, item, force=True, use_model=use_model)
     await session.commit()
+    read_cache.reset()
     await session.refresh(item)
     return _to_item_out(item)
 
@@ -359,6 +362,7 @@ async def rescore_item(
         raise problem(502, "Bad Gateway", "评分失败，请稍后重试")
     await scoring_service.refresh_day_selection(session, item.created_at)
     await session.commit()
+    read_cache.reset()
     await session.refresh(item)
     return _to_item_out(item)
 
@@ -372,6 +376,7 @@ async def admin_delete_item(
     if not await ingest_service.delete_item(session, item_id):
         raise problem(404, "Not Found", "条目不存在")
     await session.commit()
+    read_cache.reset()
     return {"status": "deleted", "item_id": item_id}
 
 
@@ -389,6 +394,7 @@ async def batch_delete_items(
         else:
             missing.append(item_id)
     await session.commit()
+    read_cache.reset()
     return BatchDeleteOut(deleted=deleted, missing=missing)
 
 
@@ -668,6 +674,7 @@ async def generate_daily(
     if daily is None:
         raise problem(404, "Not Found", "该日期没有收录资讯，无法生成日报")
     await session.commit()
+    read_cache.invalidate("dailies", "daily-latest", "daily", "stats", "sitemap")
     return DailyGenerateOut(
         date=daily.date, title=daily.title,
         highlight_count=len(daily.highlights or []),

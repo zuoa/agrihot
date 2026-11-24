@@ -53,11 +53,26 @@ usePageSeo(() => ({ title: `${special.value?.title || '热点专题'} · AgriHot
 .special-section-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 20px; justify-content: space-between; padding-bottom: 13px; border-bottom: 1px solid var(--site-line); margin-bottom: 20px; }
 .special-section-title h2, .special-updates-title { font-size: 20px; font-weight: 650; }
 .special-section-title > span, .special-section-note { font-size: 12px; color: var(--site-muted); line-height: 1.8; }
-.special-overview { background: white; border: 1px solid var(--site-line); border-left: 3px solid var(--site-green); border-radius: 0 12px 12px 0; padding: 25px 28px; }
-.special-change { display: flex; flex-wrap: wrap; gap: 6px 13px; padding-top: 16px; margin-top: 20px; border-top: 1px solid var(--site-line); font-size: 11px; color: var(--site-muted); line-height: 1.8; }
-.special-change strong { color: var(--site-green); font-weight: 500; }
-.special-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
-.special-findings > article { padding: 22px; border: 1px solid var(--site-line); border-radius: 10px; background: white; }
+.special-overview {
+  background: linear-gradient(155deg, #f5faf3 0%, #ffffff 60%);
+  border: 1px solid #cfe0ca;
+  border-left: 4px solid var(--site-green);
+  border-radius: 0 16px 16px 0;
+  padding: 26px 30px;
+  box-shadow: var(--site-shadow-sm);
+}
+.special-change { display: flex; flex-wrap: wrap; gap: 6px 13px; padding-top: 16px; margin-top: 20px; border-top: 1px solid #e1e9de; font-size: 11.5px; color: var(--site-muted); line-height: 1.8; }
+.special-change strong { padding: 1px 8px; border-radius: 999px; background: #e8f3e5; color: var(--site-green); font-weight: 600; }
+.special-findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.special-findings > article {
+  padding: 22px 24px;
+  border: 1px solid var(--site-line);
+  border-radius: 14px;
+  background: white;
+  box-shadow: var(--site-shadow-xs);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+.special-findings > article:hover { border-color: #b7ceb2; box-shadow: var(--site-shadow-sm); }
 .special-findings > article:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .special-timeline { border-left: 1px solid #b8ccb1; margin-left: 8px; padding-left: 26px; }
 .special-timeline li { position: relative; padding-bottom: 26px; }

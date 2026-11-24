@@ -56,6 +56,10 @@ async def ensure_schema(target_engine=None) -> None:
             if col not in existing:
                 await conn.execute(text(f"ALTER TABLE items ADD COLUMN {col} {ddl}"))
         await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_items_doi ON items (doi)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_item_tags_tag_item ON item_tags (tag_id, item_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_items_created_id ON items (created_at DESC, id DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_items_selected_created_id ON items (is_selected, created_at DESC, id DESC)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_items_category_created_id ON items (category, created_at DESC, id DESC)"))
         key_columns = await conn.run_sync(lambda c: {col["name"] for col in inspect(c).get_columns("api_keys")})
         if "purpose" not in key_columns:
             await conn.execute(text("ALTER TABLE api_keys ADD COLUMN purpose VARCHAR(20) NOT NULL DEFAULT 'push'"))

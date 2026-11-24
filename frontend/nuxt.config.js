@@ -14,12 +14,17 @@ export default defineNuxtConfig({
         { rel: 'icon', href: '/favicon.svg', type: 'image/svg+xml' },
         { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
         { rel: 'sitemap', type: 'application/xml', href: '/sitemap.xml' },
+        { rel: 'preconnect', href: 'https://wsrv.nl', crossorigin: '' },
+        { rel: 'dns-prefetch', href: 'https://wsrv.nl' },
       ],
       meta: [
-        { name: 'theme-color', content: '#327a2d' },
+        { name: 'theme-color', content: '#234e22' },
         { name: 'author', content: 'AgriHot' },
       ],
     },
+  },
+  nitro: {
+    compressPublicAssets: true,
   },
   runtimeConfig: {
     apiBase,
@@ -31,6 +36,10 @@ export default defineNuxtConfig({
     },
   },
   routeRules: {
+    '/_nuxt/**': { headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
+    '/logo.svg': { headers: { 'cache-control': 'public, max-age=86400, stale-while-revalidate=604800' } },
+    '/favicon.svg': { headers: { 'cache-control': 'public, max-age=86400, stale-while-revalidate=604800' } },
+    '/apple-touch-icon.png': { headers: { 'cache-control': 'public, max-age=86400, stale-while-revalidate=604800' } },
     '/': { swr: 60 },
     '/feed': { swr: 60 },
     '/dailies': { swr: 60 },

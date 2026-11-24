@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer, noload, raiseload, selectinload
+from sqlalchemy.orm import defer, load_only, noload, raiseload, selectinload
 
 from ...database import get_detail_session, get_session
 from ...models import Daily, Item, ItemClassification, PaperMeta, Tag
@@ -230,8 +230,8 @@ async def get_topic_facets(topic: str | None = None, category: str | None = None
 
 
 @router.get("/taxonomy/{slug}")
-async def get_taxonomy_node(slug: str, session: AsyncSession = Depends(get_session)):
-    data = await taxonomy_service.tree(session)
+async def get_taxonomy_node(slug: str):
+    data = await read_cache.get(("taxonomy",), taxonomy_service.tree)
     for parent in data["topics"]:
         for node in [parent, *parent["children"]]:
             if slug in (node["slug"], node["code"]):
@@ -258,22 +258,25 @@ async def get_item(item_id: int, session: AsyncSession = Depends(get_detail_sess
 async def list_related_items(
     item_id: int,
     compact: bool = False,
-    session: AsyncSession = Depends(get_session),
 ) -> ItemListOut | ItemSummaryListOut:
     load_options = _list_load_options(compact)
-    item = await session.get(Item, item_id, options=load_options)
-    if item is None:
-        raise _item_404()
-    rows = await related_items(session, item, load_options=load_options)
-    neighbors = await items_near_query(
-        session, item.title or "", {item.id, *(row.id for row in rows)}, load_options=load_options,
-    )
-    model = ItemSummaryListOut if compact else ItemListOut
-    return model(
-        total=len(rows), page=1, page_size=len(rows) or 1,
-        items=[_to_item_out(i, compact=compact) for i in rows],
-        similar=[_to_item_out(i, compact=compact) for i in neighbors],
-    )
+
+    async def load(session):
+        item = await session.get(Item, item_id, options=load_options)
+        if item is None:
+            raise _item_404()
+        rows = await related_items(session, item, load_options=load_options)
+        neighbors = await items_near_query(
+            session, item.title or "", {item.id, *(row.id for row in rows)}, load_options=load_options,
+        )
+        model = ItemSummaryListOut if compact else ItemListOut
+        return model(
+            total=len(rows), page=1, page_size=len(rows) or 1,
+            items=[_to_item_out(i, compact=compact) for i in rows],
+            similar=[_to_item_out(i, compact=compact) for i in neighbors],
+        )
+
+    return await read_cache.get(("related", item_id, compact), load, ttl=60)
 
 
 @router.post("/items/{item_id}/view", response_model=ViewOut)
@@ -342,18 +345,19 @@ async def _site_stats(session) -> StatsOut:
 
 
 @router.get("/paper-directions", response_model=list[DirectionOut])
-async def list_paper_directions(
-    session: AsyncSession = Depends(get_session),
-) -> list[DirectionOut]:
-    rows = (
-        await session.execute(
-            select(PaperMeta.direction, func.count(PaperMeta.item_id))
-            .where(PaperMeta.direction.is_not(None), PaperMeta.direction != "")
-            .group_by(PaperMeta.direction)
-            .order_by(func.count(PaperMeta.item_id).desc())
-        )
-    ).all()
-    return [DirectionOut(name=name, count=count) for name, count in rows]
+async def list_paper_directions() -> list[DirectionOut]:
+    async def load(session):
+        rows = (
+            await session.execute(
+                select(PaperMeta.direction, func.count(PaperMeta.item_id))
+                .where(PaperMeta.direction.is_not(None), PaperMeta.direction != "")
+                .group_by(PaperMeta.direction)
+                .order_by(func.count(PaperMeta.item_id).desc())
+            )
+        ).all()
+        return [DirectionOut(name=name, count=count) for name, count in rows]
+
+    return await read_cache.get(("paper-directions",), load, ttl=120)
 
 
 @router.get("/topics", response_model=TopicOut | TopicSummaryOut)
@@ -362,31 +366,34 @@ async def get_topic(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
     compact: bool = False,
-    session: AsyncSession = Depends(get_session),
 ) -> TopicOut | TopicSummaryOut:
     """Resolve an atomic tag or a space-separated long-tail phrase. Never writes Tag rows."""
     load_options = _list_load_options(compact)
-    result = await resolve_topic(
-        session, name, page=page, page_size=page_size,
-        load_options=load_options,
-    )
-    # First page of an atomic tag only. Phrase pages stay exact AND matches.
-    neighbors = []
-    if result.kind == "tag" and page == 1 and result.name:
-        neighbors = await similar_items(
-            session, result.name, {item.id for item in result.items}, load_options=load_options,
+
+    async def load(session):
+        result = await resolve_topic(
+            session, name, page=page, page_size=page_size,
+            load_options=load_options,
         )
-    model = TopicSummaryOut if compact else TopicOut
-    return model(
-        name=result.name,
-        kind=result.kind,
-        tokens=result.tokens,
-        total=result.total,
-        page=page,
-        page_size=page_size,
-        items=[_to_item_out(i, compact=compact) for i in result.items],
-        similar=[_to_item_out(i, compact=compact) for i in neighbors],
-    )
+        # First page of an atomic tag only. Phrase pages stay exact AND matches.
+        neighbors = []
+        if result.kind == "tag" and page == 1 and result.name:
+            neighbors = await similar_items(
+                session, result.name, {item.id for item in result.items}, load_options=load_options,
+            )
+        model = TopicSummaryOut if compact else TopicOut
+        return model(
+            name=result.name,
+            kind=result.kind,
+            tokens=result.tokens,
+            total=result.total,
+            page=page,
+            page_size=page_size,
+            items=[_to_item_out(i, compact=compact) for i in result.items],
+            similar=[_to_item_out(i, compact=compact) for i in neighbors],
+        )
+
+    return await read_cache.get(("topic", name, page, page_size, compact), load)
 
 
 @router.get("/tags", response_model=list[TagOut])
@@ -410,26 +417,31 @@ async def list_tags() -> list[TagOut]:
 async def list_dailies(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=PAGE_SIZE_MAX),
-    session: AsyncSession = Depends(get_session),
 ) -> DailyListOut:
-    total = (await session.execute(select(func.count(Daily.id)))).scalar_one()
-    rows = (
-        await session.execute(
-            select(Daily).order_by(Daily.date.desc())
-            .offset((page - 1) * page_size).limit(page_size)
-        )
-    ).scalars().all()
-    return DailyListOut(
-        total=total,
-        dailies=[
-            DailyListItem(
-                date=d.date, title=d.title,
-                highlight_count=len(d.highlights or []),
-                item_count=len(d.item_ids or []),
+    async def load(session):
+        total = (await session.execute(select(func.count(Daily.id)))).scalar_one()
+        rows = (
+            await session.execute(
+                select(Daily)
+                .options(load_only(Daily.date, Daily.title, Daily.highlights, Daily.item_ids))
+                .order_by(Daily.date.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size)
             )
-            for d in rows
-        ],
-    )
+        ).scalars().all()
+        return DailyListOut(
+            total=total,
+            dailies=[
+                DailyListItem(
+                    date=d.date, title=d.title,
+                    highlight_count=len(d.highlights or []),
+                    item_count=len(d.item_ids or []),
+                )
+                for d in rows
+            ],
+        )
+
+    return await read_cache.get(("dailies", page, page_size), load)
 
 
 async def _daily_out(
@@ -449,23 +461,29 @@ async def _daily_out(
 
 @router.get("/dailies/latest", response_model=DailyOut | DailySummaryOut)
 async def latest_daily(
-    compact: bool = False, session: AsyncSession = Depends(get_session),
+    compact: bool = False,
 ) -> DailyOut | DailySummaryOut:
-    d = (
-        await session.execute(select(Daily).order_by(Daily.date.desc()).limit(1))
-    ).scalar_one_or_none()
-    if d is None:
-        raise HTTPException(status_code=404, detail={"title": "Not Found", "status": 404, "detail": "暂无日报"})
-    return await _daily_out(d, session, compact=compact)
+    async def load(session):
+        d = (
+            await session.execute(select(Daily).order_by(Daily.date.desc()).limit(1))
+        ).scalar_one_or_none()
+        if d is None:
+            raise HTTPException(status_code=404, detail={"title": "Not Found", "status": 404, "detail": "暂无日报"})
+        return await _daily_out(d, session, compact=compact)
+
+    return await read_cache.get(("daily-latest", compact), load)
 
 
 @router.get("/dailies/{day}", response_model=DailyOut | DailySummaryOut)
 async def get_daily(
-    day: date_type, compact: bool = False, session: AsyncSession = Depends(get_session),
+    day: date_type, compact: bool = False,
 ) -> DailyOut | DailySummaryOut:
-    d = (
-        await session.execute(select(Daily).where(Daily.date == day))
-    ).scalar_one_or_none()
-    if d is None:
-        raise HTTPException(status_code=404, detail={"title": "Not Found", "status": 404, "detail": "该日期暂无日报"})
-    return await _daily_out(d, session, compact=compact)
+    async def load(session):
+        d = (
+            await session.execute(select(Daily).where(Daily.date == day))
+        ).scalar_one_or_none()
+        if d is None:
+            raise HTTPException(status_code=404, detail={"title": "Not Found", "status": 404, "detail": "该日期暂无日报"})
+        return await _daily_out(d, session, compact=compact)
+
+    return await read_cache.get(("daily", day.isoformat(), compact), load)

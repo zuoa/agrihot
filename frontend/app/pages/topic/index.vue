@@ -43,19 +43,47 @@ usePageSeo({ title: '主题索引 · AgriHot', description: '按农业产业、�
 .topic-directory-toolbar .site-search { width: 100%; max-width: 520px; padding-right: 16px; }
 .topic-directory-toolbar > p { font-size: 11px; color: #637168; }
 .topic-directory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
-.topic-branch { min-width: 0; padding: 25px 23px 14px; }
+.topic-branch {
+  min-width: 0;
+  padding: 24px 22px 14px;
+  transition: border-color .2s var(--site-ease), box-shadow .24s var(--site-ease), transform .24s var(--site-ease);
+}
+.topic-branch:hover { border-color: #afc9aa; box-shadow: var(--site-shadow-hover); transform: translateY(-2px); }
 .topic-branch-heading { display: flex; align-items: flex-start; gap: 12px; }
-.topic-branch-mark { display: grid; place-items: center; width: 36px; height: 38px; border-radius: 8px; background: #f4f8f2; color: #234e22; flex-shrink: 0; }
-.topic-branch-mark svg { width: 21px; height: 21px; }
+.topic-branch-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #edf5ea;
+  color: #234e22;
+  flex-shrink: 0;
+  transition: background-color .2s var(--site-ease), color .2s var(--site-ease), transform .2s var(--site-ease);
+}
+.topic-branch:hover .topic-branch-mark { background: #234e22; color: white; transform: scale(1.04); }
+.topic-branch-mark svg { width: 20px; height: 20px; }
 .topic-branch-heading > div { flex: 1; min-width: 0; }
-.topic-branch h2 { font-size: 17px; line-height: 1.65; font-weight: 650; letter-spacing: -.02em; }
-.topic-branch-heading p { margin-top: 6px; font-size: 10px; color: #637168; line-height: 1.8; }
-.topic-branch-heading > svg { width: 16px; height: 16px; color: #637168; margin-top: 5px; }
-.topic-branch-heading:hover h2 { color: #327a2d; }
-.topic-branch-children { display: grid; margin-top: 20px; padding-top: 10px; border-top: 1px solid #e1e8e0; }
-.topic-branch-children a { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding-block: 10px; font-size: 12px; color: #435046; }
-.topic-branch-children a > span:last-child { color: #637168; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 10px; }
-.topic-branch-children a:hover { color: #234e22; text-decoration: underline; text-underline-offset: 4px; }
+.topic-branch h2 { font-size: 17px; line-height: 1.6; font-weight: 650; letter-spacing: -.02em; transition: color .18s ease; }
+.topic-branch-heading p { margin-top: 5px; font-size: 11px; color: #637168; line-height: 1.75; }
+.topic-branch-heading > svg { width: 16px; height: 16px; color: #7a8a7f; margin-top: 5px; transition: transform .2s var(--site-ease), color .18s ease; }
+.topic-branch-heading:hover h2 { color: #2f752a; }
+.topic-branch-heading:hover > svg { color: #234e22; transform: translate(2px, -1px); }
+.topic-branch-children { display: grid; margin-top: 18px; padding-top: 10px; border-top: 1px solid #e6eee4; }
+.topic-branch-children a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 9px 8px;
+  margin-inline: -8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: #3f4e43;
+  transition: background-color .15s ease, color .15s ease;
+}
+.topic-branch-children a > span:last-child { padding: 1px 7px; border-radius: 999px; background: #f2f6f0; color: #5d6c62; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 10.5px; }
+.topic-branch-children a:hover { background: #f2f7f0; color: #234e22; text-decoration: none; }
 .topic-branch-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 12px; margin-top: 8px; border-top: 1px solid #e1e8e0; font-size: 10px; color: #637168; }
 .topic-branch-footer a { display: inline-flex; align-items: center; gap: 4px; color: #234e22; min-height: 30px; }
 .topic-branch-footer svg { width: 12px; height: 12px; }

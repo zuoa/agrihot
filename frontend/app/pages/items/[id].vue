@@ -184,30 +184,30 @@ const fetching = ref(false)
 const fetchingPdf = ref(false)
 const coverFailed = ref(false)
 
-const { data, pending, error, refresh } = await useAsyncData(
-  () => `item-${route.params.id}`,
-  () => api.item(route.params.id),
-  { watch: [() => route.params.id] },
-)
-
-const { data: relatedData } = await useLazyAsyncData(
-  () => `related-${route.params.id}`,
-  async () => {
-    const id = String(route.params.id)
-    try {
-      return { ...await api.related(id), forItemId: id }
-    } catch {
-      return { items: [], similar: [], forItemId: id }
-    }
-  },
-  { watch: [() => route.params.id] },
-)
-
-const { data: itemSpecials } = await useLazyAsyncData(
-  () => `item-specials:${route.params.id}`,
-  () => api.specials({ item_id: route.params.id }).catch(() => ({ specials: [] })),
-  { watch: [() => route.params.id] },
-)
+const [{ data, pending, error, refresh }, { data: relatedData }, { data: itemSpecials }] = await Promise.all([
+  useAsyncData(
+    () => `item-${route.params.id}`,
+    () => api.item(route.params.id),
+    { watch: [() => route.params.id] },
+  ),
+  useLazyAsyncData(
+    () => `related-${route.params.id}`,
+    async () => {
+      const id = String(route.params.id)
+      try {
+        return { ...await api.related(id), forItemId: id }
+      } catch {
+        return { items: [], similar: [], forItemId: id }
+      }
+    },
+    { watch: [() => route.params.id] },
+  ),
+  useLazyAsyncData(
+    () => `item-specials:${route.params.id}`,
+    () => api.specials({ item_id: route.params.id }).catch(() => ({ specials: [] })),
+    { watch: [() => route.params.id] },
+  ),
+])
 
 if (error.value) {
   throw createError({ statusCode: 404, message: '条目不存在', fatal: true })
@@ -436,27 +436,79 @@ async function remove() {
 .detail-breadcrumb ol { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .detail-breadcrumb ol svg { width: 12px; height: 12px; }
 .detail-breadcrumb a:hover { color: var(--article-green); text-decoration: underline; text-underline-offset: 4px; }
-.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 252px; gap: 26px; align-items: start; }
-.article-sheet { min-width: 0; overflow: clip; border: 1px solid var(--article-line); border-radius: 20px; background: var(--article-paper); }
-.article-header { padding: 34px 38px 28px; }
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 28px; align-items: start; }
+.article-sheet {
+  min-width: 0;
+  overflow: clip;
+  border: 1px solid var(--article-line);
+  border-radius: 20px;
+  background: var(--article-paper);
+  box-shadow: var(--site-shadow-sm);
+}
+.article-header {
+  padding: 36px 40px 28px;
+  background: linear-gradient(180deg, #f7fbf5 0%, #ffffff 100%);
+}
 .article-kicker { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; }
-.category-label { font-weight: 700; color: var(--article-green); padding-right: 12px; border-right: 1px solid var(--article-line); letter-spacing: .12em; }
-.category-label:only-child { padding-right: 0; border-right: 0; }
-.selected-label { display: inline-flex; gap: 4px; align-items: center; color: var(--article-green); }
+.category-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #e8f3e5;
+  font-weight: 700;
+  color: var(--article-green);
+  letter-spacing: .08em;
+}
+.selected-label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #f2f8ef;
+  border: 1px solid #d7e7d3;
+  color: var(--article-green);
+  font-weight: 500;
+}
 .selected-label svg { width: 13px; height: 13px; }
 .direction-label { color: var(--article-muted); }
-.article-header h1 { margin-top: 18px; font-size: clamp(26px, 2.5vw, 34px); font-weight: 700; line-height: 1.5; letter-spacing: -.035em; overflow-wrap: anywhere; text-wrap: pretty; }
+.article-header h1 { margin-top: 18px; font-size: clamp(26px, 2.5vw, 34px); font-weight: 700; line-height: 1.46; letter-spacing: -.032em; overflow-wrap: anywhere; text-wrap: pretty; }
 .article-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 20px; font-size: 12px; line-height: 1.6; color: var(--article-muted); }
 .article-source { font-weight: 600; color: var(--article-green); overflow-wrap: anywhere; }
 .article-meta time { font-variant-numeric: tabular-nums; }
 .article-meta .meta-dot { margin: 0 -7px; }
-.hotness-label { color: #946324; }
-.article-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 22px; }
-.original-link { display: inline-flex; min-height: 40px; align-items: center; gap: 18px; border-radius: 8px; padding: 8px 15px; background: var(--article-green); color: white; font-size: 13px; font-weight: 500; transition: background .15s; }
-.original-link:hover { background: #327a2d; }
+.hotness-label { padding: 1px 8px; border-radius: 999px; background: #fbf2e4; color: #915c1a; font-weight: 500; }
+.article-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; margin-top: 22px; }
+.original-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  padding: 8px 17px;
+  background: linear-gradient(180deg, #2b6129 0%, #214a20 100%);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 3px 10px -4px rgba(26, 61, 25, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: background .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.original-link:hover {
+  background: linear-gradient(180deg, #347531 0%, #275825 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(26, 61, 25, 0.42);
+}
 .reading-time { display: inline-flex; align-items: center; gap: 6px; color: var(--article-muted); font-size: 12px; }
 .reading-time svg { width: 15px; height: 15px; }
-.article-takeaway { margin-top: 28px; padding: 18px 20px; background: var(--article-soft); border-left: 3px solid var(--article-green); border-radius: 0 10px 10px 0; }
+.article-takeaway {
+  margin-top: 26px;
+  padding: 19px 22px;
+  background: linear-gradient(135deg, #f2f8ef 0%, #f8fbf6 100%);
+  border: 1px solid #dce8d8;
+  border-left: 3.5px solid var(--article-green);
+  border-radius: 0 12px 12px 0;
+}
 .takeaway-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--article-green); }
 .takeaway-label svg { width: 14px; height: 14px; }
 .takeaway-text { margin-top: 9px; font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', serif; font-size: 16px; font-weight: 500; line-height: 1.9; overflow-wrap: anywhere; }

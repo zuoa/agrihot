@@ -274,14 +274,27 @@ async def model_classification(item, fallback):
 
 async def tree(session):
     nodes = (await session.execute(select(Topic).where(Topic.is_active.is_(True)).order_by(Topic.sort_order, Topic.code))).scalars().all()
-    counts = defaultdict(set)
-    parents = {n.code: n.parent_code for n in nodes}
-    for item_id, code in (await session.execute(select(ItemTopic.item_id, ItemTopic.topic_code))).all():
-        if code in parents:
-            counts[code].add(item_id)
-            if parents[code]:
-                counts[parents[code]].add(item_id)
-    result = {n.code: topic_ref(n.code) | {"description": n.description, "count": len(counts[n.code]), "children": []} for n in nodes}
+    direct_counts = dict((await session.execute(
+        select(ItemTopic.topic_code, func.count(ItemTopic.item_id))
+        .join(Topic, Topic.code == ItemTopic.topic_code)
+        .where(Topic.is_active.is_(True))
+        .group_by(ItemTopic.topic_code)
+    )).all())
+    root_code = func.coalesce(Topic.parent_code, Topic.code)
+    root_counts = dict((await session.execute(
+        select(root_code, func.count(func.distinct(ItemTopic.item_id)))
+        .join(Topic, Topic.code == ItemTopic.topic_code)
+        .where(Topic.is_active.is_(True))
+        .group_by(root_code)
+    )).all())
+    result = {
+        n.code: topic_ref(n.code) | {
+            "description": n.description,
+            "count": int(direct_counts.get(n.code, 0) if n.parent_code else root_counts.get(n.code, 0)),
+            "children": [],
+        }
+        for n in nodes
+    }
     roots = []
     for n in nodes:
         if n.parent_code in result:

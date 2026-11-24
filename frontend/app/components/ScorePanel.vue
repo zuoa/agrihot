@@ -45,14 +45,20 @@ function barColor(value, max) {
 </script>
 
 <style scoped>
-.score-panel { padding: 22px; border: 1px solid #e1e8e0; border-radius: 14px; background: #fff; }
+.score-panel {
+  padding: 22px;
+  border: 1px solid #e0e8de;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fcf8 100%);
+  box-shadow: var(--site-shadow-xs, 0 1px 2px rgba(20, 42, 28, 0.04));
+}
 .score-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.score-heading h2 { font-size: 13px; font-weight: 600; color: #20332a; }
-.score-heading > span { font-size: 10px; color: #637168; }
-.score-overview { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 17px; padding-bottom: 19px; border-bottom: 1px solid #e1e8e0; }
-.score-number { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 42px; font-weight: 500; line-height: 1; letter-spacing: -.08em; }
-.score-number > span { margin-left: 8px; color: #637168; font-size: 11px; font-weight: 400; letter-spacing: 0; }
-.score-verdict { font-size: 11px; font-weight: 500; }
+.score-heading h2 { font-size: 13px; font-weight: 600; color: #1a2d24; }
+.score-heading > span { padding: 1px 7px; border-radius: 999px; background: #edf3eb; font-size: 10px; color: #5d6c62; }
+.score-overview { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 16px; padding-bottom: 18px; border-bottom: 1px solid #e4ece2; }
+.score-number { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace; font-size: 42px; font-weight: 600; line-height: 1; letter-spacing: -.07em; }
+.score-number > span { margin-left: 6px; color: #637168; font-size: 11px; font-weight: 400; letter-spacing: 0; }
+.score-verdict { padding: 3px 9px; border-radius: 999px; background: #edf5ea; font-size: 11px; font-weight: 600; }
 .score-breakdown summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: #234e22; font-size: 11px; list-style: none; cursor: pointer; scroll-margin-top: 100px; }
 .score-breakdown summary::-webkit-details-marker { display: none; }
 .score-breakdown summary:hover { text-decoration: underline; text-underline-offset: 4px; }

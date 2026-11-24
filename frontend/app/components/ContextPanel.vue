@@ -65,7 +65,13 @@ async function copyLink() {
 </script>
 
 <style scoped>
-.context-panel { padding: 22px; border: 1px solid #e1e8e0; border-radius: 14px; background: #fff; }
+.context-panel {
+  padding: 22px;
+  border: 1px solid #e0e8de;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--site-shadow-xs, 0 1px 2px rgba(20, 42, 28, 0.04));
+}
 .context-panel h2 { font-size: 12px; font-weight: 600; color: #20332a; }
 .context-panel a:focus-visible, .context-panel button:focus-visible { outline: 2px solid #234e22; outline-offset: 4px; border-radius: 3px; }
 .context-topics { padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid #e1e8e0; }

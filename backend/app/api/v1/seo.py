@@ -1,9 +1,7 @@
 """Public SEO endpoints: robots.txt, sitemap.xml."""
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter
 
-from ...database import get_session
-from ...services import seo_service
+from ...services import read_cache, seo_service
 
 router = APIRouter(tags=["seo"], include_in_schema=False)
 
@@ -14,5 +12,5 @@ async def robots():
 
 
 @router.get("/sitemap.xml")
-async def sitemap(session: AsyncSession = Depends(get_session)):
-    return await seo_service.sitemap_xml(session)
+async def sitemap():
+    return await read_cache.get(("sitemap",), seo_service.sitemap_xml, ttl=300)

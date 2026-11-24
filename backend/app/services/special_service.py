@@ -16,7 +16,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import defer, noload
+from sqlalchemy.orm import load_only, noload
 
 from ..config import settings
 from ..database import SessionLocal
@@ -562,24 +562,168 @@ async def reselect_materials(candidate: Candidate, sources: list[dict], articles
     return corrected, corrected_sources
 
 
-async def valid_versions(session, specials: list[Special]) -> dict[int, SpecialVersion]:
+async def _load_item_hashes(session, item_ids: set[int]) -> dict[int, str]:
+    """Compute source-fact hashes without pulling full multi-MB content or audit JSON."""
+    if not item_ids:
+        return {}
+    stmt = select(
+        Item.id,
+        Item.title,
+        Item.summary,
+        Item.summary_zh,
+        func.substr(Item.content, 1, 16000).label("content_prefix"),
+        func.length(Item.content).label("content_len"),
+        Item.url,
+        Item.source_name,
+        Item.doi,
+        Item.published_at,
+        Item.category,
+    ).where(Item.id.in_(item_ids))
+    rows = (await session.execute(stmt)).all()
+
+    ambiguous_ids: list[int] = []
+    for row in rows:
+        if (row.content_len or 0) > 16000:
+            title_compact = compact_space(row.title)
+            prefix_compact = compact_space(row.content_prefix or "")
+            if len(prefix_compact) <= len(title_compact):
+                ambiguous_ids.append(row.id)
+
+    full_contents: dict[int, str | None] = {}
+    if ambiguous_ids:
+        full_rows = (await session.execute(
+            select(Item.id, Item.content).where(Item.id.in_(ambiguous_ids))
+        )).all()
+        full_contents = {r.id: r.content for r in full_rows}
+
+    hashes: dict[int, str] = {}
+    for row in rows:
+        title = row.title
+        summary = row.summary
+        summary_zh = row.summary_zh
+        content_prefix = row.content_prefix or ""
+        title_compact = compact_space(title)
+        if row.id in full_contents:
+            has_fulltext = compact_space(full_contents[row.id] or "") not in {"", title_compact}
+        elif (row.content_len or 0) > 16000:
+            has_fulltext = True
+        else:
+            has_fulltext = compact_space(content_prefix) not in {"", title_compact}
+
+        if has_fulltext:
+            basis = "fulltext"
+        elif any(compact_space(text or "") not in {"", title_compact} for text in (summary, summary_zh)):
+            basis = "abstract"
+        else:
+            basis = "title"
+
+        mentioned = (
+            set(re.findall(r"10\.\d{4,9}/[^\s<>\"）)]+", f"{title}\n{summary}", re.I))
+            if row.category != "论文" else set()
+        )
+        p_doi = row.doi or (next(iter(mentioned)).casefold().rstrip(".,。") if len(mentioned) == 1 else None)
+        text = f"{title}\n{summary}\n{summary_zh or ''}\n{content_prefix}"[:16000]
+        data = {
+            "id": f"i{row.id}",
+            "item_id": row.id,
+            "kind": "internal",
+            "title": title,
+            "url": row.url,
+            "publisher": row.source_name,
+            "doi": row.doi,
+            "basis": basis,
+            "text": text,
+            "published_at": aware(row.published_at).isoformat() if row.published_at else None,
+            "primary_doi": p_doi,
+        }
+        hashes[row.id] = digest(data)
+    return hashes
+
+
+async def valid_versions(
+    session,
+    specials: list[Special],
+    *,
+    item_id: int | None = None,
+    limit: int | None = None,
+) -> dict[int, SpecialVersion]:
     """Serve the latest snapshot whose source facts still exist and match exactly."""
     if not specials:
         return {}
     versions = list((await session.scalars(select(SpecialVersion).options(
-        defer(SpecialVersion.document), defer(SpecialVersion.sources),
+        load_only(
+            SpecialVersion.id,
+            SpecialVersion.special_id,
+            SpecialVersion.signatures,
+            SpecialVersion.preview,
+            SpecialVersion.changes,
+            SpecialVersion.created_at,
+        ),
     ).where(
-        SpecialVersion.special_id.in_([s.id for s in specials])).order_by(SpecialVersion.id.desc()))).all())
-    ids = {source["item_id"] for version in versions for source in version.signatures}
-    rows = (await session.scalars(select(Item).options(noload("*" )).where(Item.id.in_(ids)))).all() if ids else []
-    hashes = {row.id: item_source(row)["hash"] for row in rows}
-    out = {}
+        SpecialVersion.special_id.in_([s.id for s in specials])
+    ).order_by(SpecialVersion.id.desc()))).all())
+
+    by_special: dict[int, list[SpecialVersion]] = defaultdict(list)
     for version in versions:
-        if version.special_id in out:
+        by_special[version.special_id].append(version)
+
+    candidates: list[Special] = []
+    for special in specials:
+        special_versions = by_special.get(special.id)
+        if not special_versions:
             continue
-        internal = version.signatures
-        if len(internal) >= 3 and all(hashes.get(s["item_id"]) == s["hash"] for s in internal):
-            out[version.special_id] = version
+        if item_id is not None and not any(
+            any(sig.get("item_id") == item_id for sig in ver.signatures)
+            for ver in special_versions
+        ):
+            continue
+        candidates.append(special)
+
+    if not candidates:
+        return {}
+
+    hashes: dict[int, str] = {}
+    fetched_ids: set[int] = set()
+    out: dict[int, SpecialVersion] = {}
+    matched = 0
+    chunk_size = max(limit * 2, 6) if limit is not None else len(candidates)
+
+    for start in range(0, len(candidates), chunk_size):
+        chunk = candidates[start:start + chunk_size]
+        pending = list(chunk)
+        depth = 0
+        while pending:
+            next_pending: list[Special] = []
+            needed_ids: set[int] = set()
+            for special in pending:
+                special_versions = by_special[special.id]
+                if depth >= len(special_versions):
+                    continue
+                internal = special_versions[depth].signatures
+                if len(internal) >= 3:
+                    for sig in internal:
+                        sid = sig["item_id"]
+                        if sid not in fetched_ids:
+                            needed_ids.add(sid)
+            if needed_ids:
+                hashes.update(await _load_item_hashes(session, needed_ids))
+                fetched_ids.update(needed_ids)
+            for special in pending:
+                special_versions = by_special[special.id]
+                if depth >= len(special_versions):
+                    continue
+                version = special_versions[depth]
+                internal = version.signatures
+                if len(internal) >= 3 and all(hashes.get(s["item_id"]) == s["hash"] for s in internal):
+                    out[special.id] = version
+                    if item_id is None or any(s.get("item_id") == item_id for s in internal):
+                        matched += 1
+                elif depth + 1 < len(special_versions):
+                    next_pending.append(special)
+            pending = next_pending
+            depth += 1
+        if limit is not None and matched >= limit:
+            break
     return out
 
 
@@ -605,7 +749,7 @@ def brief(special: Special, version: SpecialVersion) -> dict:
             "content_updated_at": version.created_at, "created_at": special.created_at}
 
 
-async def public_specials(session, *, featured=False, item_id=None, kind=None, status=None, q=None):
+async def public_specials(session, *, featured=False, item_id=None, kind=None, status=None, q=None, limit=None):
     stmt = select(Special).where(Special.status.in_(["published"] if featured else ["published", "archived"]))
     if kind:
         stmt = stmt.where(Special.kind == kind)
@@ -614,9 +758,10 @@ async def public_specials(session, *, featured=False, item_id=None, kind=None, s
     if q:
         stmt = stmt.where(Special.title.contains(q, autoescape=True) | Special.scope.contains(q, autoescape=True))
     rows = list((await session.scalars(stmt.order_by(Special.pinned.desc(), Special.rank.desc(), Special.id.desc()))).all())
-    versions = await valid_versions(session, rows)
-    return [(row, versions[row.id]) for row in rows if row.id in versions and
-            (item_id is None or any(s.get("item_id") == item_id for s in versions[row.id].signatures))]
+    versions = await valid_versions(session, rows, item_id=item_id, limit=limit)
+    matched = [(row, versions[row.id]) for row in rows if row.id in versions and
+               (item_id is None or any(s.get("item_id") == item_id for s in versions[row.id].signatures))]
+    return matched[:limit] if limit is not None else matched
 
 
 async def semantic_background(session, seed_ids: list[int], exclude: set[int]) -> list[Item]:

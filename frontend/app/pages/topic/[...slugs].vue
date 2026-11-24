@@ -39,9 +39,26 @@
 const api = useApi()
 const route = useRoute()
 const router = useRouter()
-const { data: directory, error: directoryError } = await useAsyncData('taxonomy', () => api.taxonomy())
 const slugs = computed(() => Array.isArray(route.params.slugs) ? route.params.slugs : [route.params.slugs])
 const topicSlug = computed(() => slugs.value[slugs.value.length - 1])
+const category = computed(() => ['政策', '报道', '论文', '行业'].includes(route.query.category) ? route.query.category : '')
+const selectedTech = computed(() => Array.isArray(route.query.technology) ? route.query.technology : (route.query.technology ? [route.query.technology] : []))
+const q = computed(() => String(route.query.q || '').trim())
+const page = computed(() => Math.max(1, parseInt(route.query.page, 10) || 1))
+const searchInput = ref(q.value)
+watch(q, value => { searchInput.value = value })
+const hasFilters = computed(() => Boolean(category.value || selectedTech.value.length || q.value))
+const [{ data: directory, error: directoryError }, { data, pending, error, refresh }, { data: facets }] = await Promise.all([
+  useAsyncData('taxonomy', () => api.taxonomy()),
+  useAsyncData(
+    () => `taxonomy-items:${route.fullPath}`,
+    () => api.items({ topic: topicSlug.value, category: category.value, technologies: selectedTech.value, q: q.value, page: page.value, page_size: 20 }),
+  ),
+  useAsyncData(
+    () => `taxonomy-facets:${topicSlug.value}:${category.value}`,
+    () => api.taxonomyFacets({ topic: topicSlug.value, category: category.value }),
+  ),
+])
 const parent = computed(() => slugs.value.length === 2 ? directory.value?.topics.find(t => t.slug === slugs.value[0]) : null)
 const node = computed(() => slugs.value.length === 1
   ? directory.value?.topics.find(t => t.slug === slugs.value[0])
@@ -53,23 +70,6 @@ const nodeError = computed(() => {
 })
 watch(nodeError, error => { if (error) showError(error) }, { immediate: true })
 const siblings = computed(() => parent.value?.children || node.value?.children || [])
-const category = computed(() => ['政策', '报道', '论文', '行业'].includes(route.query.category) ? route.query.category : '')
-const selectedTech = computed(() => Array.isArray(route.query.technology) ? route.query.technology : (route.query.technology ? [route.query.technology] : []))
-const q = computed(() => String(route.query.q || '').trim())
-const page = computed(() => Math.max(1, parseInt(route.query.page, 10) || 1))
-const searchInput = ref(q.value)
-watch(q, value => { searchInput.value = value })
-const hasFilters = computed(() => Boolean(category.value || selectedTech.value.length || q.value))
-const [{ data, pending, error, refresh }, { data: facets }] = await Promise.all([
-  useAsyncData(
-    () => `taxonomy-items:${route.fullPath}`,
-    () => api.items({ topic: topicSlug.value, category: category.value, technologies: selectedTech.value, q: q.value, page: page.value, page_size: 20 }),
-  ),
-  useAsyncData(
-    () => `taxonomy-facets:${topicSlug.value}:${category.value}`,
-    () => api.taxonomyFacets({ topic: topicSlug.value, category: category.value }),
-  ),
-])
 const technologies = computed(() => facets.value?.technologies || [])
 const items = computed(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)

@@ -38,16 +38,19 @@ defineProps({
 
 <style scoped>
 .skeleton-block {
-  @apply rounded bg-leaf-100/70;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #e7f0e4 25%, #f3f8f1 50%, #e7f0e4 75%);
+  background-size: 200% 100%;
 }
 
 .skeleton-block.rounded-full { border-radius: 9999px; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .skeleton-block { animation: skeleton-pulse 1.6s ease-in-out infinite; }
+  .skeleton-block { animation: skeleton-shimmer 1.6s ease-in-out infinite; }
 }
 
-@keyframes skeleton-pulse {
-  50% { opacity: 0.45; }
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 </style>

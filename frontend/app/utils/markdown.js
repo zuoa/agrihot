@@ -5,7 +5,7 @@ const IMAGE_PROXY = 'https://wsrv.nl/?url='
 function proxyImageSrc(src) {
   if (!src || src.startsWith('data:') || src.startsWith(IMAGE_PROXY)) return src
   if (!/^https?:\/\//i.test(src)) return src
-  return IMAGE_PROXY + encodeURIComponent(src)
+  return `${IMAGE_PROXY}${encodeURIComponent(src)}&output=webp&q=82&we`
 }
 
 const md = new MarkdownIt({
@@ -22,6 +22,7 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const proxied = proxyImageSrc(src)
   if (proxied !== src) tokens[idx].attrSet('src', proxied)
   tokens[idx].attrSet('loading', 'lazy')
+  tokens[idx].attrSet('decoding', 'async')
   return defaultImageRule(tokens, idx, options, env, self)
 }
 

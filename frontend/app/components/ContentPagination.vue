@@ -26,14 +26,40 @@ function pageLink(page) {
 </script>
 
 <style scoped>
-.content-pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 16px; margin-top: 30px; }
-.pagination-button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; padding: 10px 15px; min-height: 42px; border: 1px solid #e1e8e0; border-radius: 7px; background: white; color: #234e22; font-size: 12px; }
+.content-pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px; margin-top: 32px; }
+.pagination-button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 16px;
+  min-height: 40px;
+  border: 1px solid #dce6d9;
+  border-radius: 999px;
+  background: white;
+  color: #234e22;
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: var(--site-shadow-xs, 0 1px 2px rgba(20, 42, 28, 0.04));
+  transition: border-color .18s ease, background-color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
 .pagination-button svg { width: 15px; height: 15px; }
-.pagination-button:hover { border-color: #aec5a8; }
-.pagination-button[aria-disabled='true'] { color: #a0aaa0; background: transparent; }
-.pagination-button[aria-disabled='true']:hover { border-color: #e1e8e0; }
+.pagination-button:hover { border-color: #a9c5a3; background: #f3f8f1; transform: translateY(-1px); box-shadow: var(--site-shadow-sm); }
+.pagination-button[aria-disabled='true'] { color: #a0aca1; background: rgba(255, 255, 255, 0.5); box-shadow: none; transform: none; }
+.pagination-button[aria-disabled='true']:hover { border-color: #dce6d9; background: rgba(255, 255, 255, 0.5); box-shadow: none; transform: none; }
 .pagination-next { transform: rotate(180deg); }
-.pagination-current { display: flex; gap: 10px; align-items: center; color: #637168; font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11px; }
-.pagination-current strong { color: #20332a; font-weight: 500; }
-@media (max-width: 479px) { .content-pagination { gap: 12px; } .pagination-button { padding-inline: 12px; min-height: 44px; } }
+.pagination-current {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: #edf3eb;
+  color: #5d6c62;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.pagination-current strong { color: #1a2d24; font-weight: 600; }
+@media (max-width: 479px) { .content-pagination { gap: 10px; } .pagination-button { padding-inline: 13px; min-height: 44px; } }
 </style>

@@ -61,7 +61,7 @@
           <div><dt>微信</dt><dd>扫码添加 ZUOAJ，备注来意即可。</dd></div>
         </dl>
       </div>
-      <figure><a :href="wechatQr" target="_blank" rel="noopener" aria-label="查看微信二维码大图"><img :src="wechatQr" alt="AgriHot 联系微信二维码，扫码添加 ZUOAJ" width="958" height="1415" loading="lazy" /></a></figure>
+      <figure><a :href="wechatQr" target="_blank" rel="noopener" aria-label="查看微信二维码大图"><img :src="wechatQr" alt="AgriHot 联系微信二维码，扫码添加 ZUOAJ" width="958" height="1415" loading="lazy" decoding="async" /></a></figure>
     </section>
     <p class="site-disclaimer">原文与论文的相关权利归各自权利人所有。如涉及来源方权益问题，请邮件联系 <a href="mailto:ijedyu@gmail.com">ijedyu@gmail.com</a> 更正或下线。</p>
   </div>
@@ -172,8 +172,12 @@ usePageSeo({
 .about-stat svg { width: 13px; height: 13px; opacity: 0; }
 a.about-stat:hover svg { opacity: 1; }
 .about-features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.about-features > section { padding: 25px; }
-.about-features > section > svg { width: 24px; height: 24px; color: #234e22; }
+.about-features > section {
+  padding: 25px;
+  transition: border-color .2s var(--site-ease), box-shadow .24s var(--site-ease), transform .24s var(--site-ease);
+}
+.about-features > section:hover { border-color: #afc9aa; box-shadow: var(--site-shadow-hover); transform: translateY(-2px); }
+.about-features > section > svg { width: 38px; height: 38px; padding: 8px; border-radius: 10px; background: #edf5ea; color: #234e22; }
 .about-features h3 { font-size: 17px; font-weight: 600; margin-top: 18px; }
 .about-features p { margin-top: 10px; font-size: 13px; line-height: 1.9; color: #637168; }
 .about-features .site-text-link { margin-top: 16px; }

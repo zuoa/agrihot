@@ -97,18 +97,52 @@ usePageSeo(() => ({
 .home-specials-count-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 768px) and (max-width: 1023px) { .home-specials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .home-specials-count-3 > :first-child { grid-column: 1 / -1; } .home-specials-count-1 { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 767px) { .home-specials-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; } .home-specials { margin-bottom: 26px; } }
-.featured-story { margin-bottom: 24px; overflow: hidden; border: 1px solid #d3dfce; border-radius: 16px; background: white; }
-.featured-story-link { display: block; padding: 28px 30px; border-left: 3px solid #234e22; }
+.featured-story {
+  margin-bottom: 24px;
+  overflow: hidden;
+  border: 1px solid #c7dac1;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #f4faf2 100%);
+  box-shadow: var(--site-shadow-sm);
+  transition: border-color .22s var(--site-ease), box-shadow .24s var(--site-ease), transform .24s var(--site-ease);
+}
+.featured-story:hover {
+  border-color: #a4c39d;
+  box-shadow: var(--site-shadow-hover);
+  transform: translateY(-2px);
+}
+.featured-story-link { display: block; padding: 28px 30px; border-left: 4px solid #234e22; }
 .featured-kicker { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: #234e22; }
-.featured-kicker > span:first-child { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; }
-.featured-kicker svg { width: 16px; height: 16px; }
-.featured-score { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 25px; letter-spacing: -.06em; }
-.featured-score > span { color: #637168; font-size: 10px; letter-spacing: 0; }
-.featured-story h2 { margin-top: 20px; font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1.6; overflow-wrap: anywhere; }
-.featured-story-link:hover h2 { color: #327a2d; }
-.featured-story p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 15px; color: #637168; font-size: 14px; line-height: 1.95; }
-.featured-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid #e1e8e0; color: #637168; font-size: 11px; }
-.featured-read { display: inline-flex; align-items: center; gap: 6px; color: #234e22; }
-.featured-read svg { width: 16px; height: 16px; }
+.featured-kicker > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: #e5f2e1;
+  font-size: 12px;
+  font-weight: 600;
+}
+.featured-kicker svg { width: 15px; height: 15px; }
+.featured-score {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #dce8d8;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -.05em;
+}
+.featured-score > span { margin-left: 3px; color: #637168; font-size: 10px; font-weight: 400; letter-spacing: 0; }
+.featured-story h2 { margin-top: 18px; color: var(--site-ink); font-size: 25px; font-weight: 700; letter-spacing: -.03em; line-height: 1.55; overflow-wrap: anywhere; transition: color .18s ease; }
+.featured-story-link:hover h2 { color: #2f752a; }
+.featured-story p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 14px; color: #546459; font-size: 14px; line-height: 1.9; }
+.featured-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid #dfe8dc; color: #5d6c62; font-size: 11.5px; }
+.featured-read { display: inline-flex; align-items: center; gap: 6px; color: #234e22; font-weight: 600; }
+.featured-read svg { width: 15px; height: 15px; transition: transform .22s var(--site-ease); }
+.featured-story-link:hover .featured-read svg { transform: translate(2px, -1px); }
 @media (max-width: 767px) { .featured-story-link { padding: 22px 20px; } .featured-story h2 { font-size: 22px; margin-top: 16px; } .featured-story p { font-size: 13px; } .featured-footer { margin-top: 20px; } }
 </style>

@@ -7,5 +7,18 @@
 defineProps({ provenance: { type: Object, default: null }, detail: Boolean })
 </script>
 <style scoped>
-.source-provenance { display: inline-flex; align-items: center; gap: 4px; color: var(--site-green, #234e22); font-size: 11px; font-weight: 500; line-height: 1.7; white-space: nowrap; }
+.source-provenance {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #edf6ea;
+  border: 1px solid #d3e6ce;
+  color: var(--site-green, #234e22);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
 </style>

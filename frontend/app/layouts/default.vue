@@ -4,7 +4,7 @@
     <header class="site-header">
       <div class="max-w-6xl mx-auto px-4">
         <div class="flex flex-col md:flex-row md:items-center md:justify-between md:gap-4">
-          <NuxtLink to="/" aria-label="AgriHot 首页" class="flex w-fit shrink-0 items-center gap-2.5 pt-3 pb-2 md:py-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">
+          <NuxtLink to="/" aria-label="AgriHot 首页" class="site-brand flex w-fit shrink-0 items-center gap-2.5 pt-3 pb-2 md:py-3 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-leaf-600">
             <BrandMark class="w-8 h-8" />
             <div class="leading-tight">
               <div class="font-bold text-leaf-900 text-lg tracking-tight">AgriHot<span class="text-leaf-500">.</span></div>
@@ -35,7 +35,10 @@
     <footer class="site-footer">
       <div class="max-w-6xl mx-auto px-4">
         <div class="footer-top">
-          <div><p class="footer-title">{{ DEFAULT_TITLE }}</p><p class="footer-note">内容整理自公开来源，摘要由 AI 生成，引用请以官方原文为准</p></div>
+          <div class="footer-brand">
+            <BrandMark class="w-7 h-7 mt-0.5" />
+            <div><p class="footer-title">{{ DEFAULT_TITLE }}</p><p class="footer-note">内容整理自公开来源，摘要由 AI 生成，引用请以官方原文为准</p></div>
+          </div>
           <nav aria-label="页脚导航">
             <NuxtLink to="/agent">Agent 接入</NuxtLink>
             <NuxtLink to="/about">关于本站</NuxtLink>

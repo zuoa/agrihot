@@ -185,16 +185,21 @@ async function regenerate() {
 </script>
 
 <style scoped>
-.daily-highlights { padding: 26px 30px; border-top: 3px solid #234e22; }
+.daily-highlights {
+  padding: 26px 30px;
+  border-top: 3.5px solid #234e22;
+  background: linear-gradient(180deg, #f6fbf4 0%, #ffffff 42%);
+  box-shadow: var(--site-shadow-sm);
+}
 .daily-highlights-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .daily-highlights-heading > div { display: flex; gap: 8px; align-items: center; color: #234e22; }
 .daily-highlights-heading svg { width: 18px; height: 18px; }
 .daily-highlights-heading h2 { font-size: 18px; font-weight: 650; }
-.daily-highlights-heading > span { font-size: 11px; color: #637168; }
+.daily-highlights-heading > span { padding: 2px 9px; border-radius: 999px; background: #e8f3e5; font-size: 11px; color: #234e22; font-weight: 500; }
 .daily-highlights ul { margin-top: 6px; }
-.daily-highlights li { position: relative; padding: 18px 0 18px 20px; color: #435046; font-size: 14px; line-height: 1.95; }
-.daily-highlights li + li { border-top: 1px solid #e1e8e0; }
-.daily-highlights li::before { content: ''; position: absolute; left: 0; top: 28px; width: 5px; height: 5px; border: 1px solid #82a678; border-radius: 1px; }
+.daily-highlights li { position: relative; padding: 17px 0 17px 22px; color: #36453b; font-size: 14px; line-height: 1.92; }
+.daily-highlights li + li { border-top: 1px solid #e5ede3; }
+.daily-highlights li::before { content: ''; position: absolute; left: 0; top: 27px; width: 7px; height: 7px; border-radius: 999px; background: #44963c; box-shadow: 0 0 0 3px rgba(68, 150, 60, 0.16); }
 .daily-highlights li:last-child { padding-bottom: 3px; }
 .daily-mobile-contents { display: none; }
 .daily-outline > section { padding: 24px 22px 16px; }
