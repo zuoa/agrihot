@@ -16,7 +16,7 @@ from ...schemas import (DailyListItem, DailyListOut, DailyOut, DailySummaryOut,
                         PaperMetaOut, PaperPdfOut, SourceOut, StatsOut, TagMetaOut, TagOut, TopicOut,
                         TopicSummaryOut, ViewOut)
 from ...services.topic_service import (apply_tag_match, effective_phrases,
-                                       item_slug, items_near_query, parse_tag_query,
+                                       item_slug, items_near_item, parse_tag_query,
                                        related_items, resolve_topic, similar_items)
 from ...services import editorial_service, embedding_service, read_cache, taxonomy_service
 from ...services.taxonomy_catalog import canonical_name, tag_properties
@@ -190,13 +190,16 @@ async def list_items(
 
     async def load(session):
         total = (await session.execute(count_stmt)).scalar_one()
-        rows = (
-            await session.execute(
-                stmt.order_by(Item.created_at.desc(), Item.id.desc())
-                .offset((page - 1) * page_size)
-                .limit(page_size)
-            )
-        ).scalars().all()
+        if total == 0:
+            rows = []
+        else:
+            rows = (
+                await session.execute(
+                    stmt.order_by(Item.created_at.desc(), Item.id.desc())
+                    .offset((page - 1) * page_size)
+                    .limit(page_size)
+                )
+            ).scalars().all()
         model = ItemSummaryListOut if compact else ItemListOut
         return model(
             total=total, page=page, page_size=page_size,
@@ -205,14 +208,14 @@ async def list_items(
 
     cache_key = (
         "items", mode, window, category, tag, tags, match, direction, topic,
-        tuple(technologies), q, page, page_size, compact,
+        tuple(sorted(set(technologies))), q, page, page_size, compact,
     )
     return await read_cache.get(cache_key, load)
 
 
 @router.get("/taxonomy")
 async def get_taxonomy():
-    return await read_cache.get(("taxonomy",), taxonomy_service.tree)
+    return await read_cache.get(("taxonomy",), taxonomy_service.tree, ttl=120, stale_ttl=600)
 
 
 @router.get("/taxonomy/facets")
@@ -223,7 +226,10 @@ async def get_topic_facets(topic: str | None = None, category: str | None = None
 
     try:
         return await read_cache.get(
-            ("facets", topic, category, tuple(technologies)), load,
+            ("facets", topic, category, tuple(sorted(set(technologies)))),
+            load,
+            ttl=120,
+            stale_ttl=600,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -266,8 +272,8 @@ async def list_related_items(
         if item is None:
             raise _item_404()
         rows = await related_items(session, item, load_options=load_options)
-        neighbors = await items_near_query(
-            session, item.title or "", {item.id, *(row.id for row in rows)}, load_options=load_options,
+        neighbors = await items_near_item(
+            session, item, {item.id, *(row.id for row in rows)}, load_options=load_options,
         )
         model = ItemSummaryListOut if compact else ItemListOut
         return model(
@@ -276,7 +282,7 @@ async def list_related_items(
             similar=[_to_item_out(i, compact=compact) for i in neighbors],
         )
 
-    return await read_cache.get(("related", item_id, compact), load, ttl=60)
+    return await read_cache.get(("related", item_id, compact), load, ttl=300, stale_ttl=600, pool="heavy")
 
 
 @router.post("/items/{item_id}/view", response_model=ViewOut)
@@ -375,9 +381,9 @@ async def get_topic(
             session, name, page=page, page_size=page_size,
             load_options=load_options,
         )
-        # First page of an atomic tag only. Phrase pages stay exact AND matches.
+        # First page of a real atomic tag only. Phrase pages and unknown tags skip vector lookup.
         neighbors = []
-        if result.kind == "tag" and page == 1 and result.name:
+        if result.kind == "tag" and page == 1 and result.name and result.total > 0:
             neighbors = await similar_items(
                 session, result.name, {item.id for item in result.items}, load_options=load_options,
             )
@@ -393,7 +399,7 @@ async def get_topic(
             similar=[_to_item_out(i, compact=compact) for i in neighbors],
         )
 
-    return await read_cache.get(("topic", name, page, page_size, compact), load)
+    return await read_cache.get(("topic", name, page, page_size, compact), load, ttl=120, stale_ttl=600, pool="heavy")
 
 
 @router.get("/tags", response_model=list[TagOut])

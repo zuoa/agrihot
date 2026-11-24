@@ -147,7 +147,7 @@ async def query_vector(query: str) -> list[float]:
         _query_cache.move_to_end(cache_key)
         return cached[1]
     vector = (await embed([query]))[0]
-    _query_cache[cache_key] = (time.monotonic() + 300, vector)
-    while len(_query_cache) > 256:
+    _query_cache[cache_key] = (time.monotonic() + 3600, vector)
+    while len(_query_cache) > 2048:
         _query_cache.popitem(last=False)
     return vector

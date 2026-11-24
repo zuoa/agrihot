@@ -765,21 +765,21 @@ async def public_specials(session, *, featured=False, item_id=None, kind=None, s
 
 
 async def semantic_background(session, seed_ids: list[int], exclude: set[int]) -> list[Item]:
-    """Reuse existing pgvector seed embeddings; this makes no provider requests."""
+    """Reuse existing pgvector lead embeddings via HNSW; makes no provider requests."""
     if session.bind.dialect.name != "postgresql" or not seed_ids:
         return []
+    from .topic_service import _similar_item_ids
+
     fp = embedding_service.fingerprint()
     seeds = (await session.scalars(select(SearchChunk).join(SearchJob, SearchJob.item_id == SearchChunk.item_id).where(
-        SearchChunk.item_id.in_(seed_ids[:10]), SearchChunk.fingerprint == fp,
+        SearchChunk.item_id.in_(seed_ids[:10]), SearchChunk.position == 0, SearchChunk.fingerprint == fp,
         SearchChunk.embedding.is_not(None), SearchJob.status == "ready",
-    ).order_by(SearchChunk.id).limit(20))).all()
-    ids = set()
+    ).order_by(SearchChunk.id).limit(10))).all()
+    ids: set[int] = set()
     for seed in seeds:
-        distance = SearchChunk.embedding.cosine_distance(seed.embedding)
-        ids.update((await session.scalars(select(SearchChunk.item_id).join(SearchJob, SearchJob.item_id == SearchChunk.item_id).where(
-            SearchChunk.fingerprint == fp, SearchChunk.embedding.is_not(None), SearchJob.status == "ready",
-            SearchChunk.item_id.not_in(exclude), distance <= 0.45,
-        ).order_by(distance).limit(8))).all())
+        vec = [float(v) for v in seed.embedding]
+        found = await _similar_item_ids(session, "", exclude | ids, 8, vector=vec)
+        ids.update(found)
         if len(ids) >= 40:
             break
     return list((await session.scalars(select(Item).where(Item.id.in_(sorted(ids)[:40])))).all()) if ids else []

@@ -7,6 +7,7 @@ and leaves pooled connections for article detail.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -16,11 +17,12 @@ from ..database import SessionLocal, get_session
 log = logging.getLogger(__name__)
 
 TTL_SECONDS = 30
-STALE_SECONDS = 120
-_MAX_ENTRIES = 256
-_slots = asyncio.Semaphore(4)
+STALE_SECONDS = 300
+_MAX_ENTRIES = 2048
+_slots = asyncio.Semaphore(8)
+_heavy_slots = asyncio.Semaphore(3)
 # key -> (fresh_until, stale_until, value)
-_values: dict[tuple, tuple[float, float, object]] = {}
+_values: OrderedDict[tuple, tuple[float, float, object]] = OrderedDict()
 _inflight: dict[tuple, asyncio.Task] = {}
 
 
@@ -41,10 +43,16 @@ def invalidate(*prefixes: str) -> None:
         _values.pop(key, None)
 
 
-def _start_refresh(key: tuple, load: Callable[..., Awaitable[object]], ttl: float, stale_ttl: float) -> asyncio.Task:
+def _start_refresh(
+    key: tuple,
+    load: Callable[..., Awaitable[object]],
+    ttl: float,
+    stale_ttl: float,
+    pool: str = "default",
+) -> asyncio.Task:
     task = _inflight.get(key)
     if task is None or task.done():
-        task = asyncio.create_task(_load(key, load, ttl, stale_ttl))
+        task = asyncio.create_task(_load(key, load, ttl, stale_ttl, pool))
         _inflight[key] = task
 
         def _cleanup(done_task: asyncio.Task) -> None:
@@ -64,18 +72,21 @@ async def get(
     load: Callable[..., Awaitable[object]],
     ttl: float = TTL_SECONDS,
     stale_ttl: float = STALE_SECONDS,
+    pool: str = "default",
 ):
     now = time.monotonic()
     cached = _values.get(key)
     if cached:
         fresh_until, stale_until, value = cached
         if fresh_until > now:
+            _values.move_to_end(key)
             return value
         if stale_until > now:
+            _values.move_to_end(key)
             # Serve warm stale data immediately while refreshing once in the background.
-            _start_refresh(key, load, ttl, stale_ttl)
+            _start_refresh(key, load, ttl, stale_ttl, pool)
             return value
-    task = _start_refresh(key, load, ttl, stale_ttl)
+    task = _start_refresh(key, load, ttl, stale_ttl, pool)
     return await asyncio.shield(task)
 
 
@@ -88,8 +99,15 @@ def _session_factory():
     return override
 
 
-async def _load(key: tuple, load: Callable[..., Awaitable[object]], ttl: float, stale_ttl: float):
-    async with _slots:
+async def _load(
+    key: tuple,
+    load: Callable[..., Awaitable[object]],
+    ttl: float,
+    stale_ttl: float,
+    pool: str = "default",
+):
+    sem = _heavy_slots if pool == "heavy" else _slots
+    async with sem:
         factory = _session_factory()
         if factory is SessionLocal:
             async with SessionLocal() as owned:
@@ -104,7 +122,7 @@ async def _load(key: tuple, load: Callable[..., Awaitable[object]], ttl: float, 
 def _store(key: tuple, value, ttl: float, stale_ttl: float):
     now = time.monotonic()
     _values[key] = (now + ttl, now + ttl + max(0.0, stale_ttl), value)
-    if len(_values) > _MAX_ENTRIES:
-        oldest = min(_values, key=lambda item: _values[item][0])
-        _values.pop(oldest, None)
+    _values.move_to_end(key)
+    while len(_values) > _MAX_ENTRIES:
+        _values.popitem(last=False)
     return value

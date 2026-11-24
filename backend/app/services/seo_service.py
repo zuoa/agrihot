@@ -53,6 +53,7 @@ def robots_txt() -> PlainTextResponse:
         "Disallow: /admin\n"
         "Disallow: /admin/\n"
         "Disallow: /api/\n"
+        "Disallow: /topic/*?*\n"
         "\n"
         f"Sitemap: {abs_url('/sitemap.xml')}\n"
     )

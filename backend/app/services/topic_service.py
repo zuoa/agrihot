@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import unquote
 
-from sqlalchemy import func, literal, or_, select, union_all
+from sqlalchemy import func, literal, or_, select, text, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
@@ -325,41 +325,104 @@ async def related_items(
     return list(rows)
 
 
-async def _similar_item_ids(session: AsyncSession, query: str, exclude: set[int], limit: int) -> list[int]:
-    """Nearest indexed articles for a tag name. Empty when vectors are unavailable."""
-    if not settings.embedding_api_key or not query:
-        return []
-    try:
-        vector = await embedding_service.query_vector(query)
-    except embedding_service.EmbeddingUnavailable:
-        log.info("tag similar skipped for %s: embedding unavailable", query)
-        return []
+async def item_vector(session: AsyncSession, item_id: int, fp: str) -> list[float] | None:
+    """Reuse an article's own lead-chunk embedding instead of calling the provider."""
+    row = (
+        await session.execute(
+            select(SearchChunk.embedding)
+            .join(SearchJob, SearchJob.item_id == SearchChunk.item_id)
+            .where(
+                SearchChunk.item_id == item_id,
+                SearchChunk.position == 0,
+                SearchChunk.fingerprint == fp,
+                SearchChunk.embedding.is_not(None),
+                SearchJob.status == "ready",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+    return [float(v) for v in row]
+
+
+async def _similar_item_ids(
+    session: AsyncSession,
+    query: str,
+    exclude: set[int],
+    limit: int,
+    *,
+    vector: list[float] | None = None,
+) -> list[int]:
+    """Nearest indexed articles by lead-chunk vector. Empty when vectors are unavailable."""
+    if vector is None:
+        if not settings.embedding_api_key or not query:
+            return []
+        try:
+            vector = await embedding_service.query_vector(query)
+        except embedding_service.EmbeddingUnavailable:
+            log.info("tag similar skipped for %s: embedding unavailable", query)
+            return []
     fp = embedding_service.fingerprint()
+    if session.bind.dialect.name == "postgresql":
+        dims = len(vector)
+        # Query lead chunks (position=0, one per item) through the partial HNSW halfvec index
+        # instead of scanning and window-sorting hundreds of thousands of body chunks.
+        if 1 <= dims <= 4000 and dims == int(settings.embedding_dimensions):
+            vec_literal = "[" + ",".join(f"{float(v):.8g}" for v in vector) + "]"
+            candidate_limit = min(500, max(64, limit * 8 + len(exclude)))
+            await session.execute(
+                text("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
+            )
+            stmt = text(
+                f"WITH nearest AS MATERIALIZED ("
+                f"  SELECT sc.item_id, sc.fingerprint, "
+                f"         (sc.embedding::halfvec({dims}) <=> CAST(:vec AS halfvec({dims}))) AS distance "
+                f"  FROM search_chunks sc "
+                f"  WHERE sc.position = 0 AND sc.embedding IS NOT NULL AND vector_dims(sc.embedding) = {dims} "
+                f"  ORDER BY sc.embedding::halfvec({dims}) <=> CAST(:vec AS halfvec({dims})) "
+                f"  LIMIT :k"
+                f") "
+                f"SELECT n.item_id "
+                f"FROM nearest n "
+                f"JOIN search_jobs sj ON sj.item_id = n.item_id "
+                f"WHERE sj.status = 'ready' "
+                f"  AND n.fingerprint = :fp "
+                f"  AND n.distance <= :max_dist "
+                f"ORDER BY n.distance, n.item_id DESC"
+            )
+            rows = (
+                await session.execute(
+                    stmt,
+                    {"vec": vec_literal, "k": candidate_limit, "fp": fp, "max_dist": SIMILAR_MAX_DISTANCE},
+                )
+            ).all()
+            out = [item_id for (item_id,) in rows if item_id not in exclude]
+            return out[:limit]
+
+        distance = SearchChunk.embedding.cosine_distance(vector)
+        stmt = (
+            select(SearchChunk.item_id)
+            .join(SearchJob, SearchJob.item_id == SearchChunk.item_id)
+            .where(
+                SearchJob.status == "ready",
+                SearchChunk.position == 0,
+                SearchChunk.fingerprint == fp,
+                SearchChunk.embedding.is_not(None),
+                distance <= SIMILAR_MAX_DISTANCE,
+            )
+        )
+        if exclude:
+            stmt = stmt.where(SearchChunk.item_id.not_in(exclude))
+        rows = (await session.execute(stmt.order_by(distance, SearchChunk.item_id.desc()).limit(limit))).all()
+        return [item_id for (item_id,) in rows]
+
     ready = (
         SearchJob.status == "ready",
+        SearchChunk.position == 0,
         SearchChunk.fingerprint == fp,
         SearchChunk.embedding.is_not(None),
     )
-    if session.bind.dialect.name == "postgresql":
-        distance = SearchChunk.embedding.cosine_distance(vector)
-        best = (
-            select(
-                SearchChunk.item_id,
-                distance.label("distance"),
-                func.row_number().over(partition_by=SearchChunk.item_id, order_by=distance).label("position"),
-            )
-            .join(SearchJob, SearchJob.item_id == SearchChunk.item_id)
-            .where(*ready)
-            .subquery()
-        )
-        stmt = select(best.c.item_id).where(best.c.position == 1, best.c.distance <= SIMILAR_MAX_DISTANCE)
-        if exclude:
-            stmt = stmt.where(best.c.item_id.not_in(exclude))
-        rows = (
-            await session.execute(stmt.order_by(best.c.distance, best.c.item_id.desc()).limit(limit))
-        ).all()
-        return [item_id for (item_id,) in rows]
-
     # SQLite tests only. Production ranks with pgvector.
     chunks = (
         await session.execute(
@@ -404,11 +467,32 @@ async def similar_items(
     return await items_near_query(session, query, exclude, limit=limit, load_options=load_options)
 
 
+async def items_near_item(
+    session: AsyncSession, item: Item, exclude_ids: set[int], *, limit: int = SIMILAR_LIMIT, load_options=()
+) -> list[Item]:
+    """Nearest indexed articles for an item, reusing its stored lead embedding when ready."""
+    fp = embedding_service.fingerprint()
+    stored = await item_vector(session, item.id, fp)
+    if stored is not None:
+        return await items_near_query(
+            session, item.title or "", exclude_ids, limit=limit, load_options=load_options, vector=stored,
+        )
+    return await items_near_query(
+        session, item.title or "", exclude_ids, limit=limit, load_options=load_options,
+    )
+
+
 async def items_near_query(
-    session: AsyncSession, query: str, exclude_ids: set[int], *, limit: int = SIMILAR_LIMIT, load_options=()
+    session: AsyncSession,
+    query: str,
+    exclude_ids: set[int],
+    *,
+    limit: int = SIMILAR_LIMIT,
+    load_options=(),
+    vector: list[float] | None = None,
 ) -> list[Item]:
     """Nearest indexed articles for a title or tag name, excluding the given ids."""
-    ids = await _similar_item_ids(session, query.strip(), set(exclude_ids), limit)
+    ids = await _similar_item_ids(session, query.strip(), set(exclude_ids), limit, vector=vector)
     if not ids:
         return []
     rows = (

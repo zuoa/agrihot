@@ -69,6 +69,16 @@ async def ensure_schema(target_engine=None) -> None:
                 await conn.execute(text(f"ALTER TABLE tags ADD COLUMN {col} VARCHAR(20) NOT NULL DEFAULT '{default}'"))
         if conn.dialect.name == "postgresql":
             await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_search_chunks_fts ON search_chunks USING gin (to_tsvector('simple', lexemes))"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_search_chunks_pos_item ON search_chunks (position, item_id)"))
+            dims = int(settings.embedding_dimensions)
+            if 1 <= dims <= 4000:
+                has_halfvec = (await conn.execute(text("SELECT 1 FROM pg_type WHERE typname = 'halfvec'"))).first()
+                if has_halfvec:
+                    await conn.execute(text(
+                        f"CREATE INDEX IF NOT EXISTS ix_search_chunks_pos0_hnsw_{dims} "
+                        f"ON search_chunks USING hnsw ((embedding::halfvec({dims})) halfvec_cosine_ops) "
+                        f"WHERE position = 0 AND embedding IS NOT NULL AND vector_dims(embedding) = {dims}"
+                    ))
 
 
 async def get_session() -> AsyncSession:  # FastAPI dependency
